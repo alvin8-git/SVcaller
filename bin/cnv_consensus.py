@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Merge CNVpytor and GATK gCNV output into a consensus BED file.
+
+Usage: cnv_consensus.py --cnvpytor <tsv> --gatk <tsv> --sample <id> --out <bed>
+"""
+import argparse, csv, sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import List, Optional
+
+
+@dataclass
+class CNVSegment:
+    chrom: str
+    start: int
+    end: int
+    cn: int
+    svtype: str   # DEL or DUP
+    caller: str
+    quality: Optional[float] = None
+
+
+def reciprocal_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> float:
+    overlap = max(0, min(a_end, b_end) - max(a_start, b_start))
+    len_a, len_b = a_end - a_start, b_end - b_start
+    if len_a == 0 or len_b == 0:
+        return 0.0
+    return overlap / min(len_a, len_b)
+
+
+def load_cnvpytor(path: str) -> List[CNVSegment]:
+    segs = []
+    with open(path) as fh:
+        for line in fh:
+            if line.startswith("#") or not line.strip():
+                continue
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            svtype_raw = parts[0].lower()
+            region = parts[1]  # e.g. chr1:1000-2000
+            if ":" not in region or "-" not in region:
+                continue
+            chrom, coords = region.split(":")
+            start, end = map(int, coords.split("-"))
+            cn_raw = float(parts[3]) if len(parts) > 3 else 2.0
+            cn = round(cn_raw)
+            svtype = "DEL" if svtype_raw == "deletion" or cn < 2 else "DUP"
+            segs.append(CNVSegment(chrom, start, end, cn, svtype, "CNVpytor"))
+    return segs
+
+
+def load_gatk(path: str) -> List[CNVSegment]:
+    segs = []
+    with open(path) as fh:
+        reader = csv.DictReader(fh, delimiter="\t")
+        for row in reader:
+            if row.get("CALL", "") == "0":
+                continue
+            try:
+                chrom = row["CONTIG"]
+                start = int(row["START"])
+                end   = int(row["END"])
+                cn    = int(row["CALL_COPY_NUMBER"])
+                qual  = float(row.get("QUALITY", 0))
+            except (KeyError, ValueError):
+                continue
+            svtype = "DEL" if cn < 2 else "DUP"
+            segs.append(CNVSegment(chrom, start, end, cn, svtype, "GATK_gCNV", qual))
+    return segs
+
+
+def merge(cnvpytor: List[CNVSegment], gatk: List[CNVSegment],
+          min_reciprocal: float = 0.5, gatk_qual_threshold: float = 30.0) -> List[dict]:
+    results = []
+    matched_gatk = set()
+
+    for a in cnvpytor:
+        best_match = None
+        best_overlap = 0.0
+        for i, b in enumerate(gatk):
+            if a.chrom != b.chrom or a.svtype != b.svtype:
+                continue
+            ovl = reciprocal_overlap(a.start, a.end, b.start, b.end)
+            if ovl >= min_reciprocal and ovl > best_overlap:
+                best_overlap = ovl
+                best_match = (i, b)
+        if best_match:
+            idx, b = best_match
+            matched_gatk.add(idx)
+            results.append({
+                "chrom": a.chrom, "start": a.start, "end": a.end,
+                "cn": b.cn, "svtype": a.svtype,
+                "caller_support": "BOTH", "confidence": "HIGH",
+                "quality": b.quality or "."
+            })
+
+    for i, b in enumerate(gatk):
+        if i in matched_gatk:
+            continue
+        if (b.quality or 0) >= gatk_qual_threshold:
+            results.append({
+                "chrom": b.chrom, "start": b.start, "end": b.end,
+                "cn": b.cn, "svtype": b.svtype,
+                "caller_support": "GATK_only", "confidence": "MEDIUM",
+                "quality": b.quality
+            })
+
+    results.sort(key=lambda r: (r["chrom"], r["start"]))
+    return results
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Merge CNVpytor and GATK gCNV calls")
+    parser.add_argument("--cnvpytor", required=True)
+    parser.add_argument("--gatk",     required=True)
+    parser.add_argument("--sample",   required=True)
+    parser.add_argument("--out",      required=True)
+    args = parser.parse_args()
+
+    cnvpytor_segs = load_cnvpytor(args.cnvpytor)
+    gatk_segs     = load_gatk(args.gatk)
+    consensus     = merge(cnvpytor_segs, gatk_segs)
+
+    with open(args.out, "w") as fh:
+        fh.write("#chrom\tstart\tend\tcn\tsvtype\tcaller_support\tconfidence\tquality\tsample\n")
+        for r in consensus:
+            fh.write(f"{r['chrom']}\t{r['start']}\t{r['end']}\t{r['cn']}\t"
+                     f"{r['svtype']}\t{r['caller_support']}\t{r['confidence']}\t"
+                     f"{r['quality']}\t{args.sample}\n")
+
+    print(f"Written {len(consensus)} consensus CNV segments to {args.out}")
+
+
+if __name__ == "__main__":
+    main()
