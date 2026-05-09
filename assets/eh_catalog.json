@@ -1,0 +1,7 @@
+{
+  "_note": "Stub catalog. Replace with full Illumina ExpansionHunter catalog before running.",
+  "LocusId": "FMR1",
+  "LocusStructure": "(CGG)*",
+  "ReferenceRegion": "chrX:147912050-147912110",
+  "VariantType": "Repeat"
+}
