@@ -1,0 +1,16 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "title": "SVcaller input samplesheet",
+    "description": "CSV with one row per sample. Use fastq_1/fastq_2 OR bam, not both.",
+    "type": "array",
+    "items": {
+        "type": "object",
+        "required": ["sample"],
+        "properties": {
+            "sample":  { "type": "string", "description": "Sample ID (no spaces)" },
+            "fastq_1": { "type": "string", "description": "Absolute path to R1 FASTQ.gz", "format": "file-path" },
+            "fastq_2": { "type": "string", "description": "Absolute path to R2 FASTQ.gz", "format": "file-path" },
+            "bam":     { "type": "string", "description": "Absolute path to sorted BAM",   "format": "file-path" }
+        }
+    }
+}
