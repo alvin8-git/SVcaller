@@ -11,7 +11,7 @@ OUT_DIR="/data/alvin/tmp/truvari_${SAMPLE}"
 
 TRUTH_VCF="${TRUTH_DIR}/${SAMPLE}_SV_v0.6.vcf.gz"
 TRUTH_TBI="${TRUTH_DIR}/${SAMPLE}_SV_v0.6.vcf.gz.tbi"
-TRUTH_BED="${TRUTH_DIR}/${SAMPLE}_SV_v0.6_HC.bed"
+TRUTH_BED="${TRUTH_DIR}/${SAMPLE}_SV_v0.6.bed"
 
 if [ ! -f "${TRUTH_VCF}" ]; then
     echo "ERROR: Truth VCF not found: ${TRUTH_VCF}" >&2
