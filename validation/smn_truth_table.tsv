@@ -1,0 +1,7 @@
+sample	smn1_cn	smn2_cn	source	notes
+HG002	2	1	published	GIAB Ashkenazi son; SMNCopyNumberCaller validation cohort
+HG003	2	2	published	GIAB Ashkenazi father
+HG004	2	1	published	GIAB Ashkenazi mother
+HG005	2	2	published	GIAB Chinese son
+HG006	2	2	published	GIAB Chinese father
+HG007	2	2	published	GIAB Chinese mother
