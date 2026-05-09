@@ -1,0 +1,25 @@
+# GRCh38 cytobands stub — replace with full UCSC cytoBand.txt before running
+chr1	0	248956422	p36.33	gneg
+chr2	0	242193529	p25.3	gneg
+chr3	0	198295559	p26.3	gneg
+chr4	0	190214555	p16.3	gneg
+chr5	0	181538259	p15.33	gneg
+chr6	0	170805979	p25.3	gneg
+chr7	0	159345973	p22.3	gneg
+chr8	0	145138636	p23.3	gneg
+chr9	0	138394717	p24.3	gneg
+chr10	0	133797422	p15.3	gneg
+chr11	0	135086622	p15.5	gneg
+chr12	0	133275309	p13.33	gneg
+chr13	0	114364328	p13	gneg
+chr14	0	107043718	p13	gneg
+chr15	0	101991189	p13	gneg
+chr16	0	90338345	p13.3	gneg
+chr17	0	83257441	p13.3	gneg
+chr18	0	80373285	p11.32	gneg
+chr19	0	58617616	p13.3	gneg
+chr20	0	64444167	p13	gneg
+chr21	0	46709983	p13	gneg
+chr22	0	50818468	p13	gneg
+chrX	0	156040895	p22.33	gneg
+chrY	0	57227415	p11.32	gneg
