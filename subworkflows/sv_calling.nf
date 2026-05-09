@@ -26,6 +26,7 @@ workflow SV_CALLING {
             [meta, [manta_vcf, delly_vcf, gridss_vcf]]
         }
 
+    // Inner join: sample must complete all 3 callers to reach merge step (fail-fast on caller error)
     JASMINE_MERGE(ch_to_merge, ch_fasta, ch_fai)
 
     emit:

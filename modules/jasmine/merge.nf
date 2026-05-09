@@ -13,13 +13,15 @@ process JASMINE_MERGE {
     path "versions.yml",                                        emit: versions
 
     script:
+    def vcf_list_str = vcfs.collect { "\"${it.baseName}\"" }.join(' ')
     """
-    # Decompress each VCF for JASMINE
-    for f in ${vcfs}; do
-        bgzip -d -c \$f > \$(basename \$f .gz)
-    done
+    # Decompress each input VCF explicitly
+    bgzip -d -c ${vcfs[0]} > ${vcfs[0].baseName}
+    bgzip -d -c ${vcfs[1]} > ${vcfs[1].baseName}
+    bgzip -d -c ${vcfs[2]} > ${vcfs[2].baseName}
 
-    ls *.vcf | grep -v merged > vcf_list.txt
+    # Build vcf_list.txt from known filenames (avoids ls glob ambiguity)
+    printf '%s\\n' ${vcfs[0].baseName} ${vcfs[1].baseName} ${vcfs[2].baseName} > vcf_list.txt
 
     jasmine \\
         file_list=vcf_list.txt \\
