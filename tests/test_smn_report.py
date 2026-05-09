@@ -12,11 +12,19 @@ def test_classify_carrier():
     from smn_report import classify_sma
     result = classify_sma(smn1_cn=1, smn2_cn=1)
     assert result["status"] == "Carrier"
+    assert result["badge_class"] == "badge-warning"
+    assert result["smn1_cn"] == 1
+    assert result["smn2_cn"] == 1
+    assert "carrier" in result["interpretation"].lower()
 
 def test_classify_normal():
     from smn_report import classify_sma
     result = classify_sma(smn1_cn=2, smn2_cn=2)
     assert result["status"] == "Normal"
+    assert result["badge_class"] == "badge-success"
+    assert result["smn1_cn"] == 2
+    assert result["smn2_cn"] == 2
+    assert "normal" in result["interpretation"].lower() or "2" in result["interpretation"]
 
 def test_two_plus_zero_flagged():
     from smn_report import detect_two_plus_zero
