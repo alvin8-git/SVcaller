@@ -32,7 +32,13 @@ def validate(row: dict) -> dict:
     return entry
 
 def main():
+    if len(sys.argv) < 2:
+        print("Usage: parse_samplesheet.py <samplesheet.csv>", file=sys.stderr)
+        sys.exit(1)
     path = sys.argv[1]
+    if not Path(path).exists():
+        print(f"ERROR: Samplesheet not found: {path}", file=sys.stderr)
+        sys.exit(1)
     with open(path) as fh:
         for row in csv.DictReader(fh):
             try:
