@@ -1,0 +1,8 @@
+results/
+work/
+.nextflow/
+.nextflow.log*
+*.pyc
+__pycache__/
+*.egg-info/
+.DS_Store
