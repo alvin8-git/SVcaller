@@ -1,6 +1,7 @@
 process GATK_GCNV_CALL {
     tag "${meta.id}"
     label 'process_medium'
+    container 'broadinstitute/gatk:4.5.0.0'
 
     input:
     tuple val(meta), path(bam), path(bai)
@@ -13,10 +14,12 @@ process GATK_GCNV_CALL {
     output:
     tuple val(meta), path("${meta.id}.gatk_cnv.seg"),     emit: seg
     tuple val(meta), path("${meta.id}.gatk_cnv.vcf.gz"),  emit: vcf
+    tuple val(meta), path("${meta.id}.gatk_cnv.vcf.gz.tbi"), emit: tbi
     path "versions.yml",                                   emit: versions
 
     script:
     def heap = (task.memory.toGiga() * 0.85).intValue()
+    def pon_arg = pon_hdf5.name != 'NO_PON' ? "--count-panel-of-normals ${pon_hdf5}" : ""
     """
     # Collect read counts
     gatk --java-options "-Xmx${heap}g" CollectReadCounts \\
@@ -29,7 +32,7 @@ process GATK_GCNV_CALL {
     # Denoise against PoN
     gatk --java-options "-Xmx${heap}g" DenoiseReadCounts \\
         -I ${meta.id}.counts.hdf5 \\
-        --count-panel-of-normals ${pon_hdf5} \\
+        ${pon_arg} \\
         --standardized-copy-ratios ${meta.id}.standardizedCR.tsv \\
         --denoised-copy-ratios ${meta.id}.denoisedCR.tsv
 
@@ -51,9 +54,12 @@ process GATK_GCNV_CALL {
         > ${meta.id}.gatk_cnv.tsv
 
     # Produce compressed stub VCF for reporting
-    echo "##fileformat=VCFv4.2" > ${meta.id}.gatk_cnv.vcf
-    bgzip ${meta.id}.gatk_cnv.vcf
-    touch ${meta.id}.gatk_cnv.vcf.gz
+    printf "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" \\
+        | bgzip > ${meta.id}.gatk_cnv.vcf.gz
+    tabix -p vcf ${meta.id}.gatk_cnv.vcf.gz
+
+    # Clean up intermediates
+    rm -f ${meta.id}.counts.hdf5 ${meta.id}.standardizedCR.tsv ${meta.id}.denoisedCR.tsv
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
