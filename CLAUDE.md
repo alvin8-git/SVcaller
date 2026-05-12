@@ -1,0 +1,146 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What This Pipeline Does
+
+SVcaller is a Nextflow DSL2 pipeline for human WGS structural variant (SV), copy-number variant (CNV), short tandem repeat (STR), and SMN1/SMN2 copy-number calling. It targets GRCh38 at ≥30× coverage and produces per-sample HTML reports.
+
+## Running the Pipeline
+
+**Important:** Docker biocontainer tags (quay.io) are currently invalid. Use `-profile local` (conda) for the main pipeline. Docker works for the PON build (uses `broadinstitute/gatk:4.5.0.0`).
+
+```bash
+# Main validation pipeline (conda profile)
+nextflow run main.nf -profile local \
+  --input validation/validation_samplesheet.csv \
+  --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
+  --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
+  --pon /data/alvin/SVcaller/pon/gcnv_pon.hdf5 \
+  --giab_truth /data/alvin/ref/GIAB/HG002_SV_v0.6.vcf.gz \
+  --eh_catalog assets/eh_catalog.json \
+  --outdir /data/alvin/SVcaller/results \
+  -work-dir /data/alvin/SVcaller/work
+
+# PON build (Docker profile — only uses GATK image which is valid)
+nextflow run workflows/pon_build.nf -profile docker \
+  --input validation/giab_samplesheet.csv \
+  --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
+  --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
+  --outdir /data/alvin/SVcaller/pon \
+  -work-dir /data/alvin/SVcaller/work
+
+# Check PON build progress
+tail -20 /data/alvin/tmp/pon_build_run2.log
+```
+
+### Conda Environment
+
+```bash
+# Build conda env (python=3.9 required for pywfa/cnvpytor compatibility)
+/home/alvin/miniconda3/bin/mamba env create -f environment.yml
+# Env path: /home/alvin/miniconda3/envs/svcaller
+# Note: cnvpytor is installed via pip (not conda) to avoid pywfa solve conflicts
+# Note: annotsv is NOT in conda env — run via Docker or skip with no --annotsv_db
+
+# Check build log
+tail -5 /data/alvin/tmp/conda_svcaller_build5.log
+```
+
+## Python Tests
+
+```bash
+# Run all tests
+pytest tests/
+
+# Run a single test file
+pytest tests/test_cnv_consensus.py
+
+# Run a specific test
+pytest tests/test_cnv_consensus.py::test_reciprocal_overlap
+```
+
+The Python scripts in `bin/` are tested with pytest but execute inside `svcaller/utils:1.0` Docker container during the pipeline run.
+
+## Samplesheet Format
+
+CSV with header: `sample,fastq_1,fastq_2,bam`. Each row provides either a FASTQ pair or a pre-aligned BAM (leave the other columns blank).
+
+```
+sample,fastq_1,fastq_2,bam
+HG002,/path/HG002_R1.fq.gz,/path/HG002_R2.fq.gz,
+HG003,,,/path/HG003.bam
+```
+
+## Architecture
+
+```
+main.nf                          # Entry: parse samplesheet, set up channels, call SVCALLER
+└── workflows/svcaller.nf        # Top-level orchestration
+    ├── subworkflows/preprocess.nf   # M1: BWA-MEM2 align → Picard MarkDup → Mosdepth QC
+    ├── subworkflows/sv_calling.nf   # M2: Manta + Delly + GRIDSS (parallel) → Jasmine merge; ExpansionHunter (STRs)
+    ├── subworkflows/cnv_calling.nf  # M3: CNVpytor + GATK gCNV → cnv_consensus.py (reciprocal overlap merge)
+    ├── subworkflows/smn_calling.nf  # M4: SMNCopyNumberCaller
+    ├── subworkflows/annotate.nf     # M5: AnnotSV
+    └── subworkflows/report.nf       # M6/M7: pycirclize Circos SVG + optional Truvari bench → HTML report
+```
+
+**Key design points:**
+- M2, M3, M4 run in parallel on the same BAM channel after preprocessing.
+- M3 case mode runs `GATK_PREPROCESS_INTERVALS` (bin-length 1000) before `CollectReadCounts` — must match PON build intervals.
+- SV merge (Jasmine) requires all 3 callers to succeed (inner join — fail-fast on any caller error).
+- CNV consensus (`bin/cnv_consensus.py`) uses reciprocal overlap ≥0.5 to call `BOTH`/`HIGH` calls; GATK-only calls with quality ≥30 are included as `MEDIUM`.
+- Mosdepth halts the pipeline if coverage < `params.min_depth` (default 30).
+- Optional inputs (PoN, intervals, AnnotSV DB, GIAB truth) use `Channel.value(file("NO_PON"))` / `Channel.empty()` sentinel patterns. ANNOTSV emits a stub empty TSV when `--annotsv_db` is not provided.
+- REPORT workflow joins 9 channels into BUILD_HTML_REPORT: sv_tsv, cnv_bed, smn_tsv, circos_svg, benchmark_json, sizebin_json, coverage_summary, picard_metrics, str_vcf. Each optional channel uses `remainder: true` join + `?: file("NO_FILE")` fallback.
+- Truvari runs overall + 4 size bins (50–300 bp, 300 bp–1 kb, 1–10 kb, >10 kb) — both JSONs wired to HTML report.
+
+## Known Issues / Environment Notes
+
+- **Docker biocontainer tags invalid**: `quay.io/biocontainers/bwa-mem2` etc. return "manifest unknown". Use `-profile local` (conda) for main pipeline.
+- **conda env pywfa conflict**: `cnvpytor` requires `pywfa>=0.5.1` which is only available for Python ≤3.9. env uses python=3.9 and cnvpytor installed via pip.
+- **annotsv not in conda env**: excluded due to cascading solve conflicts. Runs via Docker container (`quay.io/biocontainers/annotsv:3.4.2--pl5321hdfd78af_0`) or is gracefully skipped (emits empty TSV header) when `--annotsv_db` not provided.
+- **samtools flagstat not wired**: `mapped_pct` shows "N/A" in HTML QC section; mosdepth gives depth and Picard gives dup rate.
+
+## Python Scripts (`bin/`)
+
+All run inside `svcaller/utils:1.0`. Each is a standalone CLI tool:
+
+| Script | Purpose |
+|---|---|
+| `cnv_consensus.py` | Merge CNVpytor TSV + GATK gCNV SEG → consensus BED |
+| `html_report.py` | Assemble per-sample HTML report from all sections |
+| `smn_report.py` | Generate SMN1/SMN2 HTML section |
+| `circos_plot.py` | Generate SVG circos plot via pycirclize |
+| `parse_samplesheet.py` | Samplesheet parsing utility |
+
+## Module Conventions
+
+Each module under `modules/<tool>/` follows: `input` tuple → `script` block → `output` tuple with named `emit`. Resource labels (`process_single`, `process_low`, `process_medium`, `process_high`, `process_gridss`) map to CPU/memory tiers in `conf/base.config`. Retry on OOM exit codes (137, 143, 104, 134, 139) is automatic.
+
+## Validation
+
+```bash
+# Download GIAB truth files to /data/alvin/ref/GIAB/
+bash validation/download_refs.sh
+
+# Standalone Truvari benchmark (runs Docker internally)
+bash validation/giab_benchmark.sh HG002 /path/to/HG002.sv_merged.vcf.gz
+
+# GIAB sample sheet for pipeline-integrated benchmarking
+validation/giab_samplesheet.csv
+```
+
+## Key Parameters
+
+| Param | Default | Notes |
+|---|---|---|
+| `--input` | required | Samplesheet CSV |
+| `--ref_fasta` | required | GRCh38 FASTA (index .fai and .0123 inferred from path) |
+| `--pon` | null | GATK gCNV Panel of Normals HDF5 |
+| `--intervals` | null | Target capture BED |
+| `--annotsv_db` | null | AnnotSV database directory |
+| `--giab_truth` | null | GIAB truth VCF.gz (enables Truvari in REPORT) |
+| `--min_depth` | 30 | Mosdepth coverage threshold |
+| `--outdir` | results | Output directory |
+| `--utils_container` | `svcaller/utils:1.0` | Container for Python bin/ scripts |

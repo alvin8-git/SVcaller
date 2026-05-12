@@ -1,0 +1,35 @@
+name: svcaller
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - bwa-mem2>=2.2
+  - samtools>=1.17
+  - picard>=3.0
+  - mosdepth>=0.3
+  - fastqc>=0.12
+  - manta>=1.6
+  - delly>=1.2
+  - gridss>=2.13
+  - expansionhunter>=5.0
+  - jasminesv>=1.1
+  - gatk4>=4.5
+  - multiqc>=1.22
+  - truvari>=4.0
+  - htslib
+  - bcftools>=1.17
+  - tabix
+  - openjdk>=17
+  - pip
+  - pip:
+    - cnvpytor>=1.3
+    - jinja2==3.1.4
+    - pycirclize==1.6.0
+    - pandas>=2.0
+    - matplotlib>=3.8
+    - numpy>=1.24
+    - scipy>=1.11
+    - pysam>=0.22
+    - SMNCopyNumberCaller @ git+https://github.com/Illumina/SMNCopyNumberCaller.git@v1.1

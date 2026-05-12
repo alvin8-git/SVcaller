@@ -1,6 +1,7 @@
 include { BWAMEM2_ALIGN    } from '../modules/bwamem2/align'
 include { PICARD_MARKDUP   } from '../modules/picard/markduplicates'
 include { MOSDEPTH         } from '../modules/mosdepth/coverage'
+include { FASTQC           } from '../modules/fastqc/qc'
 
 workflow PREPROCESS {
     take:
@@ -20,6 +21,9 @@ workflow PREPROCESS {
         .filter { meta, fq1, fq2, bam -> bam != null }
         .map    { meta, fq1, fq2, bam -> [meta, bam, file("${bam}.bai")] }
 
+    // Raw read QC (FASTQ samples only)
+    FASTQC(ch_fastq)
+
     // Align FASTQs
     BWAMEM2_ALIGN(ch_fastq, ch_fasta, ch_fai, ch_bwt_index)
 
@@ -37,7 +41,8 @@ workflow PREPROCESS {
     MOSDEPTH(ch_final_bam, min_depth)
 
     emit:
-    bam      = ch_final_bam
-    coverage = MOSDEPTH.out.summary
-    metrics  = PICARD_MARKDUP.out.metrics
+    bam        = ch_final_bam
+    coverage   = MOSDEPTH.out.summary
+    metrics    = PICARD_MARKDUP.out.metrics
+    fastqc_zip = FASTQC.out.zip
 }

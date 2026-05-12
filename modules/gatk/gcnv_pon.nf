@@ -1,3 +1,35 @@
+process GATK_PREPROCESS_INTERVALS {
+    label 'process_single'
+    container 'broadinstitute/gatk:4.5.0.0'
+    publishDir "${params.outdir}/pon", mode: 'copy', pattern: "*.interval_list"
+
+    input:
+    path fasta
+    path fai
+    path dict
+    path intervals
+
+    output:
+    path "preprocessed.interval_list", emit: preprocessed
+    path "versions.yml",                emit: versions
+
+    script:
+    def heap = (task.memory.toGiga() * 0.85).intValue()
+    """
+    gatk --java-options "-Xmx${heap}g" PreprocessIntervals \\
+        -R ${fasta} \\
+        -L ${intervals} \\
+        --bin-length 1000 \\
+        --interval-merging-rule OVERLAPPING_ONLY \\
+        -O preprocessed.interval_list
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        gatk: \$(gatk --version 2>&1 | grep -oP '(?<=GATK v)[0-9.]+' | head -1)
+    END_VERSIONS
+    """
+}
+
 process GATK_COLLECT_COUNTS {
     tag "${meta.id}"
     label 'process_medium'

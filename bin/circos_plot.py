@@ -45,6 +45,29 @@ def parse_cnv_bed(path: str) -> Tuple[List[dict], List[dict]]:
     return gains, losses
 
 
+def parse_str_vcf(path: Optional[str]) -> List[dict]:
+    """Parse ExpansionHunter VCF; return positions of all genotyped STR loci."""
+    loci = []
+    if not path or path in ("NO_STR", ""):
+        return loci
+    opener = gzip.open if str(path).endswith(".gz") else open
+    try:
+        with opener(path, "rt") as fh:
+            for line in fh:
+                if line.startswith("#"):
+                    continue
+                parts = line.strip().split("\t")
+                if len(parts) < 8:
+                    continue
+                chrom, pos = parts[0], int(parts[1])
+                if chrom not in CHROM_ORDER:
+                    continue
+                loci.append({"chrom": chrom, "pos": pos})
+    except Exception:
+        pass
+    return loci
+
+
 def parse_sv_vcf_links(path: str) -> List[dict]:
     links = []
     opener = gzip.open if str(path).endswith(".gz") else open
@@ -106,22 +129,26 @@ def _chrom_colour(chrom: str) -> str:
 
 
 def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
-                sample_id: str, out_svg: str, out_png: str) -> None:
+                sample_id: str, out_svg: str, out_png: str,
+                str_vcf: Optional[str] = None) -> None:
     from pycirclize import Circos
     import matplotlib.pyplot as plt
 
     chrom_sizes = load_chrom_sizes(cytobands)
     gains, losses = parse_cnv_bed(cnv_bed)
     links = parse_sv_vcf_links(sv_vcf)
+    str_loci = parse_str_vcf(str_vcf)
 
     circos = Circos(chrom_sizes, space=1.5)
     circos.text(f"SVcaller\n{sample_id}", size=10, r=15)
 
+    # Ring 1: chromosome ideograms
     for sector in circos.sectors:
         track = sector.add_track((95, 100))
         track.axis(fc=_chrom_colour(sector.name))
         track.text(sector.name.replace("chr", ""), size=6, color="white")
 
+    # Ring 2: CNV gains (red)
     for sector in circos.sectors:
         track = sector.add_track((80, 93), r_pad_ratio=0.1)
         track.axis()
@@ -131,6 +158,7 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
             if height > 0:
                 track.rect(start, end, fc="#D62728", alpha=0.7)
 
+    # Ring 3: CNV losses (blue)
     for sector in circos.sectors:
         track = sector.add_track((67, 80), r_pad_ratio=0.1)
         track.axis()
@@ -138,9 +166,21 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
         for start, end in sector_losses:
             track.rect(start, end, fc="#1F77B4", alpha=0.7)
 
+    # Ring 4: STR expansion markers (brown dots per locus)
+    for sector in circos.sectors:
+        str_track = sector.add_track((55, 65), r_pad_ratio=0.1)
+        str_track.axis()
+        for locus in str_loci:
+            if locus["chrom"] == sector.name:
+                chrom_len = chrom_sizes.get(sector.name, 1)
+                marker_width = max(500_000, chrom_len // 500)
+                str_track.rect(locus["pos"], locus["pos"] + marker_width,
+                               fc="#8C564B", alpha=0.9)
+
+    # Ring 5: SMN locus highlight on chr5 (gold)
     chr5_sector = next((s for s in circos.sectors if s.name == "chr5"), None)
     if chr5_sector:
-        smn_track = chr5_sector.add_track((60, 66))
+        smn_track = chr5_sector.add_track((44, 53))
         smn_track.rect(70_924_941, 70_953_015, fc="#FFBF00", alpha=0.9)
 
     for link in links:
@@ -154,8 +194,8 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
             continue
 
     fig = circos.plotfig(figsize=(12, 12))
-    fig.savefig(out_svg, dpi=150)
-    fig.savefig(out_png, dpi=300)
+    fig.savefig(out_svg)
+    fig.savefig(out_png, dpi=1200)
     plt.close(fig)
     print(f"Circos plot saved: {out_svg}, {out_png}")
 
@@ -167,10 +207,11 @@ def main():
     parser.add_argument("--cytobands", required=True)
     parser.add_argument("--sample",    required=True)
     parser.add_argument("--out",       required=True, help="Output SVG path")
+    parser.add_argument("--str-vcf",   default=None,  help="ExpansionHunter VCF for STR ring")
     args = parser.parse_args()
     out_png = args.out.replace(".svg", ".png")
     make_circos(args.sv_vcf, args.cnv_bed, args.cytobands,
-                args.sample, args.out, out_png)
+                args.sample, args.out, out_png, str_vcf=args.str_vcf)
 
 
 if __name__ == "__main__":

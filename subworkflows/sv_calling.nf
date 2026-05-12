@@ -31,5 +31,6 @@ workflow SV_CALLING {
 
     emit:
     sv_vcf  = JASMINE_MERGE.out.vcf
+    sv_tbi  = JASMINE_MERGE.out.tbi
     str_vcf = EXPANSIONHUNTER.out.vcf
 }

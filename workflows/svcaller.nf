@@ -32,10 +32,23 @@ workflow SVCALLER {
     // M5: Annotate SVs
     ANNOTATE(SV_CALLING.out.sv_vcf, ch_annotsv_db)
 
-    // Optional truvari truth channel
-    ch_truth = params.giab_truth
+    // Optional truvari truth channels
+    ch_truth     = params.giab_truth
         ? Channel.fromPath(params.giab_truth, checkIfExists: true)
         : Channel.empty()
+    ch_truth_tbi = params.giab_truth
+        ? Channel.fromPath("${params.giab_truth}.tbi", checkIfExists: true)
+        : Channel.empty()
+    ch_truth_bed = params.giab_truth
+        ? Channel.fromPath("${params.giab_truth}".replaceAll(/\.vcf\.gz$/, '.bed'), checkIfExists: true)
+        : Channel.empty()
+
+    // Collect QC files for MultiQC aggregation
+    ch_multiqc_files = Channel.empty()
+        .mix(PREPROCESS.out.fastqc_zip.map { meta, zips -> zips }.flatten())
+        .mix(PREPROCESS.out.metrics.map { meta, m -> m })
+        .mix(PREPROCESS.out.coverage.map { meta, s -> s })
+        .collect()
 
     // M6 + M7: Visualize and report
     REPORT(
@@ -43,8 +56,15 @@ workflow SVCALLER {
         CNV_CALLING.out.cnv_bed,
         SMN_CALLING.out.tsv,
         SV_CALLING.out.sv_vcf,
+        SV_CALLING.out.sv_tbi,
+        SV_CALLING.out.str_vcf,
         ch_cytobands,
         ch_truth,
+        ch_truth_tbi,
+        ch_truth_bed,
+        ch_multiqc_files,
+        PREPROCESS.out.coverage,
+        PREPROCESS.out.metrics,
     )
 
     emit:
@@ -53,4 +73,5 @@ workflow SVCALLER {
     cnv_bed  = CNV_CALLING.out.cnv_bed
     smn_tsv  = SMN_CALLING.out.tsv
     html     = REPORT.out.html
+    multiqc  = REPORT.out.multiqc
 }

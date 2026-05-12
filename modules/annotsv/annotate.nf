@@ -12,6 +12,14 @@ process ANNOTSV {
     path "versions.yml",                                emit: versions
 
     script:
+    def skip_annotsv = annotsv_db.name == 'NO_ANNOTSV'
+    if (skip_annotsv)
+    """
+    printf 'SV_chrom\tSV_start\tSV_end\tSV_type\tAnnotSV_ranking_score\tGene_name\tOMIM_morbid\tB_gain_AFmax\tB_loss_AFmax\n' \
+        > ${meta.id}.annotated.tsv
+    printf '"${task.process}":\n    annotsv: skipped (no --annotsv_db)\n' > versions.yml
+    """
+    else
     """
     AnnotSV \\
         -SVinputFile ${sv_vcf} \\
@@ -22,7 +30,6 @@ process ANNOTSV {
         -tx ENSEMBL \\
         -annotationMode both
 
-    # Ensure output file is present (AnnotSV may add .tsv extension)
     [ -f "${meta.id}.annotated.tsv" ] || mv ${meta.id}.annotated.tsv.gz ${meta.id}.annotated.tsv 2>/dev/null || touch ${meta.id}.annotated.tsv
 
     cat <<-END_VERSIONS > versions.yml

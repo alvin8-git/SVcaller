@@ -1,5 +1,6 @@
-include { CNVPYTOR_CALL  } from '../modules/cnvpytor/call'
-include { GATK_GCNV_CALL } from '../modules/gatk/gcnv_call'
+include { CNVPYTOR_CALL           } from '../modules/cnvpytor/call'
+include { GATK_PREPROCESS_INTERVALS } from '../modules/gatk/gcnv_pon'
+include { GATK_GCNV_CALL           } from '../modules/gatk/gcnv_call'
 
 process CNV_CONSENSUS {
     tag "${meta.id}"
@@ -33,7 +34,10 @@ workflow CNV_CALLING {
 
     main:
     CNVPYTOR_CALL(ch_bam, ch_fasta)
-    GATK_GCNV_CALL(ch_bam, ch_fasta, ch_fai, ch_dict, ch_pon, ch_intervals)
+
+    // Preprocess intervals to bin-length 1000 interval_list (must match PON build)
+    GATK_PREPROCESS_INTERVALS(ch_fasta, ch_fai, ch_dict, ch_intervals)
+    GATK_GCNV_CALL(ch_bam, ch_fasta, ch_fai, ch_dict, ch_pon, GATK_PREPROCESS_INTERVALS.out.preprocessed)
 
     ch_for_consensus = CNVPYTOR_CALL.out.tsv
         .join(GATK_GCNV_CALL.out.seg.map { meta, seg -> [meta, seg] })

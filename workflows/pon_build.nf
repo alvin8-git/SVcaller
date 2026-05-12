@@ -1,5 +1,6 @@
-include { GATK_COLLECT_COUNTS } from '../modules/gatk/gcnv_pon'
-include { GATK_CREATE_PON     } from '../modules/gatk/gcnv_pon'
+include { GATK_PREPROCESS_INTERVALS } from '../modules/gatk/gcnv_pon'
+include { GATK_COLLECT_COUNTS       } from '../modules/gatk/gcnv_pon'
+include { GATK_CREATE_PON           } from '../modules/gatk/gcnv_pon'
 
 /*
  * One-time workflow: build GATK gCNV Panel of Normals from GIAB samples HG001-HG007.
@@ -52,10 +53,14 @@ workflow PON_BUILD {
     ch_intervals
 
     main:
-    // Annotate intervals once (compute GC content, mappability)
-    GATK_ANNOTATE_INTERVALS(ch_fasta, ch_fai, ch_dict, ch_intervals)
+    // Bin intervals for read counting (required for GATK gCNV cohort mode)
+    GATK_PREPROCESS_INTERVALS(ch_fasta, ch_fai, ch_dict, ch_intervals)
 
-    GATK_COLLECT_COUNTS(ch_bam, ch_fasta, ch_fai, ch_dict, ch_intervals)
+    // Annotate preprocessed intervals with GC content and mappability
+    GATK_ANNOTATE_INTERVALS(ch_fasta, ch_fai, ch_dict, GATK_PREPROCESS_INTERVALS.out.preprocessed)
+
+    // Collect read counts per sample using preprocessed (binned) intervals
+    GATK_COLLECT_COUNTS(ch_bam, ch_fasta, ch_fai, ch_dict, GATK_PREPROCESS_INTERVALS.out.preprocessed)
 
     ch_all_hdf5 = GATK_COLLECT_COUNTS.out.hdf5.map { meta, h -> h }.collect()
 
@@ -63,4 +68,28 @@ workflow PON_BUILD {
 
     emit:
     pon = GATK_CREATE_PON.out.pon
+}
+
+workflow {
+    if (!params.input)     error "ERROR: --input is required"
+    if (!params.ref_fasta) error "ERROR: --ref_fasta is required"
+    if (!params.intervals) error "ERROR: --intervals is required"
+
+    ch_bam = Channel
+        .fromPath(params.input, checkIfExists: true)
+        .splitCsv(header: true)
+        .map { row ->
+            def meta = [id: row.sample]
+            def bam  = file(row.bam, checkIfExists: true)
+            def bai  = file("${row.bam}.bai", checkIfExists: true)
+            [meta, bam, bai]
+        }
+
+    ch_fasta     = Channel.fromPath(params.ref_fasta, checkIfExists: true)
+    ch_fai       = Channel.fromPath("${params.ref_fasta}.fai", checkIfExists: true)
+    ch_dict      = Channel.fromPath("${params.ref_fasta}".replaceAll(/\.fa(sta)?$/, ".dict"),
+                                    checkIfExists: false)
+    ch_intervals = Channel.fromPath(params.intervals, checkIfExists: true)
+
+    PON_BUILD(ch_bam, ch_fasta, ch_fai, ch_dict, ch_intervals)
 }

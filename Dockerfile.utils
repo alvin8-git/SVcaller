@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    samtools tabix bgzip \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    jinja2==3.1.4 \
+    pycirclize==1.6.0 \
+    pandas==2.2.2 \
+    matplotlib==3.9.0
+
+COPY bin/ /usr/local/bin/
+RUN chmod +x /usr/local/bin/*.py
+
+LABEL maintainer="svcaller" \
+      version="1.0" \
+      description="SVcaller utility scripts (html_report, circos_plot, cnv_consensus, smn_report)"
