@@ -1,7 +1,7 @@
 process TRUVARI_BENCH {
     tag "${meta.id}"
     label 'process_low'
-    container 'quay.io/biocontainers/truvari:4.2.2--pyhdfd78af_0'
+    container 'quay.io/biocontainers/truvari:4.3.1--pyhdfd78af_0'
 
     input:
     tuple val(meta), path(query_vcf), path(query_tbi)

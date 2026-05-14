@@ -1,7 +1,7 @@
 process ANNOTSV {
     tag "${meta.id}"
     label 'process_medium'
-    container 'quay.io/biocontainers/annotsv:3.4.2--pl5321hdfd78af_0'
+    container 'quay.io/biocontainers/annotsv:3.4.6--py313hdfd78af_0'
 
     input:
     tuple val(meta), path(sv_vcf)
@@ -42,7 +42,7 @@ process ANNOTSV {
 process GNOMAD_SV_FILTER {
     tag "${meta.id}"
     label 'process_single'
-    container 'quay.io/biocontainers/annotsv:3.4.2--pl5321hdfd78af_0'
+    container 'quay.io/biocontainers/annotsv:3.4.6--py313hdfd78af_0'
 
     input:
     tuple val(meta), path(annotated_tsv)
