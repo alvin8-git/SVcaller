@@ -8,44 +8,35 @@ SVcaller is a Nextflow DSL2 pipeline for human WGS structural variant (SV), copy
 
 ## Running the Pipeline
 
-**Important:** Docker biocontainer tags (quay.io) are currently invalid. Use `-profile local` (conda) for the main pipeline. Docker works for the PON build (uses `broadinstitute/gatk:4.5.0.0`).
+**Use `-profile docker` for all runs.** All quay.io biocontainer tags have been verified and fixed.
 
 ```bash
-# Main validation pipeline (conda profile)
-nextflow run main.nf -profile local \
+# Main validation pipeline
+nextflow run main.nf -profile docker \
   --input validation/validation_samplesheet.csv \
   --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
   --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
-  --pon /data/alvin/SVcaller/pon/gcnv_pon.hdf5 \
+  --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
   --giab_truth /data/alvin/ref/GIAB/HG002_SV_v0.6.vcf.gz \
   --eh_catalog assets/eh_catalog.json \
   --outdir /data/alvin/SVcaller/results \
-  -work-dir /data/alvin/SVcaller/work
+  -work-dir /data/alvin/SVcaller/work \
+  -resume
 
-# PON build (Docker profile — only uses GATK image which is valid)
+# PON build (already complete — only re-run if GIAB BAMs change)
 nextflow run workflows/pon_build.nf -profile docker \
   --input validation/giab_samplesheet.csv \
   --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
   --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
   --outdir /data/alvin/SVcaller/pon \
-  -work-dir /data/alvin/SVcaller/work
+  -work-dir /data/alvin/SVcaller/work \
+  -resume
 
-# Check PON build progress
-tail -20 /data/alvin/tmp/pon_build_run2.log
+# Check pipeline progress
+tail -20 /data/alvin/tmp/main_pipeline_run1.log
 ```
 
-### Conda Environment
-
-```bash
-# Build conda env (python=3.9 required for pywfa/cnvpytor compatibility)
-/home/alvin/miniconda3/bin/mamba env create -f environment.yml
-# Env path: /home/alvin/miniconda3/envs/svcaller
-# Note: cnvpytor is installed via pip (not conda) to avoid pywfa solve conflicts
-# Note: annotsv is NOT in conda env — run via Docker or skip with no --annotsv_db
-
-# Check build log
-tail -5 /data/alvin/tmp/conda_svcaller_build5.log
-```
+**PON location:** `/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5` (446 MB, built from HG001-HG007)
 
 ## Python Tests
 
@@ -97,9 +88,10 @@ main.nf                          # Entry: parse samplesheet, set up channels, ca
 
 ## Known Issues / Environment Notes
 
-- **Docker biocontainer tags invalid**: `quay.io/biocontainers/bwa-mem2` etc. return "manifest unknown". Use `-profile local` (conda) for main pipeline.
-- **conda env pywfa conflict**: `cnvpytor` requires `pywfa>=0.5.1` which is only available for Python ≤3.9. env uses python=3.9 and cnvpytor installed via pip.
-- **annotsv not in conda env**: excluded due to cascading solve conflicts. Runs via Docker container (`quay.io/biocontainers/annotsv:3.4.2--pl5321hdfd78af_0`) or is gracefully skipped (emits empty TSV header) when `--annotsv_db` not provided.
+- **SMAD/SMAM samplesheet**: Currently uses minimap2 BAMs. Switch to FASTQs (being copied to `ValidationBAM/SMA_BAM/`) so all samples go through BWA-MEM2; re-run pipeline with `-resume` after updating samplesheet.
+- **PON built without GC correction**: `CreateReadCountPanelOfNormals` omits `--annotated-intervals` because the GRCh38 `.dict` file has alphabetical chromosome order while BAM headers use numeric order — GATK dict comparison fails. Acceptable for WGS at 30x.
+- **Nextflow channel exhaustion**: shared reference files (FASTA, FAI, dict, intervals) must use `Channel.value()` not `Channel.fromPath()` when multiple samples need the same file — otherwise only the first sample gets processed. Applied in `pon_build.nf` and `cnv_calling.nf`.
+- **annotsv not in conda env**: runs via Docker (`quay.io/biocontainers/annotsv:3.4.6--py313hdfd78af_0`) or gracefully skipped (emits empty TSV header) when `--annotsv_db` not provided.
 - **samtools flagstat not wired**: `mapped_pct` shows "N/A" in HTML QC section; mosdepth gives depth and Picard gives dup rate.
 
 ## Python Scripts (`bin/`)
