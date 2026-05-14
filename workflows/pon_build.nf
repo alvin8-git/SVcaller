@@ -37,6 +37,10 @@ process GATK_ANNOTATE_INTERVALS {
         --interval-merging-rule OVERLAPPING_ONLY \\
         -O annotated_intervals.tsv
 
+    # Strip M5/UR from @SQ header lines so the dict matches the minimal dict
+    # embedded in CollectReadCounts HDF5 files (derived from BAM headers)
+    sed -i '/^@SQ/{ s/\tM5:[^\t]*//g; s/\tUR:[^\t]*//g; }' annotated_intervals.tsv
+
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         gatk: \$(gatk --version 2>&1 | grep -oP '(?<=GATK v)[0-9.]+' | head -1)
@@ -65,7 +69,7 @@ workflow PON_BUILD {
 
     ch_all_hdf5 = GATK_COLLECT_COUNTS.out.hdf5.map { meta, h -> h }.collect()
 
-    GATK_CREATE_PON(ch_all_hdf5, GATK_ANNOTATE_INTERVALS.out.annotated)
+    GATK_CREATE_PON(ch_all_hdf5)
 
     emit:
     pon = GATK_CREATE_PON.out.pon

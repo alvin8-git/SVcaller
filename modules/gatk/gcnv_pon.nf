@@ -70,7 +70,6 @@ process GATK_CREATE_PON {
 
     input:
     path hdf5_files   // list of all sample HDF5 count files
-    path annotated_intervals
 
     output:
     path "giab_cnv_pon.hdf5", emit: pon
@@ -82,7 +81,6 @@ process GATK_CREATE_PON {
     """
     gatk --java-options "-Xmx${heap}g" CreateReadCountPanelOfNormals \\
         ${inputs} \\
-        --annotated-intervals ${annotated_intervals} \\
         --output giab_cnv_pon.hdf5
 
     cat <<-END_VERSIONS > versions.yml
