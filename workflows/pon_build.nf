@@ -60,7 +60,8 @@ workflow PON_BUILD {
     GATK_ANNOTATE_INTERVALS(ch_fasta, ch_fai, ch_dict, GATK_PREPROCESS_INTERVALS.out.preprocessed)
 
     // Collect read counts per sample using preprocessed (binned) intervals
-    GATK_COLLECT_COUNTS(ch_bam, ch_fasta, ch_fai, ch_dict, GATK_PREPROCESS_INTERVALS.out.preprocessed)
+    // .first() converts the single-item queue channel to a value channel so all 7 samples share it
+    GATK_COLLECT_COUNTS(ch_bam, ch_fasta, ch_fai, ch_dict, GATK_PREPROCESS_INTERVALS.out.preprocessed.first())
 
     ch_all_hdf5 = GATK_COLLECT_COUNTS.out.hdf5.map { meta, h -> h }.collect()
 
@@ -85,11 +86,11 @@ workflow {
             [meta, bam, bai]
         }
 
-    ch_fasta     = Channel.fromPath(params.ref_fasta, checkIfExists: true)
-    ch_fai       = Channel.fromPath("${params.ref_fasta}.fai", checkIfExists: true)
-    ch_dict      = Channel.fromPath("${params.ref_fasta}".replaceAll(/\.fa(sta)?$/, ".dict"),
-                                    checkIfExists: false)
-    ch_intervals = Channel.fromPath(params.intervals, checkIfExists: true)
+    // Value channels so each sample can reuse the same ref files without exhausting the channel
+    ch_fasta     = Channel.value(file(params.ref_fasta, checkIfExists: true))
+    ch_fai       = Channel.value(file("${params.ref_fasta}.fai", checkIfExists: true))
+    ch_dict      = Channel.value(file("${params.ref_fasta}".replaceAll(/\.fa(sta)?$/, ".dict")))
+    ch_intervals = Channel.value(file(params.intervals, checkIfExists: true))
 
     PON_BUILD(ch_bam, ch_fasta, ch_fai, ch_dict, ch_intervals)
 }
