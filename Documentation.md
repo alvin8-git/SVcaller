@@ -9,21 +9,81 @@
 
 ## Table of Contents
 
-1. [Overview](#1-overview)
-2. [M1: Preprocessing](#2-m1-preprocessing)
-3. [PON Build (pre-run, one-time)](#3-pon-build-pre-run-one-time)
-4. [M2: SV Calling](#4-m2-sv-calling)
-5. [M3: CNV Calling](#5-m3-cnv-calling)
-6. [M4: SMN Copy Number Calling](#6-m4-smn-copy-number-calling)
-7. [M5: Annotation](#7-m5-annotation)
-8. [M6/M7: Reporting](#8-m6m7-reporting)
-9. [Known Limitations](#9-known-limitations)
-10. [Alternative Pipeline Strategies](#10-alternative-pipeline-strategies)
-11. [Key Parameters Reference](#11-key-parameters-reference)
+1. [Why SVcaller? (Battlecard)](#1-why-svcaller-battlecard)
+2. [Overview](#2-overview)
+3. [M1: Preprocessing](#3-m1-preprocessing)
+4. [PON Build (pre-run, one-time)](#4-pon-build-pre-run-one-time)
+5. [M2: SV Calling](#5-m2-sv-calling)
+6. [M3: CNV Calling](#6-m3-cnv-calling)
+7. [M4: SMN Copy Number Calling](#7-m4-smn-copy-number-calling)
+8. [M5: Annotation](#8-m5-annotation)
+9. [M6/M7: Reporting](#9-m6m7-reporting)
+10. [Known Limitations](#10-known-limitations)
+11. [Alternative Pipeline Strategies](#11-alternative-pipeline-strategies)
+12. [Key Parameters Reference](#12-key-parameters-reference)
 
 ---
 
-## 1. Overview
+## 1. Why SVcaller? (Battlecard)
+
+### Strengths and weaknesses at a glance
+
+| | SVcaller | nf-core/sarek | DRAGEN (Illumina) | Manual (per-caller) |
+|---|---|---|---|---|
+| **SV calling** | 3-caller ensemble (Manta + Delly + GRIDSS) | Manta only (default) | Proprietary SVs | User-defined |
+| **CNV calling** | Dual method (CNVpytor + GATK gCNV PON) | GATK gCNV or Control-FREEC | DRAGEN CNV | User-defined |
+| **STR genotyping** | ExpansionHunter (catalog-based) | — | ExpansionHunter | User-defined |
+| **SMN1/SMN2 CN** | SMNCopyNumberCaller (built-in) | — | — | Separate tool, manual |
+| **SV annotation** | AnnotSV (clinical-grade, gnomAD filter) | VEP | — | Separate tool |
+| **GIAB benchmarking** | Built-in Truvari (5 size bins) | — | — | Manual |
+| **Per-sample report** | HTML (SVs, CNVs, STRs, SMN, QC, circos) | MultiQC only | PDF summary | Manual |
+| **License** | Open source | Open source | Commercial | Open source |
+| **Hardware** | Local/HPC, Docker | Local/HPC/Cloud, Docker/Singularity | Illumina hardware only | User-defined |
+| **Setup effort** | PON build required (one-time) | Reference files only | Minimal | High |
+| **Short reads** | ✅ | ✅ | ✅ | ✅ |
+| **Long reads** | ❌ | ❌ (separate wf) | ✅ | ✅ |
+| **Somatic mode** | ❌ | ✅ | ✅ | User-defined |
+| **Min. coverage** | 30× | 30× | 20× | Caller-dependent |
+
+### Pros
+
+| Strength | Detail |
+|---|---|
+| **Higher SV sensitivity** | Three independent callers (split-read, paired-end, assembly) catch different SV classes; Jasmine inner-join merge reduces false positives while retaining multi-evidence calls |
+| **SMN1/SMN2 built-in** | Most pipelines omit SMN copy number entirely; SVcaller integrates it for SMA diagnostics without a separate workflow |
+| **Clinically oriented annotation** | AnnotSV adds OMIM, ClinVar, DGV, ACMG pathogenicity fields directly to the SV VCF — essential for diagnostic interpretation |
+| **Integrated benchmarking** | Truvari against GIAB truth sets with five size-bin breakdowns (50–300 bp, 300 bp–1 kb, 1–10 kb, >10 kb, overall) is automatic when `--giab_truth` is provided |
+| **Unified HTML report** | SVs, CNVs, STRs, SMN CN, QC metrics, and a genome-wide circos plot in one report per sample — no manual assembly required |
+| **Reproducible containers** | All tools pinned to verified quay.io biocontainer tags; `-profile docker` is fully tested end-to-end |
+| **Dual CNV methods** | CNVpytor (read-depth HMM) + GATK gCNV (PON-denoised) with reciprocal-overlap consensus — complementary false-positive profiles |
+| **Nextflow -resume** | Any failed step resumes from the last checkpoint; large WGS runs do not restart from scratch |
+
+### Cons / when NOT to use SVcaller
+
+| Limitation | Implication |
+|---|---|
+| **Short-read WGS only** | Not suitable for Oxford Nanopore or PacBio long reads; use Sniffles2 + PBSV + Paraphase instead |
+| **No somatic/tumour-normal mode** | Designed for germline calling; paired tumour/normal analysis is not supported |
+| **PON required for GATK CNV** | A panel of normals (≥7 samples recommended) must be built before the first case run — adds one-time setup overhead |
+| **≥30× coverage required** | Mosdepth gates the pipeline; lower-coverage samples (e.g. 10× WGS or WES) will fail the depth check |
+| **GRIDSS memory-intensive** | GRIDSS assembly requires 32 GB RAM minimum; unsuitable for machines with <32 GB |
+| **No CNV for WES/panel** | CNVpytor and GATK gCNV are tuned for WGS read depth; targeted panels need CNVKit or GATK4 ExomeDepth instead |
+| **GC bias correction absent** | PON was built without `--annotated-intervals` (dict ordering mismatch); may reduce CNV sensitivity in extreme GC regions |
+| **Single-sample only** | Family/trio analysis (de novo filtering, inheritance phasing) is not implemented |
+
+### Decision guide
+
+```
+Need germline SV + CNV + SMN from 30× WGS?  →  SVcaller
+Need somatic calling or tumour/normal?        →  nf-core/sarek or DRAGEN
+Have long-read data (ONT / PacBio)?          →  Sniffles2 + Paraphase (manual) or DRAGEN LR
+Need maximum throughput, commercial support?  →  DRAGEN
+Have <30× coverage or WES data?              →  nf-core/sarek or CNVKit
+```
+
+---
+
+## 2. Overview
 
 SVcaller is a Nextflow DSL2 pipeline for comprehensive short-read whole-genome sequencing (WGS) variant calling focused on structural variants (SVs), copy-number variants (CNVs), short tandem repeats (STRs), and SMN1/SMN2 copy number — all from a single GRCh38-aligned dataset at ≥30× coverage. The pipeline accepts either paired-end FASTQ files or pre-aligned BAM files per sample (mixed within the same run), performs alignment and duplicate marking, then fans out into three parallel variant-calling arms (M2: SVs + STRs, M3: CNVs, M4: SMN). SV calls from three independent callers (Manta, Delly, GRIDSS) are merged using Jasmine with an inner-join requirement — every sample must successfully complete all three callers before the merged VCF is emitted, providing fail-fast behavior on caller errors. CNV calls from two complementary methods (CNVpytor read-depth and GATK gCNV PON-based) are reconciled by a custom reciprocal-overlap merge script. Merged SV calls are annotated with AnnotSV and optionally benchmarked against GIAB truth sets using Truvari across five size bins. A per-sample HTML report integrating all variant types, QC metrics, a genome-wide circos plot, and optional benchmark statistics is produced for each sample.
 
@@ -49,13 +109,13 @@ main.nf
 
 ---
 
-## 2. M1: Preprocessing
+## 3. M1: Preprocessing
 
 **Subworkflow:** `subworkflows/preprocess.nf`
 
 The preprocessing subworkflow converts raw reads to a clean, duplicate-marked, coverage-QC-gated BAM. It accepts both FASTQ pairs and pre-aligned BAMs in the same samplesheet; FASTQ samples undergo full alignment while BAM samples bypass alignment and feed directly into duplicate marking.
 
-### 2.1 FastQC
+### 3.1 FastQC
 
 | Aspect | Detail |
 |---|---|
@@ -68,7 +128,7 @@ FastQC runs only on FASTQ-input samples; BAM-supplied samples skip this step sin
 
 **Why FastQC:** It is the de facto standard for Illumina QC, has zero dependencies beyond Java, and its output format is natively parsed by MultiQC. Alternatives (fastp, Trimmomatic QC mode) are heavier and add trimming side effects; this pipeline intentionally delegates trimming decisions to the user upstream.
 
-### 2.2 BWA-MEM2
+### 5.2 BWA-MEM2
 
 | Aspect | Detail |
 |---|---|
@@ -92,7 +152,7 @@ BWA-MEM2 is a drop-in replacement for BWA-MEM that uses SIMD (AVX-512/AVX2/SSE4.
 
 **Known limitation:** The bwa-mem2 Docker container does not include samtools, requiring a separate SAMTOOLS_SORT step (see §2.3).
 
-### 2.3 SAMTOOLS_SORT
+### 5.3 SAMTOOLS_SORT
 
 | Aspect | Detail |
 |---|---|
@@ -104,7 +164,7 @@ BWA-MEM2 is a drop-in replacement for BWA-MEM that uses SIMD (AVX-512/AVX2/SSE4.
 
 This step is a separate process because samtools is not bundled in the bwa-mem2 biocontainer image. It coordinate-sorts and indexes the BAM, making it compatible with Picard MarkDuplicates (which requires coordinate order).
 
-### 2.4 Picard MarkDuplicates
+### 5.4 Picard MarkDuplicates
 
 | Aspect | Detail |
 |---|---|
@@ -117,7 +177,7 @@ FASTQ-derived BAMs (post-sort) and pre-supplied BAMs are mixed (`ch_all_bam = SA
 
 **Why Picard over sambamba markdup:** Picard is the GATK-ecosystem standard; its metrics file format is directly parsed by MultiQC. sambamba is faster but produces a different metrics format, and optical duplicate detection requires the Picard coordinate-based model for patterned flowcells (NovaSeq).
 
-### 2.5 Mosdepth
+### 5.5 Mosdepth
 
 | Aspect | Detail |
 |---|---|
@@ -134,7 +194,7 @@ Mosdepth is the fastest BAM-based depth calculator available for short reads. Th
 
 ---
 
-## 3. PON Build (pre-run, one-time)
+## 4. PON Build (pre-run, one-time)
 
 **Workflow:** `workflows/pon_build.nf`  
 **Completed PON:** `/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5` (446 MB, built from GIAB HG001–HG007)
@@ -145,17 +205,17 @@ The Panel of Normals (PON) is built once from a set of well-characterised normal
 
 Bins the input BED intervals into fixed-width 1000 bp bins using GATK `PreprocessIntervals` (`--bin-length 1000 --interval-merging-rule OVERLAPPING_ONLY`). This discretisation is required before read counting and must match exactly between PON build and case-mode calling (both use the same preprocessed interval list).
 
-### 3.2 AnnotateIntervals
+### 5.2 AnnotateIntervals
 
 Runs GATK `AnnotateIntervals` to compute GC content and mappability scores per bin. The annotation TSV is produced but **not passed to `CreateReadCountPanelOfNormals`** — see the GC-correction limitation below.
 
 A `sed` post-processing step strips `M5:` and `UR:` fields from `@SQ` header lines in the annotation TSV to avoid a GATK dictionary-comparison error caused by mismatched metadata between the FASTA `.dict` file and BAM headers.
 
-### 3.3 CollectReadCounts
+### 5.3 CollectReadCounts
 
 Runs GATK `CollectReadCounts` per sample in parallel, counting reads overlapping each preprocessed bin and writing a per-sample HDF5 file. The preprocessed interval list is shared via `.first()` (converting the single-item queue channel to a value channel) so all 7 GIAB samples can each receive it without channel exhaustion.
 
-### 3.4 CreateReadCountPanelOfNormals
+### 5.4 CreateReadCountPanelOfNormals
 
 Aggregates all 7 per-sample HDF5 count files with GATK `CreateReadCountPanelOfNormals` into a single PON HDF5. The PON learns the mean and variance of read depth in each bin across the cohort and is used in case mode to denoise individual sample read counts.
 
@@ -173,7 +233,7 @@ Aggregates all 7 per-sample HDF5 count files with GATK `CreateReadCountPanelOfNo
 
 ---
 
-## 4. M2: SV Calling
+## 5. M2: SV Calling
 
 **Subworkflow:** `subworkflows/sv_calling.nf`
 
@@ -193,7 +253,7 @@ Manta (Illumina) uses a two-stage approach: candidate SV generation from anomalo
 
 **Alternatives:** LUMPY (now superseded), SVaba (slower assembly-based), PBSV (PacBio long-read only), Sniffles2 (Oxford Nanopore only).
 
-### 4.2 Delly
+### 5.2 Delly
 
 | Aspect | Detail |
 |---|---|
@@ -205,7 +265,7 @@ Manta (Illumina) uses a two-stage approach: candidate SV generation from anomalo
 
 Delly was chosen to provide independent paired-end evidence that can confirm or refute Manta calls, particularly for inter-chromosomal translocations (BND/TRA) where Manta is less sensitive.
 
-### 4.3 GRIDSS
+### 5.3 GRIDSS
 
 | Aspect | Detail |
 |---|---|
@@ -226,7 +286,7 @@ GRIDSS provides the assembly-based layer that split-read callers miss, particula
 | Delly | Paired-end + split-read | Medium | BND, inter-chromosomal events |
 | GRIDSS | Full assembly (de Bruijn graph) | Slow | Complex SVs, insertions, mobile elements |
 
-### 4.4 Jasmine Merge
+### 5.4 Jasmine Merge
 
 | Aspect | Detail |
 |---|---|
@@ -240,7 +300,7 @@ Jasmine (Jackpot-Aware SV Merger) clusters SVs from multiple callers by breakpoi
 
 The inner-join channel pattern (`MANTA_CALL.out.vcf.join(DELLY_CALL.out.vcf).join(GRIDSS_CALL.out.vcf)`) means that if any single caller fails for a sample, that sample drops out of the merge channel and the pipeline fails fast — preventing silent partial calls from propagating to downstream steps.
 
-### 4.5 ExpansionHunter (STRs)
+### 5.5 ExpansionHunter (STRs)
 
 | Aspect | Detail |
 |---|---|
@@ -255,7 +315,7 @@ STR results are independent of the SV merge — ExpansionHunter runs in parallel
 
 ---
 
-## 5. M3: CNV Calling
+## 6. M3: CNV Calling
 
 **Subworkflow:** `subworkflows/cnv_calling.nf`
 
@@ -323,7 +383,7 @@ The two methods are complementary: CNVpytor provides PON-independent evidence an
 
 ---
 
-## 6. M4: SMN Copy Number Calling
+## 7. M4: SMN Copy Number Calling
 
 **Subworkflow:** `subworkflows/smn_calling.nf`  
 **Module:** `modules/smn_caller/call.nf`  
@@ -372,7 +432,7 @@ SMNCopyNumberCaller is a purpose-built tool developed by Illumina that:
 
 ---
 
-## 7. M5: Annotation
+## 8. M5: Annotation
 
 **Subworkflow:** `subworkflows/annotate.nf`
 
@@ -412,7 +472,7 @@ After AnnotSV, a `GNOMAD_SV_FILTER` process filters the TSV to remove SVs with g
 
 ---
 
-## 8. M6/M7: Reporting
+## 9. M6/M7: Reporting
 
 **Subworkflow:** `subworkflows/report.nf`
 
@@ -482,7 +542,7 @@ The final per-sample `<sample>.report.html` is a self-contained file with all co
 
 ---
 
-## 9. Known Limitations
+## 10. Known Limitations
 
 ### 9.1 SMAD/SMAM Samplesheet Uses minimap2 BAMs
 
@@ -516,7 +576,7 @@ GRIDSS is the most memory-intensive process and uses the dedicated `process_grid
 
 ---
 
-## 10. Alternative Pipeline Strategies
+## 11. Alternative Pipeline Strategies
 
 ### 10.1 DRAGEN End-to-End
 
@@ -550,7 +610,7 @@ SVcaller is appropriate when:
 
 ---
 
-## 11. Key Parameters Reference
+## 12. Key Parameters Reference
 
 | Parameter | Default | Description |
 |---|---|---|
