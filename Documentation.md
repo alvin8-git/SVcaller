@@ -581,4 +581,47 @@ All resource labels support automatic retry on OOM exit codes: 137, 143, 104, 13
 
 ---
 
-*Documentation generated from source code at `/data/alvin/SVcaller/` (commit `e609fdd`).*
+*Documentation generated from source code at `/data/alvin/SVcaller/` (commit `310fd2a`).*
+
+---
+
+## Glossary of Tools
+
+### Pipeline tools (used in this pipeline)
+
+| Tool | Role in pipeline | GitHub |
+|---|---|---|
+| **Nextflow** | Workflow orchestration (DSL2) | [nextflow-io/nextflow](https://github.com/nextflow-io/nextflow) |
+| **FastQC** | Raw read quality control | [s-andrews/FastQC](https://github.com/s-andrews/FastQC) |
+| **BWA-MEM2** | Short-read alignment (GRCh38) | [bwa-mem2/bwa-mem2](https://github.com/bwa-mem2/bwa-mem2) |
+| **SAMtools** | BAM sorting and indexing | [samtools/samtools](https://github.com/samtools/samtools) |
+| **Picard MarkDuplicates** | PCR duplicate marking | [broadinstitute/picard](https://github.com/broadinstitute/picard) |
+| **Mosdepth** | Coverage QC and depth gating | [brentp/mosdepth](https://github.com/brentp/mosdepth) |
+| **Manta** | SV calling (split-read + paired-end) | [Illumina/manta](https://github.com/Illumina/manta) |
+| **Delly** | SV calling (paired-end + split-read) | [dellytools/delly](https://github.com/dellytools/delly) |
+| **GRIDSS** | SV calling (assembly-based breakend) | [PapenfussLab/gridss](https://github.com/PapenfussLab/gridss) |
+| **Jasmine** | Multi-caller SV merging | [mkirsche/Jasmine](https://github.com/mkirsche/Jasmine) |
+| **ExpansionHunter** | Short tandem repeat (STR) genotyping | [Illumina/ExpansionHunter](https://github.com/Illumina/ExpansionHunter) |
+| **CNVpytor** | Read-depth CNV calling | [abyzovlab/CNVpytor](https://github.com/abyzovlab/CNVpytor) |
+| **GATK** | gCNV PON build + case calling | [broadinstitute/gatk](https://github.com/broadinstitute/gatk) |
+| **SMNCopyNumberCaller** | SMN1/SMN2 paralog copy number | [Illumina/SMNCopyNumberCaller](https://github.com/Illumina/SMNCopyNumberCaller) |
+| **AnnotSV** | Clinical SV annotation | [lgmgeo/AnnotSV](https://github.com/lgmgeo/AnnotSV) |
+| **Truvari** | SV benchmarking against truth sets | [ACEnglish/truvari](https://github.com/ACEnglish/truvari) |
+| **pycirclize** | Circos-style genome visualization | [moshi4/pyCirclize](https://github.com/moshi4/pyCirclize) |
+| **MultiQC** | Aggregate QC report | [MultiQC/MultiQC](https://github.com/MultiQC/MultiQC) |
+
+### Alternative tools (referenced in comparisons)
+
+| Tool | Category | GitHub |
+|---|---|---|
+| **BWA-MEM** | Short-read aligner (predecessor to BWA-MEM2) | [lh3/bwa](https://github.com/lh3/bwa) |
+| **Bowtie2** | Short-read aligner | [BenLangmead/bowtie2](https://github.com/BenLangmead/bowtie2) |
+| **minimap2** | Long-read / splice-aware aligner | [lh3/minimap2](https://github.com/lh3/minimap2) |
+| **LUMPY** | SV caller (probabilistic framework) | [arq5x/lumpy-sv](https://github.com/arq5x/lumpy-sv) |
+| **SVaba** | SV caller (local assembly) | [walaj/svaba](https://github.com/walaj/svaba) |
+| **PBSV** | SV caller for PacBio long reads | [PacificBiosciences/pbsv](https://github.com/PacificBiosciences/pbsv) |
+| **Sniffles2** | SV caller for Oxford Nanopore reads | [fritzsedlazeck/Sniffles](https://github.com/fritzsedlazeck/Sniffles) |
+| **CNVKit** | Read-depth CNV calling (capture / WGS) | [etal/cnvkit](https://github.com/etal/cnvkit) |
+| **WisecondorX** | PON-based CNV calling (low-coverage) | [CenterForMedicalGeneticsGhent/WisecondorX](https://github.com/CenterForMedicalGeneticsGhent/WisecondorX) |
+| **Paraphase** | SMN1/SMN2 phased copy number (PacBio) | [PacificBiosciences/paraphase](https://github.com/PacificBiosciences/paraphase) |
+| **nf-core/sarek** | End-to-end Nextflow WGS pipeline | [nf-core/sarek](https://github.com/nf-core/sarek) |
