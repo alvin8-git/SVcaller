@@ -33,7 +33,7 @@ nextflow run workflows/pon_build.nf -profile docker \
   -resume
 
 # Check pipeline progress
-tail -20 /data/alvin/tmp/main_pipeline_run1.log
+tail -20 /data/alvin/tmp/main_pipeline_run2.log
 ```
 
 **PON location:** `/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5` (446 MB, built from HG001-HG007)
@@ -68,7 +68,7 @@ HG003,,,/path/HG003.bam
 ```
 main.nf                          # Entry: parse samplesheet, set up channels, call SVCALLER
 └── workflows/svcaller.nf        # Top-level orchestration
-    ├── subworkflows/preprocess.nf   # M1: BWA-MEM2 align → Picard MarkDup → Mosdepth QC
+    ├── subworkflows/preprocess.nf   # M1: BWA-MEM2 align → SAMTOOLS_SORT → Picard MarkDup → Mosdepth QC
     ├── subworkflows/sv_calling.nf   # M2: Manta + Delly + GRIDSS (parallel) → Jasmine merge; ExpansionHunter (STRs)
     ├── subworkflows/cnv_calling.nf  # M3: CNVpytor + GATK gCNV → cnv_consensus.py (reciprocal overlap merge)
     ├── subworkflows/smn_calling.nf  # M4: SMNCopyNumberCaller
@@ -88,9 +88,10 @@ main.nf                          # Entry: parse samplesheet, set up channels, ca
 
 ## Known Issues / Environment Notes
 
-- **SMAD/SMAM samplesheet**: Currently uses minimap2 BAMs. Switch to FASTQs (being copied to `ValidationBAM/SMA_BAM/`) so all samples go through BWA-MEM2; re-run pipeline with `-resume` after updating samplesheet.
 - **PON built without GC correction**: `CreateReadCountPanelOfNormals` omits `--annotated-intervals` because the GRCh38 `.dict` file has alphabetical chromosome order while BAM headers use numeric order — GATK dict comparison fails. Acceptable for WGS at 30x.
-- **Nextflow channel exhaustion**: shared reference files (FASTA, FAI, dict, intervals) must use `Channel.value()` not `Channel.fromPath()` when multiple samples need the same file — otherwise only the first sample gets processed. Applied in `pon_build.nf` and `cnv_calling.nf`.
+- **Nextflow channel exhaustion**: shared reference files (FASTA, FAI, dict, bwt_index) must use `Channel.value()` not `Channel.fromPath()` — queue channels are consumed after the first subworkflow and all subsequent subworkflows receive nothing. Fixed in `main.nf`, `pon_build.nf`, and `cnv_calling.nf`.
+- **BWA-MEM2 index path**: The bwt_index is staged as a directory in the work dir. BWA-MEM2 must be called with `${bwt_index}/${fasta}` (not just `${fasta}`) so it finds index files inside the staged directory rather than the work dir root.
+- **samtools not in bwa-mem2 container**: `quay.io/biocontainers/bwa-mem2:2.2.1--he70b90d_8` does not include samtools. Sorting is done in a separate `SAMTOOLS_SORT` process using `quay.io/biocontainers/samtools:1.23.1--ha83d96e_0`.
 - **annotsv not in conda env**: runs via Docker (`quay.io/biocontainers/annotsv:3.4.6--py313hdfd78af_0`) or gracefully skipped (emits empty TSV header) when `--annotsv_db` not provided.
 - **samtools flagstat not wired**: `mapped_pct` shows "N/A" in HTML QC section; mosdepth gives depth and Picard gives dup rate.
 

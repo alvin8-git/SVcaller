@@ -1,4 +1,5 @@
 include { BWAMEM2_ALIGN    } from '../modules/bwamem2/align'
+include { SAMTOOLS_SORT    } from '../modules/samtools/sort'
 include { PICARD_MARKDUP   } from '../modules/picard/markduplicates'
 include { MOSDEPTH         } from '../modules/mosdepth/coverage'
 include { FASTQC           } from '../modules/fastqc/qc'
@@ -27,9 +28,12 @@ workflow PREPROCESS {
     // Align FASTQs
     BWAMEM2_ALIGN(ch_fastq, ch_fasta, ch_fai, ch_bwt_index)
 
+    // Sort aligned BAM (samtools is not in the bwa-mem2 container)
+    SAMTOOLS_SORT(BWAMEM2_ALIGN.out.bam)
+
     // Merge aligned + pre-supplied BAMs into MarkDup
-    ch_all_bam = BWAMEM2_ALIGN.out.bam
-        .join(BWAMEM2_ALIGN.out.bai)
+    ch_all_bam = SAMTOOLS_SORT.out.bam
+        .join(SAMTOOLS_SORT.out.bai)
         .mix(ch_bam_in)
 
     PICARD_MARKDUP(ch_all_bam)

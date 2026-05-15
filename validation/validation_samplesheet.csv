@@ -1,0 +1,5 @@
+sample,fastq_1,fastq_2,bam
+HG002,/data/alvin/SVcaller/ValidationBAM/HG002_1.fq.gz,/data/alvin/SVcaller/ValidationBAM/HG002_2.fq.gz,
+SMAPB,/data/alvin/SVcaller/ValidationBAM/SMA_BAM/SMAPB_30X_4_1.fq.gz,/data/alvin/SVcaller/ValidationBAM/SMA_BAM/SMAPB_30X_4_2.fq.gz,
+SMAD,/data/alvin/SVcaller/ValidationBAM/SMA_BAM/SMAD_30X_4_1.fq.gz,/data/alvin/SVcaller/ValidationBAM/SMA_BAM/SMAD_30X_4_2.fq.gz,
+SMAM,/data/alvin/SVcaller/ValidationBAM/SMA_BAM/SMAM_30X_4_1.fq.gz,/data/alvin/SVcaller/ValidationBAM/SMA_BAM/SMAM_30X_4_2.fq.gz,

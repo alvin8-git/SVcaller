@@ -23,12 +23,13 @@ workflow {
             [meta, fq1, fq2, bam]
         }
 
-    ch_fasta     = Channel.fromPath(params.ref_fasta, checkIfExists: true)
-    ch_fai       = Channel.fromPath("${params.ref_fasta}.fai", checkIfExists: true)
-    ch_dict      = Channel.fromPath("${params.ref_fasta}".replaceAll(/\.fa(sta)?$/, ".dict"),
-                                    checkIfExists: false)
-    ch_bwt_index = Channel.fromPath("${params.ref_fasta}.0123", checkIfExists: false)
-                          .map { file(it.parent) }
+    // Value channels so all subworkflows (PREPROCESS, SV_CALLING, CNV_CALLING, SMN_CALLING)
+    // can each receive the same reference files without queue-channel exhaustion
+    ch_fasta     = Channel.value(file(params.ref_fasta, checkIfExists: true))
+    ch_fai       = Channel.value(file("${params.ref_fasta}.fai", checkIfExists: true))
+    ch_dict      = Channel.value(file("${params.ref_fasta}".replaceAll(/\.fa(sta)?$/, ".dict"),
+                                      checkIfExists: false))
+    ch_bwt_index = Channel.value(file(params.ref_fasta).parent)
     ch_pon       = params.pon
                     ? Channel.fromPath(params.pon, checkIfExists: true)
                     : Channel.value(file("NO_PON"))
