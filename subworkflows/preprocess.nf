@@ -1,8 +1,9 @@
-include { BWAMEM2_ALIGN    } from '../modules/bwamem2/align'
-include { SAMTOOLS_SORT    } from '../modules/samtools/sort'
-include { PICARD_MARKDUP   } from '../modules/picard/markduplicates'
-include { MOSDEPTH         } from '../modules/mosdepth/coverage'
-include { FASTQC           } from '../modules/fastqc/qc'
+include { BWAMEM2_ALIGN      } from '../modules/bwamem2/align'
+include { SAMTOOLS_SORT      } from '../modules/samtools/sort'
+include { SAMTOOLS_FLAGSTAT  } from '../modules/samtools/flagstat'
+include { PICARD_MARKDUP     } from '../modules/picard/markduplicates'
+include { MOSDEPTH           } from '../modules/mosdepth/coverage'
+include { FASTQC             } from '../modules/fastqc/qc'
 
 workflow PREPROCESS {
     take:
@@ -44,9 +45,13 @@ workflow PREPROCESS {
     // Coverage QC — halts pipeline if < min_depth
     MOSDEPTH(ch_final_bam, min_depth)
 
+    // Mapping rate QC
+    SAMTOOLS_FLAGSTAT(ch_final_bam)
+
     emit:
     bam        = ch_final_bam
     coverage   = MOSDEPTH.out.summary
     metrics    = PICARD_MARKDUP.out.metrics
+    flagstat   = SAMTOOLS_FLAGSTAT.out.flagstat
     fastqc_zip = FASTQC.out.zip
 }

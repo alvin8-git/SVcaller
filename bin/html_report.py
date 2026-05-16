@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build per-sample SVcaller HTML report using Jinja2."""
-import argparse, csv, json
+import argparse, csv, json, re
 from datetime import date
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
@@ -64,10 +64,11 @@ def _fmt_size(bp: int) -> str:
     return f"{bp} bp"
 
 
-def parse_qc(coverage_path: str, metrics_path: str) -> dict:
+def parse_qc(coverage_path: str, metrics_path: str, flagstat_path: str = "") -> dict:
     qc = {"mean_depth": "N/A", "dup_rate": "N/A", "mapped_pct": "N/A"}
     _parse_mosdepth(coverage_path, qc)
     _parse_picard(metrics_path, qc)
+    _parse_flagstat(flagstat_path, qc)
     return qc
 
 
@@ -105,6 +106,21 @@ def _parse_picard(metrics_path: str, qc: dict) -> None:
                     qc["dup_rate"] = f"{float(pct) * 100:.2f}"
                 break
     except (FileNotFoundError, ValueError, IndexError):
+        pass
+
+
+def _parse_flagstat(flagstat_path: str, qc: dict) -> None:
+    if not flagstat_path or flagstat_path in ("NO_FILE", "null"):
+        return
+    try:
+        with open(flagstat_path) as fh:
+            for line in fh:
+                if " mapped (" in line:
+                    m = re.search(r'\(([0-9.]+)%', line)
+                    if m:
+                        qc["mapped_pct"] = m.group(1)
+                    break
+    except (FileNotFoundError, ValueError):
         pass
 
 
@@ -187,6 +203,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   sizebin_json: str = None,
                   coverage_path: str = None,
                   metrics_path: str = None,
+                  flagstat_path: str = None,
                   str_vcf_path: str = None) -> None:
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("report_template.html")
@@ -197,7 +214,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     top_svs    = parse_top_svs(sv_tsv_path)
     benchmark      = parse_benchmark(benchmark_json) if benchmark_json else None
     benchmark_bins = parse_benchmark_sizebin(sizebin_json) if sizebin_json else None
-    qc             = parse_qc(coverage_path or "", metrics_path or "")
+    qc             = parse_qc(coverage_path or "", metrics_path or "", flagstat_path or "")
     str_loci       = parse_str_loci(str_vcf_path or "")
 
     html = template.render(
@@ -230,6 +247,7 @@ def main():
     parser.add_argument("--sizebin",          default=None, help="per-size-bin Truvari JSON")
     parser.add_argument("--coverage",         default=None, help="mosdepth summary.txt")
     parser.add_argument("--metrics",          default=None, help="Picard MarkDup metrics")
+    parser.add_argument("--flagstat",         default=None, help="samtools flagstat output")
     parser.add_argument("--str-vcf",          default=None, help="ExpansionHunter VCF")
     args = parser.parse_args()
     render_report(
@@ -244,6 +262,7 @@ def main():
         sizebin_json=args.sizebin,
         coverage_path=args.coverage,
         metrics_path=args.metrics,
+        flagstat_path=args.flagstat,
         str_vcf_path=args.str_vcf,
     )
 

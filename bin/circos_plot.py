@@ -8,7 +8,7 @@ Usage:
 """
 import argparse, re, gzip
 from pathlib import Path
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 
 
 CHROM_ORDER = [f"chr{i}" for i in list(range(1, 23)) + ["X", "Y"]]

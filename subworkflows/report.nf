@@ -10,17 +10,19 @@ process BUILD_HTML_REPORT {
     input:
     tuple val(meta), path(sv_tsv), path(cnv_bed), path(smn_tsv),
                      path(circos_svg), path(benchmark_json), path(sizebin_json),
-                     path(coverage_summary), path(picard_metrics), path(str_vcf)
+                     path(coverage_summary), path(picard_metrics), path(str_vcf),
+                     path(flagstat_txt)
 
     output:
     tuple val(meta), path("${meta.id}.report.html"), emit: html
 
     script:
-    def bench_arg   = benchmark_json.name   != "NO_FILE" ? "--benchmark ${benchmark_json}"   : ""
-    def sizebin_arg = sizebin_json.name     != "NO_FILE" ? "--sizebin   ${sizebin_json}"     : ""
-    def cov_arg     = coverage_summary.name != "NO_FILE" ? "--coverage  ${coverage_summary}" : ""
-    def met_arg     = picard_metrics.name   != "NO_FILE" ? "--metrics   ${picard_metrics}"   : ""
-    def str_arg     = str_vcf.name          != "NO_STR"  ? "--str-vcf   ${str_vcf}"          : ""
+    def bench_arg    = benchmark_json.name   != "NO_FILE" ? "--benchmark ${benchmark_json}"   : ""
+    def sizebin_arg  = sizebin_json.name     != "NO_FILE" ? "--sizebin   ${sizebin_json}"     : ""
+    def cov_arg      = coverage_summary.name != "NO_FILE" ? "--coverage  ${coverage_summary}" : ""
+    def met_arg      = picard_metrics.name   != "NO_FILE" ? "--metrics   ${picard_metrics}"   : ""
+    def str_arg      = str_vcf.name          != "NO_STR"  ? "--str-vcf   ${str_vcf}"          : ""
+    def flagstat_arg = flagstat_txt.name     != "NO_FILE" ? "--flagstat  ${flagstat_txt}"     : ""
     """
     smn_report.py \\
         --tsv    ${smn_tsv} \\
@@ -39,6 +41,7 @@ process BUILD_HTML_REPORT {
         ${sizebin_arg} \\
         ${cov_arg} \\
         ${met_arg} \\
+        ${flagstat_arg} \\
         ${str_arg}
     """
 }
@@ -58,6 +61,7 @@ workflow REPORT {
     ch_multiqc_files // collected QC files for MultiQC (may be empty)
     ch_coverage      // [ meta, mosdepth_summary ] for HTML section 2
     ch_metrics       // [ meta, picard_metrics ]   for HTML section 2
+    ch_flagstat      // [ meta, flagstat_txt ]      for HTML section 2
 
     main:
     ch_circos_in = ch_sv_vcf
@@ -102,6 +106,10 @@ workflow REPORT {
         .join(ch_str_vcf.ifEmpty { [[:], file("NO_STR")] }, remainder: true)
         .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str ->
             [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str ?: file("NO_STR")]
+        }
+        .join(ch_flagstat.ifEmpty { [[:], file("NO_FILE")] }, remainder: true)
+        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat ->
+            [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat ?: file("NO_FILE")]
         }
 
     BUILD_HTML_REPORT(ch_report_in)

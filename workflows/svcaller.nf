@@ -48,6 +48,7 @@ workflow SVCALLER {
         .mix(PREPROCESS.out.fastqc_zip.map { meta, zips -> zips }.flatten())
         .mix(PREPROCESS.out.metrics.map { meta, m -> m })
         .mix(PREPROCESS.out.coverage.map { meta, s -> s })
+        .mix(PREPROCESS.out.flagstat.map { meta, f -> f })
         .collect()
 
     // M6 + M7: Visualize and report
@@ -65,6 +66,7 @@ workflow SVCALLER {
         ch_multiqc_files,
         PREPROCESS.out.coverage,
         PREPROCESS.out.metrics,
+        PREPROCESS.out.flagstat,
     )
 
     emit:
