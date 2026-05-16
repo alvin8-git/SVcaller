@@ -12,7 +12,13 @@ process MULTIQC {
 
     script:
     """
-    multiqc --force .
+    cat > multiqc_config.yml << 'MQCEOF'
+sp:
+  samtools/flagstat:
+    fn: "*.flagstat.txt"
+MQCEOF
+
+    multiqc --force --config multiqc_config.yml .
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

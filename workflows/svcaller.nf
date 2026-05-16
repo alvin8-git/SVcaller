@@ -49,6 +49,7 @@ workflow SVCALLER {
         .mix(PREPROCESS.out.metrics.map { meta, m -> m })
         .mix(PREPROCESS.out.coverage.map { meta, s -> s })
         .mix(PREPROCESS.out.flagstat.map { meta, f -> f })
+        .mix(PREPROCESS.out.insert_size.map { meta, i -> i })
         .collect()
 
     // M6 + M7: Visualize and report
@@ -67,6 +68,7 @@ workflow SVCALLER {
         PREPROCESS.out.coverage,
         PREPROCESS.out.metrics,
         PREPROCESS.out.flagstat,
+        PREPROCESS.out.insert_size,
     )
 
     emit:

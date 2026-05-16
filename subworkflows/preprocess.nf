@@ -2,6 +2,7 @@ include { BWAMEM2_ALIGN      } from '../modules/bwamem2/align'
 include { SAMTOOLS_SORT      } from '../modules/samtools/sort'
 include { SAMTOOLS_FLAGSTAT  } from '../modules/samtools/flagstat'
 include { PICARD_MARKDUP     } from '../modules/picard/markduplicates'
+include { PICARD_INSERT_SIZE } from '../modules/picard/insert_size'
 include { MOSDEPTH           } from '../modules/mosdepth/coverage'
 include { FASTQC             } from '../modules/fastqc/qc'
 
@@ -48,10 +49,14 @@ workflow PREPROCESS {
     // Mapping rate QC
     SAMTOOLS_FLAGSTAT(ch_final_bam)
 
+    // Insert size distribution QC
+    PICARD_INSERT_SIZE(ch_final_bam)
+
     emit:
-    bam        = ch_final_bam
-    coverage   = MOSDEPTH.out.summary
-    metrics    = PICARD_MARKDUP.out.metrics
-    flagstat   = SAMTOOLS_FLAGSTAT.out.flagstat
-    fastqc_zip = FASTQC.out.zip
+    bam           = ch_final_bam
+    coverage      = MOSDEPTH.out.summary
+    metrics       = PICARD_MARKDUP.out.metrics
+    insert_size   = PICARD_INSERT_SIZE.out.metrics
+    flagstat      = SAMTOOLS_FLAGSTAT.out.flagstat
+    fastqc_zip    = FASTQC.out.zip
 }

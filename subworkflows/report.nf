@@ -11,7 +11,7 @@ process BUILD_HTML_REPORT {
     tuple val(meta), path(sv_tsv), path(cnv_bed), path(smn_tsv),
                      path(circos_svg), path(benchmark_json), path(sizebin_json),
                      path(coverage_summary), path(picard_metrics), path(str_vcf),
-                     path(flagstat_txt)
+                     path(flagstat_txt), path(insert_size_metrics)
 
     output:
     tuple val(meta), path("${meta.id}.report.html"), emit: html
@@ -22,7 +22,8 @@ process BUILD_HTML_REPORT {
     def cov_arg      = coverage_summary.name != "NO_FILE" ? "--coverage  ${coverage_summary}" : ""
     def met_arg      = picard_metrics.name   != "NO_FILE" ? "--metrics   ${picard_metrics}"   : ""
     def str_arg      = str_vcf.name          != "NO_STR"  ? "--str-vcf   ${str_vcf}"          : ""
-    def flagstat_arg = flagstat_txt.name     != "NO_FILE" ? "--flagstat  ${flagstat_txt}"     : ""
+    def flagstat_arg     = flagstat_txt.name        != "NO_FILE" ? "--flagstat    ${flagstat_txt}"        : ""
+    def insert_size_arg  = insert_size_metrics.name != "NO_FILE" ? "--insert-size ${insert_size_metrics}" : ""
     """
     smn_report.py \\
         --tsv    ${smn_tsv} \\
@@ -42,6 +43,7 @@ process BUILD_HTML_REPORT {
         ${cov_arg} \\
         ${met_arg} \\
         ${flagstat_arg} \\
+        ${insert_size_arg} \\
         ${str_arg}
     """
 }
@@ -62,6 +64,7 @@ workflow REPORT {
     ch_coverage      // [ meta, mosdepth_summary ] for HTML section 2
     ch_metrics       // [ meta, picard_metrics ]   for HTML section 2
     ch_flagstat      // [ meta, flagstat_txt ]      for HTML section 2
+    ch_insert_size   // [ meta, insert_size_metrics ] for HTML section 2
 
     main:
     ch_circos_in = ch_sv_vcf
@@ -110,6 +113,10 @@ workflow REPORT {
         .join(ch_flagstat.ifEmpty { [[:], file("NO_FILE")] }, remainder: true)
         .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat ->
             [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat ?: file("NO_FILE")]
+        }
+        .join(ch_insert_size.ifEmpty { [[:], file("NO_FILE")] }, remainder: true)
+        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, insert_size ->
+            [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, insert_size ?: file("NO_FILE")]
         }
 
     BUILD_HTML_REPORT(ch_report_in)

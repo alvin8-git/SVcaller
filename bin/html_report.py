@@ -64,11 +64,14 @@ def _fmt_size(bp: int) -> str:
     return f"{bp} bp"
 
 
-def parse_qc(coverage_path: str, metrics_path: str, flagstat_path: str = "") -> dict:
-    qc = {"mean_depth": "N/A", "dup_rate": "N/A", "mapped_pct": "N/A"}
+def parse_qc(coverage_path: str, metrics_path: str, flagstat_path: str = "",
+             insert_size_path: str = "") -> dict:
+    qc = {"mean_depth": "N/A", "dup_rate": "N/A", "mapped_pct": "N/A",
+          "median_insert_size": "N/A", "mean_insert_size": "N/A"}
     _parse_mosdepth(coverage_path, qc)
     _parse_picard(metrics_path, qc)
     _parse_flagstat(flagstat_path, qc)
+    _parse_insert_size(insert_size_path, qc)
     return qc
 
 
@@ -104,6 +107,26 @@ def _parse_picard(metrics_path: str, qc: dict) -> None:
                 pct = d.get("PERCENT_DUPLICATION", "")
                 if pct:
                     qc["dup_rate"] = f"{float(pct) * 100:.2f}"
+                break
+    except (FileNotFoundError, ValueError, IndexError):
+        pass
+
+
+def _parse_insert_size(insert_size_path: str, qc: dict) -> None:
+    if not insert_size_path or insert_size_path in ("NO_FILE", "null"):
+        return
+    try:
+        with open(insert_size_path) as fh:
+            lines = fh.readlines()
+        for i, line in enumerate(lines):
+            if "MEDIAN_INSERT_SIZE" in line:
+                header = line.strip().split("\t")
+                data = lines[i + 1].strip().split("\t") if i + 1 < len(lines) else []
+                d = dict(zip(header, data))
+                if d.get("MEDIAN_INSERT_SIZE"):
+                    qc["median_insert_size"] = d["MEDIAN_INSERT_SIZE"]
+                if d.get("MEAN_INSERT_SIZE"):
+                    qc["mean_insert_size"] = f"{float(d['MEAN_INSERT_SIZE']):.0f}"
                 break
     except (FileNotFoundError, ValueError, IndexError):
         pass
@@ -204,6 +227,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   coverage_path: str = None,
                   metrics_path: str = None,
                   flagstat_path: str = None,
+                  insert_size_path: str = None,
                   str_vcf_path: str = None) -> None:
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("report_template.html")
@@ -214,7 +238,8 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     top_svs    = parse_top_svs(sv_tsv_path)
     benchmark      = parse_benchmark(benchmark_json) if benchmark_json else None
     benchmark_bins = parse_benchmark_sizebin(sizebin_json) if sizebin_json else None
-    qc             = parse_qc(coverage_path or "", metrics_path or "", flagstat_path or "")
+    qc             = parse_qc(coverage_path or "", metrics_path or "",
+                              flagstat_path or "", insert_size_path or "")
     str_loci       = parse_str_loci(str_vcf_path or "")
 
     html = template.render(
@@ -248,6 +273,8 @@ def main():
     parser.add_argument("--coverage",         default=None, help="mosdepth summary.txt")
     parser.add_argument("--metrics",          default=None, help="Picard MarkDup metrics")
     parser.add_argument("--flagstat",         default=None, help="samtools flagstat output")
+    parser.add_argument("--insert-size",      default=None, dest="insert_size",
+                        help="Picard CollectInsertSizeMetrics output")
     parser.add_argument("--str-vcf",          default=None, help="ExpansionHunter VCF")
     args = parser.parse_args()
     render_report(
@@ -263,6 +290,7 @@ def main():
         coverage_path=args.coverage,
         metrics_path=args.metrics,
         flagstat_path=args.flagstat,
+        insert_size_path=args.insert_size,
         str_vcf_path=args.str_vcf,
     )
 
