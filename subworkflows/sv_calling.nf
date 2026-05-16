@@ -1,8 +1,9 @@
-include { MANTA_CALL       } from '../modules/manta/call'
-include { DELLY_CALL       } from '../modules/delly/call'
-include { GRIDSS_CALL      } from '../modules/gridss/call'
-include { EXPANSIONHUNTER  } from '../modules/expansionhunter/call'
-include { JASMINE_MERGE    } from '../modules/jasmine/merge'
+include { MANTA_CALL            } from '../modules/manta/call'
+include { DELLY_CALL            } from '../modules/delly/call'
+include { GRIDSS_CALL           } from '../modules/gridss/call'
+include { EXPANSIONHUNTER       } from '../modules/expansionhunter/call'
+include { JASMINE_MERGE         } from '../modules/jasmine/merge'
+include { SAMTOOLS_FILTER_CHROMS } from '../modules/samtools/filter_chroms'
 
 workflow SV_CALLING {
     take:
@@ -12,9 +13,12 @@ workflow SV_CALLING {
     ch_eh_catalog // path
 
     main:
+    // Filter BAM to reference chromosomes before DELLY (DELLY requires BAM/ref parity)
+    SAMTOOLS_FILTER_CHROMS(ch_bam, ch_fai)
+
     // Run 3 structural callers in parallel
     MANTA_CALL(ch_bam, ch_fasta, ch_fai)
-    DELLY_CALL(ch_bam, ch_fasta, ch_fai)
+    DELLY_CALL(SAMTOOLS_FILTER_CHROMS.out.bam, ch_fasta, ch_fai)
     GRIDSS_CALL(ch_bam, ch_fasta, ch_fai)
     EXPANSIONHUNTER(ch_bam, ch_fasta, ch_fai, ch_eh_catalog)
 
