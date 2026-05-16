@@ -13,13 +13,14 @@ workflow SV_CALLING {
     ch_eh_catalog // path
 
     main:
-    // Filter BAM to reference chromosomes before DELLY (DELLY requires BAM/ref parity)
+    // Filter BAM to reference chromosomes (Manta, DELLY, GRIDSS all require BAM/ref parity)
     SAMTOOLS_FILTER_CHROMS(ch_bam, ch_fai)
+    ch_filtered_bam = SAMTOOLS_FILTER_CHROMS.out.bam
 
-    // Run 3 structural callers in parallel
-    MANTA_CALL(ch_bam, ch_fasta, ch_fai)
-    DELLY_CALL(SAMTOOLS_FILTER_CHROMS.out.bam, ch_fasta, ch_fai)
-    GRIDSS_CALL(ch_bam, ch_fasta, ch_fai)
+    // Run 3 structural callers in parallel on filtered BAM
+    MANTA_CALL(ch_filtered_bam, ch_fasta, ch_fai)
+    DELLY_CALL(ch_filtered_bam, ch_fasta, ch_fai)
+    GRIDSS_CALL(ch_filtered_bam, ch_fasta, ch_fai)
     EXPANSIONHUNTER(ch_bam, ch_fasta, ch_fai, ch_eh_catalog)
 
     // Collect 3 structural VCFs per sample and merge with JASMINE (min_support=2)
