@@ -16,7 +16,6 @@ process MOSDEPTH {
     mosdepth \\
         --threads ${task.cpus} \\
         --quantize 0:5:30:500: \\
-        --no-abbrev \\
         ${meta.id} \\
         ${bam}
 
