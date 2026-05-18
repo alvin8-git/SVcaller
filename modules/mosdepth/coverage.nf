@@ -8,7 +8,6 @@ process MOSDEPTH {
 
     output:
     tuple val(meta), path("${meta.id}.mosdepth.summary.txt"), emit: summary
-    tuple val(meta), path("${meta.id}.regions.bed.gz"),        emit: regions
     path "versions.yml",                                        emit: versions
 
     script:
