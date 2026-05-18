@@ -33,15 +33,12 @@ workflow PREPROCESS {
     // Sort aligned BAM (samtools is not in the bwa-mem2 container)
     SAMTOOLS_SORT(BWAMEM2_ALIGN.out.bam)
 
-    // Merge aligned + pre-supplied BAMs into MarkDup
-    ch_all_bam = SAMTOOLS_SORT.out.bam
-        .join(SAMTOOLS_SORT.out.bai)
-        .mix(ch_bam_in)
-
-    PICARD_MARKDUP(ch_all_bam)
+    // MarkDup only on FASTQ-derived BAMs; pre-supplied BAMs are already dup-marked
+    PICARD_MARKDUP(SAMTOOLS_SORT.out.bam.join(SAMTOOLS_SORT.out.bai))
 
     ch_final_bam = PICARD_MARKDUP.out.bam
         .join(PICARD_MARKDUP.out.bai)
+        .mix(ch_bam_in)
 
     // Coverage QC — halts pipeline if < min_depth
     MOSDEPTH(ch_final_bam, min_depth)
@@ -52,10 +49,14 @@ workflow PREPROCESS {
     // Insert size distribution QC
     PICARD_INSERT_SIZE(ch_final_bam)
 
+    // Stub metrics for pre-supplied BAMs so downstream report join has an entry
+    ch_markdup_metrics = PICARD_MARKDUP.out.metrics
+        .mix(ch_bam_in.map { meta, bam, bai -> [meta, file("NO_FILE")] })
+
     emit:
     bam           = ch_final_bam
     coverage      = MOSDEPTH.out.summary
-    metrics       = PICARD_MARKDUP.out.metrics
+    metrics       = ch_markdup_metrics
     insert_size   = PICARD_INSERT_SIZE.out.metrics
     flagstat      = SAMTOOLS_FLAGSTAT.out.flagstat
     fastqc_zip    = FASTQC.out.zip
