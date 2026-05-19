@@ -11,17 +11,18 @@ process SAMTOOLS_FILTER_CHROMS {
 
     script:
     """
-    # Restrict to canonical chromosomes only — alt/decoy contigs cause ambiguous
-    # read mapping that inflates false CNV/SV calls and create header ordering mismatches
+    # Reads restricted to canonical chromosomes (no alt/decoy noise for CNV/SV calling).
+    # ALL @SQ lines kept in FAI order so the sequence dictionary matches the reference
+    # exactly — GRIDSS/Picard require dictionary size parity with the reference.
+    # Reads are re-sorted to match the new (FAI-ordered) header, fixing order mismatches
+    # between BAMs aligned to different hg38 builds (e.g. numeric vs alphabetical order).
     CANONICAL="chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chrX chrY chrM"
 
-    # Get canonical chroms in FAI order (reference may use alphabetical or numeric ordering)
-    REF_CHROMS=\$(awk 'BEGIN{n=split("chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chrX chrY chrM",c); for(i=1;i<=n;i++) can[c[i]]=1} \$1 in can {print \$1}' ${fai} | tr '\\n' ' ')
+    # Get canonical chroms in FAI order for samtools view region filter
+    CANONICAL_ORDERED=\$(awk 'BEGIN{n=split("chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chrX chrY chrM",c); for(i=1;i<=n;i++) can[c[i]]=1} \$1 in can {print \$1}' ${fai} | tr '\\n' ' ')
 
-    # Filter reads to canonical chroms, output @SQ in FAI order, re-sort to match header
-    samtools view -h -@ ${task.cpus} ${bam} \$REF_CHROMS | \\
-        awk 'BEGIN{n=split("chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chrX chrY chrM",c); for(i=1;i<=n;i++) can[c[i]]=1}
-             NR==FNR { if (\$1 in can) order[\$1]=++idx; next }
+    samtools view -h -@ ${task.cpus} ${bam} \$CANONICAL_ORDERED | \\
+        awk 'NR==FNR { order[\$1]=NR; total=NR; next }
              /^@HD/ { hd=\$0; next }
              /^@SQ/ {
                  for (i=1; i<=NF; i++) {
@@ -37,7 +38,7 @@ process SAMTOOLS_FILTER_CHROMS {
                  if (!header_done) {
                      header_done=1
                      if (hd) print hd
-                     for (i=1; i<=idx; i++) if (i in sq) print sq[i]
+                     for (i=1; i<=total; i++) if (i in sq) print sq[i]
                      for (i=1; i<=on; i++) print other[i]
                  }
                  print
