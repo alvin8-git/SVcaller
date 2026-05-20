@@ -21,6 +21,7 @@ process GRIDSS_CALL {
         --workingdir ./gridss_work \\
         --threads ${task.cpus} \\
         --jvmheap ${heap}g \\
+        --picardoptions VALIDATION_STRINGENCY=LENIENT \\
         ${bam}
 
     cat <<-END_VERSIONS > versions.yml

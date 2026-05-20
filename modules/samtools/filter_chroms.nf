@@ -22,7 +22,12 @@ process SAMTOOLS_FILTER_CHROMS {
     CANONICAL_ORDERED=\$(awk 'BEGIN{n=split("chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chrX chrY chrM",c); for(i=1;i<=n;i++) can[c[i]]=1} \$1 in can {print \$1}' ${fai} | tr '\\n' ' ')
 
     samtools view -h -@ ${task.cpus} ${bam} \$CANONICAL_ORDERED | \\
-        awk 'NR==FNR { order[\$1]=NR; total=NR; next }
+        awk 'BEGIN{
+                 OFS="\t"
+                 n=split("chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chrX chrY chrM",c)
+                 for(i=1;i<=n;i++) can[c[i]]=1
+             }
+             NR==FNR { order[\$1]=NR; total=NR; next }
              /^@HD/ { hd=\$0; next }
              /^@SQ/ {
                  for (i=1; i<=NF; i++) {
@@ -41,6 +46,8 @@ process SAMTOOLS_FILTER_CHROMS {
                      for (i=1; i<=total; i++) if (i in sq) print sq[i]
                      for (i=1; i<=on; i++) print other[i]
                  }
+                 if (\$7 != "=" && \$7 != "*" && !(\$7 in can)) { \$7="*"; \$8=0 }
+                 if (\$7 == "*" && \$8+0 != 0) { \$8=0 }
                  print
              }' ${fai} - | \\
         samtools view -@ ${task.cpus} -b | \\

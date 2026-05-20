@@ -19,6 +19,7 @@ nextflow run main.nf -profile docker \
   --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
   --giab_truth /data/alvin/ref/GIAB/HG002_SV_v0.6.vcf.gz \
   --eh_catalog assets/eh_catalog.json \
+  --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
   --outdir /data/alvin/SVcaller/results \
   -work-dir /data/alvin/SVcaller/work \
   -resume
@@ -132,7 +133,7 @@ validation/giab_samplesheet.csv
 | `--ref_fasta` | required | GRCh38 FASTA (index .fai and .0123 inferred from path) |
 | `--pon` | null | GATK gCNV Panel of Normals HDF5 |
 | `--intervals` | null | Target capture BED |
-| `--annotsv_db` | null | AnnotSV database directory |
+| `--annotsv_db` | null | AnnotSV database directory — use `/data/alvin/ref/annotsv/Annotations_Human` |
 | `--giab_truth` | null | GIAB truth VCF.gz (enables Truvari in REPORT) |
 | `--min_depth` | 30 | Mosdepth coverage threshold |
 | `--outdir` | results | Output directory |
