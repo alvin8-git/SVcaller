@@ -95,14 +95,27 @@ Tracks implementation status against the design spec (`docs/superpowers/specs/20
 
 ### Implemented
 - [x] Conditional sort skip in `SAMTOOLS_FILTER_CHROMS` — skips ~3h re-sort when BAM chr order already matches FAI order
-- [x] `GRIDSS_SETUP` process with `storeDir` — pre-builds BWA index + GRIDSS cache/img via `--steps setupreference`, staged into all GRIDSS_CALL tasks to skip per-sample rebuild (~40 min × N samples saved)
+- [x] `GRIDSS_SETUP` process with `storeDir` — pre-builds BWA index via `--steps setupreference`, staged into all GRIDSS_CALL tasks to skip per-sample rebuild (~40 min × N samples saved)
 - [x] `--skip_gridss` flag — Manta+DELLY only (min_support=1); saves ~4–5h critical-path time when throughput > sensitivity
+- [x] **DELLY parallel SV types** — `DELLY_CALL_SVTYPE` fans out DEL/INS/INV/DUP/BND as 5 concurrent Nextflow processes; `DELLY_MERGE` collects via `groupTuple(size:5)` — ~5× DELLY speedup (2026-05-23)
+- [x] **Tiered GRIDSS** (`--tiered_gridss`) — Manta runs first; `MANTA_RESIDUAL_REGIONS` extracts non-PASS loci ±1 kb; `SAMTOOLS_SUBSET --fetch-pairs` creates a region-subset BAM; GRIDSS runs only on that subset — estimated wall time reduction from ~4–6 h to ~30–60 min per sample (2026-05-23)
 
 ### Future (lower priority)
 - [ ] Increase GRIDSS thread count above 16 (test 24–32; diminishing returns expected)
 - [ ] Publish filtered BAMs to `outdir` — allow re-supply as BAM input to skip FILTER_CHROMS on re-runs
 - [ ] Pre-built canonical-only reference FASTA — eliminate FILTER_CHROMS entirely for BAMs aligned to it
 - [ ] Benchmark Lumpy/Smoove as faster GRIDSS replacement
+- [ ] Chromosome-scatter GRIDSS — split BAM by chr1-22+X+Y, run 24 parallel GRIDSS processes, merge VCFs; saves ~24× on large servers but requires BND/TRA post-merge deduplication
+
+## Validation
+
+### Implemented
+- [x] GIAB SV v0.6 Truvari benchmark (HG002, ~12K SVs; deletion-biased)
+- [x] `validation/download_refs.sh` extended to attempt GIAB SV v1.0 download with FTP probe + graceful fallback
+
+### Pending
+- [ ] **GIAB SV v1.0** — multi-platform HiFi+ONT+short-read benchmark (~75K SVs, insertion-inclusive); verify URL at NCBI FTP `NIST_SV_v1.0/` and update `download_refs.sh`; pass `--giab_truth ${GIAB_DIR}/HG002_SV_v1.0.vcf.gz`; expect lower recall (harder benchmark) — that is expected and a more honest measure
+- [ ] **CMRG benchmark** — 273 clinically medically relevant genes (CYP450, BRCA, PMS2, etc.); run Truvari with CMRG BED as `--includebed`; wire second benchmark JSON to HTML report as "Clinical genes" section; directly relevant for rare disease diagnostics use case
 
 ## Next Steps (Priority Order)
 

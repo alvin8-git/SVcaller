@@ -43,6 +43,8 @@ else
 fi
 
 echo "=== Downloading GIAB SV truth sets ==="
+
+# --- v0.6 (legacy; deletion-biased; ~12K SVs) ---
 GIAB_BASE="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NIST_SV_v0.6"
 for FNAME in "HG002_SVs_Tier1_v0.6.vcf.gz" "HG002_SVs_Tier1_v0.6.vcf.gz.tbi" "HG002_SVs_Tier1_v0.6.bed"; do
     DEST="${GIAB_DIR}/$(echo "${FNAME}" | sed 's/HG002_SVs_Tier1_v0.6/HG002_SV_v0.6/')"
@@ -51,6 +53,26 @@ for FNAME in "HG002_SVs_Tier1_v0.6.vcf.gz" "HG002_SVs_Tier1_v0.6.vcf.gz.tbi" "HG
         echo "Downloaded: ${DEST}"
     fi
 done
+
+# --- v1.0 (preferred; multi-platform HiFi+ONT+short-read; ~75K SVs incl. insertions) ---
+# Check the latest release path at:
+#   https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/
+# Update GIAB_V1_BASE and filenames below once the path is confirmed.
+GIAB_V1_BASE="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/NIST_SV_v1.0"
+V1_VCF="HG002_SVs_Tier1_v1.0.vcf.gz"
+if [ ! -f "${GIAB_DIR}/HG002_SV_v1.0.vcf.gz" ]; then
+    if wget -q --spider "${GIAB_V1_BASE}/${V1_VCF}" 2>/dev/null; then
+        wget -q -O "${GIAB_DIR}/HG002_SV_v1.0.vcf.gz"     "${GIAB_V1_BASE}/${V1_VCF}"
+        wget -q -O "${GIAB_DIR}/HG002_SV_v1.0.vcf.gz.tbi" "${GIAB_V1_BASE}/${V1_VCF}.tbi"
+        echo "Downloaded GIAB SV v1.0: ${GIAB_DIR}/HG002_SV_v1.0.vcf.gz"
+    else
+        echo "WARN: GIAB SV v1.0 URL not yet reachable — verify path at NCBI FTP and rerun."
+        echo "      Falling back to v0.6 for benchmarking."
+        echo "      Pass --giab_truth ${GIAB_DIR}/HG002_SV_v0.6.vcf.gz until v1.0 is available."
+    fi
+else
+    echo "GIAB SV v1.0 already present."
+fi
 
 echo "=== Downloading ExpansionHunter catalog ==="
 EH_URL="https://github.com/Illumina/RepeatCatalogs/raw/main/hg38/variant_catalog.json"
