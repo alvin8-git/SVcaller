@@ -11,7 +11,7 @@ SVcaller is a Nextflow DSL2 pipeline for human WGS structural variant (SV), copy
 **Use `-profile docker` for all runs.** All quay.io biocontainer tags have been verified and fixed.
 
 ```bash
-# Main validation pipeline
+# SV/CNV validation — HG002 only; Truvari benchmark against GIAB SV truth
 nextflow run main.nf -profile docker \
   --input validation/validation_samplesheet.csv \
   --ref_fasta /data/alvin/ref/GRCh38/hg38.fa \
@@ -21,6 +21,19 @@ nextflow run main.nf -profile docker \
   --eh_catalog assets/eh_catalog.json \
   --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
   --outdir /data/alvin/SVcaller/results \
+  -work-dir /data/alvin/SVcaller/work \
+  -resume
+
+# SMN validation — SMA trio only; no Truvari (no SV truth for clinical samples)
+# --skip_gridss saves 4-6 h; only SMN1/2 CN and CNV results matter here
+nextflow run main.nf -profile docker \
+  --input validation/smn_validation_samplesheet.csv \
+  --ref_fasta /data/alvin/ref/GRCh38/hg38.fa \
+  --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
+  --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+  --eh_catalog assets/eh_catalog.json \
+  --skip_gridss true \
+  --outdir /data/alvin/SVcaller/results_smn \
   -work-dir /data/alvin/SVcaller/work \
   -resume
 
@@ -34,7 +47,7 @@ nextflow run workflows/pon_build.nf -profile docker \
   -resume
 
 # Check pipeline progress
-tail -20 /data/alvin/tmp/main_pipeline_run2.log
+tail -20 /data/alvin/tmp/main_pipeline_run34.log
 ```
 
 **PON location:** `/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5` (446 MB, built from HG001-HG007)

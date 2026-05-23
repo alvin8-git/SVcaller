@@ -72,7 +72,8 @@ Tracks implementation status against the design spec (`docs/superpowers/specs/20
 - [x] Docker profile (`conf/docker.config`) — all quay.io biocontainer tags verified
 - [x] PON build workflow (`workflows/pon_build.nf`) — complete; HDF5 at `pon/pon/giab_cnv_pon.hdf5`
 - [x] GIAB samplesheet (`validation/giab_samplesheet.csv`)
-- [x] Validation samplesheet HG002 (`validation/validation_samplesheet.csv`)
+- [x] SV validation samplesheet — HG002 only (`validation/validation_samplesheet.csv`); Truvari runs against GIAB truth
+- [x] SMN validation samplesheet — SMA trio only (`validation/smn_validation_samplesheet.csv`); run with `--skip_gridss true`, no `--giab_truth`
 - [x] WGS intervals BED (`/data/alvin/ref/GRCh38/wgs_autosomal.bed`)
 - [x] `svcaller/utils:1.0` Docker image — built
 - [x] `svcaller/smncopynum:1.1` Docker image — built
