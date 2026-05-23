@@ -70,6 +70,7 @@ workflow REPORT {
     ch_circos_in = ch_sv_vcf
         .join(ch_cnv_bed)
         .join(ch_str_vcf, remainder: true)
+        .filter { it[1] != null }   // drop tuples fired before sv_vcf is ready (str_vcf caches before Jasmine)
         .map { meta, sv, cnv, str -> [meta, sv, cnv, str ?: file("NO_STR")] }
     CIRCOS_PLOT(ch_circos_in, ch_cytobands)
 
