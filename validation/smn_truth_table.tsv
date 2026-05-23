@@ -5,6 +5,6 @@ HG004	2	1	published	GIAB Ashkenazi mother
 HG005	2	2	published	GIAB Chinese son
 HG006	2	2	published	GIAB Chinese father
 HG007	2	2	published	GIAB Chinese mother
-SMAPB	0	3	clinical	SMA proband; homozygous SMN1 deletion, 3x SMN2
-SMAD	1	5	clinical	SMA father; SMN1 carrier, 5x SMN2
-SMAM	1	1	clinical	SMA mother; SMN1 carrier, 1x SMN2
+SMAPB	0	3	clinical	SMA proband; SMN1 exon7=0 exon8=0, SMN2 exon7=3 exon8=3; homozygous SMN1 deletion
+SMAM	1	5	clinical	SMA mother; SMN1 exon7=1 exon8=1, SMN2 exon7=5 exon8=5; SMN1 carrier 5x SMN2
+SMAD	1	1	clinical	SMA father; SMN1 exon7=1 exon8=1, SMN2 exon7=1 exon8=1; SMN1 carrier 1x SMN2

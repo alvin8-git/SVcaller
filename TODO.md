@@ -84,6 +84,26 @@ Tracks implementation status against the design spec (`docs/superpowers/specs/20
 - [ ] **samtools flagstat not in MultiQC** — flagstat file mixed into `ch_multiqc_files` but MultiQC may need explicit module config to parse it.
 - [ ] **SMA BAMs** — SMAD/SMAM/SMAPB alignments done externally; awaiting BAMs to add back to samplesheet.
 
+## Recently Fixed
+
+- [x] **SMN rename bug** — SMNCopyNumberCaller outputs `{sample}.tsv` (not `{sample}_smn.tsv`); touch fallback was always triggered → fixed rename order in `modules/smn_caller/call.nf` to check `${meta.id}.tsv` before fallback — 2026-05-23
+- [x] **SMAD/SMAM truth table swap** — labels were transposed in `validation/smn_truth_table.tsv` and `Documentation.md`; corrected from clinical records: SMAM=SMN2×5, SMAD=SMN2×1 — 2026-05-23
+- [x] **DELLY bcftools missing** — bcftools not in `quay.io/biocontainers/delly:1.2.6` container; rewrote `modules/delly/call.nf` to emit VCF directly merged with shell + bgzip + tabix — 2026-05-23
+- [x] **GRIDSS_SETUP flag** — `--setupworkingdir` was invalid; corrected to `--steps setupreference`; removed `.img`/`.gridsscache` from outputs (not produced by setupreference in GRIDSS 2.13.2) — 2026-05-23
+
+## Performance
+
+### Implemented
+- [x] Conditional sort skip in `SAMTOOLS_FILTER_CHROMS` — skips ~3h re-sort when BAM chr order already matches FAI order
+- [x] `GRIDSS_SETUP` process with `storeDir` — pre-builds BWA index + GRIDSS cache/img via `--steps setupreference`, staged into all GRIDSS_CALL tasks to skip per-sample rebuild (~40 min × N samples saved)
+- [x] `--skip_gridss` flag — Manta+DELLY only (min_support=1); saves ~4–5h critical-path time when throughput > sensitivity
+
+### Future (lower priority)
+- [ ] Increase GRIDSS thread count above 16 (test 24–32; diminishing returns expected)
+- [ ] Publish filtered BAMs to `outdir` — allow re-supply as BAM input to skip FILTER_CHROMS on re-runs
+- [ ] Pre-built canonical-only reference FASTA — eliminate FILTER_CHROMS entirely for BAMs aligned to it
+- [ ] Benchmark Lumpy/Smoove as faster GRIDSS replacement
+
 ## Next Steps (Priority Order)
 
 1. Add SMA samples back to `validation/validation_samplesheet.csv` once external BAMs arrive

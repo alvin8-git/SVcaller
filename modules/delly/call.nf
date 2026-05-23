@@ -14,24 +14,27 @@ process DELLY_CALL {
 
     script:
     """
-    # Call all SV types
-    for SVTYPE in DEL INS INV DUP TRA; do
+    # Call each SV type to VCF (bgzip/tabix available; bcftools not in this container)
+    for SVTYPE in DEL INS INV DUP BND; do
         delly call \\
             -t \${SVTYPE} \\
             -g ${fasta} \\
-            -o ${meta.id}.delly.\${SVTYPE}.bcf \\
+            -o ${meta.id}.delly.\${SVTYPE}.vcf \\
             ${bam}
     done
 
-    # Merge all SV types and convert to VCF
-    bcftools concat -a ${meta.id}.delly.*.bcf \\
-        | bcftools sort -O z -o ${meta.id}.delly.sv.vcf.gz
-    bcftools index -t ${meta.id}.delly.sv.vcf.gz
+    # Merge: header from first file, data from all types sorted by chrom+pos
+    { grep "^#" ${meta.id}.delly.DEL.vcf
+      for sv in DEL INS INV DUP BND; do
+          grep -v "^#" ${meta.id}.delly.\${sv}.vcf
+      done | sort -k1,1V -k2,2n
+    } | bgzip -c > ${meta.id}.delly.sv.vcf.gz
+    tabix -p vcf ${meta.id}.delly.sv.vcf.gz
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
         delly: \$(delly --version 2>&1 | grep "DELLY" | head -1 | awk '{print \$2}')
-        bcftools: \$(bcftools --version | head -1 | sed 's/bcftools //')
+        bgzip: \$(bgzip --version 2>&1 | head -1 | awk '{print \$NF}')
     END_VERSIONS
     """
 }

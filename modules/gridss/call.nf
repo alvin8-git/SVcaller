@@ -6,6 +6,11 @@ process GRIDSS_CALL {
     tuple val(meta), path(bam), path(bai)
     path fasta
     path fai
+    path amb  // staged as ${fasta}.amb \
+    path ann  // staged as ${fasta}.ann  |
+    path bwt  // staged as ${fasta}.bwt  | BWA index pre-built by GRIDSS_SETUP; skips 40-min bwa index
+    path pac  // staged as ${fasta}.pac  |
+    path sa   // staged as ${fasta}.sa  /
 
     output:
     tuple val(meta), path("${meta.id}.gridss.sv.vcf.gz"),     emit: vcf

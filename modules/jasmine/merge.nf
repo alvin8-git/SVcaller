@@ -27,7 +27,7 @@ process JASMINE_MERGE {
         file_list=vcf_list.txt \\
         out_file=${meta.id}.sv_merged.vcf \\
         genome_file=${fasta} \\
-        min_support=2 \\
+        min_support=${params.skip_gridss ? 1 : 2} \\
         --dup_to_ins \\
         --normalize_type \\
         --ignore_strand

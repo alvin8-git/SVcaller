@@ -262,8 +262,11 @@ Manta (Illumina) uses a two-stage approach: candidate SV generation from anomalo
 | Algorithm | Paired-end read orientation and insert-size analysis; split-read refinement |
 | Strengths | Strong paired-end signal for translocations and inter-chromosomal events; complements Manta's assembly evidence |
 | Limitations | Lower sensitivity for insertions; slower than Manta on WGS |
+| Output format | Five per-type VCFs merged with shell + bgzip + tabix (bcftools is not available in the Delly biocontainer) |
 
 Delly was chosen to provide independent paired-end evidence that can confirm or refute Manta calls, particularly for inter-chromosomal translocations (BND/TRA) where Manta is less sensitive.
+
+**Implementation note:** The Delly biocontainer (`quay.io/biocontainers/delly:1.2.6`) includes `bgzip` and `tabix` but not `bcftools`. The module calls `delly call -o VCF` for each of the five SV types (DEL INS INV DUP BND) separately, then merges the VCF bodies with a shell `grep` + `sort -k1,1V -k2,2n` pipeline before compressing with bgzip and indexing with tabix.
 
 ### 5.3 GRIDSS
 
@@ -277,6 +280,8 @@ Delly was chosen to provide independent paired-end evidence that can confirm or 
 | Resource label | `process_gridss` (dedicated highest tier with OOM retry) |
 
 GRIDSS provides the assembly-based layer that split-read callers miss, particularly for insertions and complex rearrangements.
+
+**GRIDSS_SETUP pre-build optimisation:** A `GRIDSS_SETUP` process (`modules/gridss/setup.nf`) runs `gridss --steps setupreference` once per pipeline invocation to build the BWA index (`.amb`, `.ann`, `.bwt`, `.pac`, `.sa`) for the reference FASTA. The index is cached in `storeDir` (`${params.outdir}/cache/gridss_ref`) so it survives across runs. The five index files are staged into each `GRIDSS_CALL` task; because GRIDSS detects the pre-existing `.bwt` file, it skips the ~40-minute per-sample BWA index rebuild, saving approximately 40 × N sample minutes of critical-path time. The `.gridsscache` and `.img` files used in older GRIDSS versions are **not** produced by `setupreference` in GRIDSS 2.13.2 — they are built on demand during each `GRIDSS_CALL` invocation (fast, ~10 s).
 
 **Comparison of M2 callers:**
 
@@ -417,11 +422,13 @@ SMNCopyNumberCaller is a purpose-built tool developed by Illumina that:
 
 **Validation truth values for GIAB SMA samples:**
 
-| Sample | SMN1 CN | SMN2 CN | Clinical status |
-|---|---|---|---|
-| SMAPB | 0 | 3 | Affected (SMA) |
-| SMAD | 1 | 5 | Carrier |
-| SMAM | 1 | 1 | Carrier |
+| Sample | SMN1 CN | SMN2 CN | Exon 7 (SMN1/SMN2) | Exon 8 (SMN1/SMN2) | Clinical status |
+|---|---|---|---|---|---|
+| SMAPB | 0 | 3 | 0 / 3 | 0 / 3 | Affected (SMA) — homozygous SMN1 deletion |
+| SMAM | 1 | 5 | 1 / 5 | 1 / 5 | Carrier (SMA mother) — 5× SMN2 |
+| SMAD | 1 | 1 | 1 / 1 | 1 / 1 | Carrier (SMA father) — 1× SMN2 |
+
+Note: SMAM and SMAD labels were verified from clinical records in May 2026 (previous documentation had them transposed). The distinguishing feature is SMN2 copy number: SMAM has 5× SMN2 (consistent with maternal carrier of severe SMA family), SMAD has only 1× SMN2.
 
 ### 6.3 Limitations and Alternatives
 
@@ -544,9 +551,9 @@ The final per-sample `<sample>.report.html` is a self-contained file with all co
 
 ## 10. Known Limitations
 
-### 9.1 SMAD/SMAM Samplesheet Uses minimap2 BAMs
+### 9.1 SMA Samples Not Yet in Validation Samplesheet
 
-The SMA validation samples (SMAD, SMAM) are currently supplied as pre-aligned minimap2 BAMs in the samplesheet, bypassing BWA-MEM2 alignment. This is suboptimal for two reasons: (1) minimap2 multi-mapping handling at the SMN paralog region differs from BWA-MEM2, potentially affecting SMNCopyNumberCaller accuracy; (2) it introduces alignment inconsistency within the cohort. The FASTQs are being copied to `ValidationBAM/SMA_BAM/` and the samplesheet should be updated to FASTQ input with `-resume` to regenerate these samples through BWA-MEM2.
+The clinical SMA trio (SMAPB, SMAM, SMAD) have FASTQs located in `ValidationBAM/SMA_BAM/` but are not yet added to `validation/validation_samplesheet.csv`. Once added, they will be aligned through BWA-MEM2 (preferred over external minimap2 BAMs for SMNCopyNumberCaller accuracy — minimap2 multi-mapping handling at the SMN paralog region differs from BWA-MEM2 and may reduce calling accuracy). See TODO §Next Steps item 1.
 
 ### 9.2 PON Built Without GC Correction
 
@@ -641,7 +648,7 @@ All resource labels support automatic retry on OOM exit codes: 137, 143, 104, 13
 
 ---
 
-*Documentation generated from source code at `/data/alvin/SVcaller/` (commit `310fd2a`).*
+*Documentation generated from source code at `/data/alvin/SVcaller/` (updated 2026-05-23: SMN truth table corrected, DELLY VCF output, GRIDSS pre-build, Known Limitations revised).*
 
 ---
 
