@@ -3,6 +3,7 @@
 process DELLY_CALL_SVTYPE {
     tag "${meta.id}:${svtype}"
     label 'process_medium'
+    maxForks 4
 
     input:
     tuple val(meta), path(bam), path(bai), val(svtype)
