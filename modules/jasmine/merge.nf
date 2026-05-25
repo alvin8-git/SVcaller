@@ -30,13 +30,13 @@ process JASMINE_MERGE {
             print
         }' > ${vcfs[0].baseName}
     zcat ${vcfs[1]} | awk '
-        BEGIN{OFS="\\t"}
+        BEGIN{OFS="\\t"; keep="^(SVTYPE|END|SVLEN|CIPOS|CIEND|HOMLEN|HOMSEQ|INSSEQ)\$"}
         /^#/{print;next}
         \$1~/^chr([0-9]+|X|Y|M)\$/{
             n=split(\$8,info,";"); new_info=""
             for(i=1;i<=n;i++){
                 key=info[i]; if(index(key,"=")) key=substr(key,1,index(key,"=")-1)
-                if(key~/^(SVTYPE|END|SVLEN|CIPOS|CIEND|HOMLEN|HOMSEQ|INSSEQ)$/ || info[i]=="IMPRECISE" || info[i]=="PRECISE")
+                if(key ~ keep || info[i]=="IMPRECISE" || info[i]=="PRECISE")
                     new_info=(new_info=="")?info[i]:new_info";"info[i]
             }
             \$8=(new_info=="")?".":new_info; print
