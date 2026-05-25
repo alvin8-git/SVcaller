@@ -4,7 +4,7 @@ process JASMINE_MERGE {
     publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.sv_merged.vcf.gz*"
 
     input:
-    tuple val(meta), path(vcfs)   // list of 3 VCF.gz files [manta, delly, gridss]
+    tuple val(meta), path(vcfs)   // list of VCF.gz files: [manta, delly, gridss, scramble]
     path fasta
     path fai
 
@@ -14,7 +14,6 @@ process JASMINE_MERGE {
     path "versions.yml",                                        emit: versions
 
     script:
-    def vcf_list_str = vcfs.collect { "\"${it.baseName}\"" }.join(' ')
     """
     # Canonical-chromosome filter for all callers.
     # GRIDSS INFO fields are stripped to essentials (SVTYPE, MATEID, END, SVLEN, CIPOS, CIEND):
@@ -54,9 +53,29 @@ process JASMINE_MERGE {
             }
             \$8=(new_info=="")?".":new_info; print
         }' > ${vcfs[2].baseName}
+    # Scramble MEI: canonical-chromosome filter; strip MEI-specific INFO fields
+    zcat ${vcfs[3]} | awk '
+        BEGIN{OFS="\\t"; keep="^(SVTYPE|SVLEN|END|CIPOS|CIEND)\$"}
+        /^#/{print;next}
+        \$1~/^chr([0-9]+|X|Y|M)\$/{
+            if(\$7 != "PASS" && \$7 != ".") next
+            n=split(\$8,info,";"); new_info=""
+            for(i=1;i<=n;i++){
+                key=info[i]; if(index(key,"=")) key=substr(key,1,index(key,"=")-1)
+                if(key ~ keep)
+                    new_info=(new_info=="")?info[i]:new_info";"info[i]
+            }
+            \$8=(new_info=="")?".":new_info; print
+        }' > ${vcfs[3].baseName}
 
-    # Build vcf_list.txt from known filenames (avoids ls glob ambiguity)
-    printf '%s\\n' ${vcfs[0].baseName} ${vcfs[1].baseName} ${vcfs[2].baseName} > vcf_list.txt
+    # Build vcf_list.txt. If Scramble produced no calls (stub or empty sample),
+    # use 3 files so Jasmine SUPP_VEC stays 3-char (keeps GRIDSS TRA filter correct).
+    scramble_cnt=\$(grep -cv '^#' ${vcfs[3].baseName} || true)
+    if [ "\$scramble_cnt" -gt 0 ]; then
+        printf '%s\\n' ${vcfs[0].baseName} ${vcfs[1].baseName} ${vcfs[2].baseName} ${vcfs[3].baseName} > vcf_list.txt
+    else
+        printf '%s\\n' ${vcfs[0].baseName} ${vcfs[1].baseName} ${vcfs[2].baseName} > vcf_list.txt
+    fi
 
     jasmine \\
         file_list=vcf_list.txt \\
@@ -66,18 +85,36 @@ process JASMINE_MERGE {
         --normalize_type \\
         --ignore_strand
 
-    # Remove GRIDSS-only TRA (SUPP_VEC=001 = 3rd file/GRIDSS only).
-    # These are 100K+ GRIDSS BND noise records with no Manta/Delly support.
-    # Also strip FORMAT to GT-only: at min_support=1, Delly-only records enter
-    # the merged VCF with Delly-specific FORMAT tags (GL, RCL, RC...) that are
-    # not declared in Manta's header, crashing bcftools/Truvari.
+    # Post-merge filters (applied in one pass):
+    # 1. GRIDSS-only TRA: single-caller TRA where position 3 of SUPP_VEC is "1" (GRIDSS).
+    #    Works for both 3-caller ("001") and 4-caller ("0010") SUPP_VEC.
+    #    These are 100K+ GRIDSS BND noise records with no support from other callers.
+    # 2. Tiered min_support for large SVs: single-caller SVs with |SVLEN| > 10 kb.
+    #    Precision for large single-caller calls is very low (0.19); removing them improves
+    #    F1 without hurting recall much (Scramble MEI are typically < 6 kb).
+    # 3. FORMAT → GT only: at min_support=1, Delly-only records enter the merged VCF with
+    #    Delly-specific FORMAT tags not declared in Manta's header, crashing bcftools/Truvari.
     awk 'BEGIN{OFS="\\t"}
         /^##FORMAT/{if(/ID=GT,/)print; next}
         /^#/{print;next}
-        \$8~/SVTYPE=TRA/ && \$8~/SUPP_VEC=001/{next}
         {
-            n=split(\$9,f,":"); gt_i=1
-            for(i=1;i<=n;i++){if(f[i]=="GT"){gt_i=i;break}}
+            supp=""; svlen=0; is_tra=0
+            n=split(\$8,info,";")
+            for(i=1;i<=n;i++){
+                if(index(info[i],"SUPP_VEC=")==1) supp=substr(info[i],10)
+                if(index(info[i],"SVTYPE=")==1){
+                    t=substr(info[i],8)
+                    if(t=="TRA"||t=="BND") is_tra=1
+                }
+                if(index(info[i],"SVLEN=")==1){ svlen=substr(info[i],7)+0; if(svlen<0) svlen=-svlen }
+            }
+            if(supp!=""){
+                ones=0; for(j=1;j<=length(supp);j++) if(substr(supp,j,1)=="1") ones++
+                if(is_tra && ones==1 && substr(supp,3,1)=="1") next
+                if(ones==1 && svlen>10000) next
+            }
+            m=split(\$9,f,":"); gt_i=1
+            for(i=1;i<=m;i++){if(f[i]=="GT"){gt_i=i;break}}
             split(\$10,s,":"); \$9="GT"; \$10=s[gt_i]
             print
         }' ${meta.id}.sv_merged.vcf > ${meta.id}.sv_merged_filt.vcf

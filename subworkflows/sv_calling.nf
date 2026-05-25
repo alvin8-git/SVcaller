@@ -8,6 +8,8 @@ include { GRIDSS_STUB            } from '../modules/gridss/stub'
 include { SAMTOOLS_SUBSET        } from '../modules/samtools/subset'
 include { EXPANSIONHUNTER        } from '../modules/expansionhunter/call'
 include { JASMINE_MERGE          } from '../modules/jasmine/merge'
+include { SCRAMBLE_CALL          } from '../modules/scramble/call'
+include { SCRAMBLE_STUB          } from '../modules/scramble/stub'
 include { SAMTOOLS_FILTER_CHROMS } from '../modules/samtools/filter_chroms'
 
 workflow SV_CALLING {
@@ -65,13 +67,23 @@ workflow SV_CALLING {
         ch_gridss_vcf = GRIDSS_STUB.out.vcf
     }
 
-    // Collect VCFs per sample and merge with JASMINE
-    // min_support=2 (3 callers) or 1 (2 callers when skip_gridss=true)
+    // Scramble MEI caller: runs on filtered BAM in parallel with other callers
+    if (!params.skip_scramble) {
+        SCRAMBLE_CALL(ch_filtered_bam, ch_fasta, ch_fai)
+        ch_scramble_vcf = SCRAMBLE_CALL.out.vcf
+    } else {
+        SCRAMBLE_STUB(ch_filtered_bam)
+        ch_scramble_vcf = SCRAMBLE_STUB.out.vcf
+    }
+
+    // Collect VCFs per sample and merge with JASMINE (min_support=1)
+    // File order: [manta, delly, gridss, scramble] — determines SUPP_VEC bit positions
     ch_to_merge = MANTA_CALL.out.vcf
         .join(DELLY_MERGE.out.vcf)
         .join(ch_gridss_vcf)
-        .map { meta, manta_vcf, delly_vcf, gridss_vcf ->
-            [meta, [manta_vcf, delly_vcf, gridss_vcf]]
+        .join(ch_scramble_vcf)
+        .map { meta, manta_vcf, delly_vcf, gridss_vcf, scramble_vcf ->
+            [meta, [manta_vcf, delly_vcf, gridss_vcf, scramble_vcf]]
         }
 
     JASMINE_MERGE(ch_to_merge, ch_fasta, ch_fai)
