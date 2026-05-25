@@ -5,7 +5,8 @@ include { MULTIQC       } from '../modules/multiqc/report'
 process BUILD_HTML_REPORT {
     tag "${meta.id}"
     label 'process_single'
-    container 'svcaller/utils:1.0'
+    container 'svcaller/utils:1.1'
+    publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.report.html"
 
     input:
     tuple val(meta), path(sv_tsv), path(cnv_bed), path(smn_tsv),
@@ -87,38 +88,32 @@ workflow REPORT {
         ch_sizebin = TRUVARI_BENCH.out.sizebin
     }
 
+    // Mandatory channels (always populated) joined first with inner join — safe regardless of timing.
+    // Optional channels (bench/sizebin, only with --giab_truth) joined last with remainder: true.
+    // filter { it[1] != null } drops spurious right-side remainders caused by timing races.
     ch_report_in = ch_sv_tsv
         .join(ch_cnv_bed)
         .join(ch_smn_tsv)
         .join(CIRCOS_PLOT.out.svg)
-        .join(ch_bench.ifEmpty { [[:], file("NO_FILE")] }, remainder: true)
-        .map { meta, sv, cnv, smn, svg, bench ->
-            [meta, sv, cnv, smn, svg, bench ?: file("NO_FILE")]
+        .join(ch_coverage)
+        .join(ch_metrics)
+        .join(ch_str_vcf)
+        .join(ch_flagstat)
+        .join(ch_insert_size)
+        // tuple: [meta, sv, cnv, smn, svg, cov, met, str, flagstat, ins]
+        .join(ch_bench, remainder: true)
+        .filter   { it[1] != null }
+        .map { meta, sv, cnv, smn, svg, cov, met, str, flagstat, ins, bench ->
+            [meta, sv, cnv, smn, svg, bench ?: file("NO_FILE"), cov, met, str, flagstat, ins]
         }
-        .join(ch_sizebin.ifEmpty { [[:], file("NO_FILE")] }, remainder: true)
-        .map { meta, sv, cnv, smn, svg, bench, sizebin ->
-            [meta, sv, cnv, smn, svg, bench, sizebin ?: file("NO_FILE")]
+        // tuple: [meta, sv, cnv, smn, svg, bench, cov, met, str, flagstat, ins]
+        .join(ch_sizebin, remainder: true)
+        .filter   { it[1] != null }
+        .map { meta, sv, cnv, smn, svg, bench, cov, met, str, flagstat, ins, sizebin ->
+            [meta, sv, cnv, smn, svg, bench, sizebin ?: file("NO_FILE"), cov, met, str, flagstat, ins]
         }
-        .join(ch_coverage.ifEmpty { [[:], file("NO_FILE")] }, remainder: true)
-        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov ->
-            [meta, sv, cnv, smn, svg, bench, sizebin, cov ?: file("NO_FILE")]
-        }
-        .join(ch_metrics.ifEmpty { [[:], file("NO_FILE")] }, remainder: true)
-        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met ->
-            [meta, sv, cnv, smn, svg, bench, sizebin, cov, met ?: file("NO_FILE")]
-        }
-        .join(ch_str_vcf.ifEmpty { [[:], file("NO_STR")] }, remainder: true)
-        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str ->
-            [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str ?: file("NO_STR")]
-        }
-        .join(ch_flagstat.ifEmpty { [[:], file("NO_FILE")] }, remainder: true)
-        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat ->
-            [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat ?: file("NO_FILE")]
-        }
-        .join(ch_insert_size.ifEmpty { [[:], file("NO_FILE")] }, remainder: true)
-        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, insert_size ->
-            [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, insert_size ?: file("NO_FILE")]
-        }
+        // final: [meta, sv_tsv, cnv_bed, smn_tsv, circos_svg, benchmark_json, sizebin_json,
+        //                coverage_summary, picard_metrics, str_vcf, flagstat_txt, insert_size_metrics]
 
     BUILD_HTML_REPORT(ch_report_in)
 

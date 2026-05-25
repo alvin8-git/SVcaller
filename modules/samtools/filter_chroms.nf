@@ -11,10 +11,11 @@ process SAMTOOLS_FILTER_CHROMS {
 
     script:
     """
-    # Reads restricted to canonical chromosomes (no alt/decoy noise for CNV/SV calling).
-    # ALL @SQ lines kept in FAI order so the sequence dictionary matches the reference
-    # exactly — GRIDSS/Picard require dictionary size parity with the reference.
-    # Re-sort only when BAM chromosome order differs from FAI order (saves ~3h when already matching).
+    # Reads restricted to canonical chromosomes; mates on alt/decoy contigs are dropped.
+    # ALL @SQ lines kept in FAI order — GRIDSS/Picard require dictionary size parity with the reference.
+    # Dropping reads with non-canonical RNEXT prevents Manta mate_tid=-1 FATAL_ERROR (clearing to "*"
+    # also triggers the crash; skipping the read entirely is the only safe option).
+    # Re-sort only when BAM canonical chr order differs from FAI order (saves ~3h when already matching).
     CANONICAL_ORDERED=\$(awk 'BEGIN{n=split("chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chrX chrY chrM",c); for(i=1;i<=n;i++) can[c[i]]=1} \$1 in can {print \$1}' ${fai} | tr '\\n' ' ')
 
     # Detect whether BAM canonical chr order already matches FAI order
@@ -50,8 +51,6 @@ process SAMTOOLS_FILTER_CHROMS {
                      for (i=1; i<=total; i++) if (i in sq) print sq[i]
                      for (i=1; i<=on; i++) print other[i]
                  }
-                 if (\$7 != "=" && \$7 != "*" && !(\$7 in can)) { \$7="*"; \$8=0 }
-                 if (\$7 == "*" && \$8+0 != 0) { \$8=0 }
                  for (fi=12; fi<=NF; fi++) {
                      if (\$fi ~ /^SA:Z:/) {
                          n_sa=split(substr(\$fi,6),saparts,";")
@@ -66,6 +65,10 @@ process SAMTOOLS_FILTER_CHROMS {
                          break
                      }
                  }
+                 # Drop reads whose mate is on a non-canonical chromosome. Manta crashes with
+                 # FATAL_ERROR when mate_tid=-1; clearing RNEXT to "*" also triggers the crash.
+                 if (\$7 != "=" && \$7 != "*" && !(\$7 in can)) next
+                 if (\$7 == "*" && \$8+0 != 0) \$8=0
                  print
              }' ${fai} - | \\
         samtools view -@ ${task.cpus} -b

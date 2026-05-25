@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir \
 COPY bin/ /usr/local/bin/
 RUN chmod +x /usr/local/bin/*.py
 
+COPY assets/ /usr/local/assets/
+
 LABEL maintainer="svcaller" \
-      version="1.0" \
+      version="1.1" \
       description="SVcaller utility scripts (html_report, circos_plot, cnv_consensus, smn_report)"

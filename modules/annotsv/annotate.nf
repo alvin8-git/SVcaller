@@ -23,8 +23,8 @@ process ANNOTSV {
     """
     AnnotSV \\
         -SVinputFile ${sv_vcf} \\
-        -annotationsDir ${annotsv_db} \\
-        -genome GRCh38 \\
+        -annotationsDir \$(dirname ${annotsv_db}) \\
+        -genomeBuild GRCh38 \\
         -outputFile ${meta.id}.annotated \\
         -SVminSize 50 \\
         -tx ENSEMBL \\
@@ -43,6 +43,7 @@ process GNOMAD_SV_FILTER {
     tag "${meta.id}"
     label 'process_single'
     container 'quay.io/biocontainers/annotsv:3.4.6--py313hdfd78af_0'
+    publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.filtered.tsv"
 
     input:
     tuple val(meta), path(annotated_tsv)

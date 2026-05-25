@@ -36,9 +36,15 @@ workflow PREPROCESS {
     // MarkDup only on FASTQ-derived BAMs; pre-supplied BAMs are already dup-marked
     PICARD_MARKDUP(SAMTOOLS_SORT.out.bam.join(SAMTOOLS_SORT.out.bai))
 
+    // Tag each BAM so sv_calling.nf can skip FILTER_CHROMS for FASTQ-derived BAMs.
+    // FASTQ-derived BAMs are aligned to hg38.canonical.fa → no alt contigs → filter not needed.
+    // Pre-supplied BAMs may be aligned to full hg38 (with alt contigs) → filter needed.
     ch_final_bam = PICARD_MARKDUP.out.bam
         .join(PICARD_MARKDUP.out.bai)
-        .mix(ch_bam_in)
+        .map { meta, bam, bai -> [[*:meta, needs_chr_filter: false], bam, bai] }
+        .mix(
+            ch_bam_in.map { meta, bam, bai -> [[*:meta, needs_chr_filter: true], bam, bai] }
+        )
 
     // Coverage QC — halts pipeline if < min_depth
     MOSDEPTH(ch_final_bam, min_depth)

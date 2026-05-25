@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build per-sample SVcaller HTML report using Jinja2."""
-import argparse, csv, json, re
+import argparse, csv, gzip, json, re
 from datetime import date
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
@@ -153,7 +153,8 @@ def parse_str_loci(str_vcf_path: str) -> list:
     loci = []
     try:
         header_fields: list = []
-        with open(str_vcf_path) as fh:
+        opener = gzip.open if str_vcf_path.endswith(".gz") else open
+        with opener(str_vcf_path, "rt") as fh:
             for line in fh:
                 if line.startswith("##"):
                     continue
@@ -192,14 +193,14 @@ def parse_benchmark(json_path: str) -> list:
             data = json.load(fh)
         if "precision" in data:
             return [{"svtype": "Overall",
-                     "precision": data.get("precision", 0),
-                     "recall":    data.get("recall",    0),
-                     "f1":        data.get("f1",        0)}]
+                     "precision": data.get("precision") or 0,
+                     "recall":    data.get("recall")    or 0,
+                     "f1":        data.get("f1")        or 0}]
         # Fallback: per-svtype format
         return [{"svtype": k,
-                 "precision": v.get("precision", 0),
-                 "recall": v.get("recall", 0),
-                 "f1": v.get("f1", 0)}
+                 "precision": v.get("precision") or 0,
+                 "recall": v.get("recall") or 0,
+                 "f1": v.get("f1") or 0}
                 for k, v in data.items() if isinstance(v, dict)]
     except (FileNotFoundError, json.JSONDecodeError):
         return []
@@ -211,9 +212,9 @@ def parse_benchmark_sizebin(json_path: str) -> list:
         with open(json_path) as fh:
             data = json.load(fh)
         return [{"bin": k,
-                 "precision": v.get("precision", 0),
-                 "recall":    v.get("recall",    0),
-                 "f1":        v.get("f1",        0)}
+                 "precision": v.get("precision") or 0,
+                 "recall":    v.get("recall")    or 0,
+                 "f1":        v.get("f1")        or 0}
                 for k, v in data.items()]
     except (FileNotFoundError, json.JSONDecodeError):
         return []

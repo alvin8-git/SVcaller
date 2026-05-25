@@ -20,9 +20,17 @@ workflow SV_CALLING {
     ch_eh_catalog // path
 
     main:
-    // Filter BAM to reference chromosomes (Manta, DELLY, GRIDSS all require BAM/ref parity)
-    SAMTOOLS_FILTER_CHROMS(ch_bam, ch_fai)
+    // FILTER_CHROMS: skip for FASTQ-derived BAMs (aligned to hg38.canonical.fa — no alt contigs).
+    // Pre-supplied BAMs may contain alt-contig reads and always go through filtering.
+    ch_bam.branch {
+        needs_filter: it[0].get('needs_chr_filter', true)
+        canonical:    true
+    }.set { ch_bam_branched }
+
+    SAMTOOLS_FILTER_CHROMS(ch_bam_branched.needs_filter, ch_fai)
+
     ch_filtered_bam = SAMTOOLS_FILTER_CHROMS.out.bam
+        .mix(ch_bam_branched.canonical)
 
     // DELLY: fan out 5 SV types in parallel; collect groupTuple(size:5) → merge
     ch_delly_input = ch_filtered_bam.combine(Channel.from(['DEL', 'INS', 'INV', 'DUP', 'BND']))
