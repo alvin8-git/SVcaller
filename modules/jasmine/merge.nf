@@ -57,8 +57,19 @@ process JASMINE_MERGE {
 
     # Remove GRIDSS-only TRA (SUPP_VEC=001 = 3rd file/GRIDSS only).
     # These are 100K+ GRIDSS BND noise records with no Manta/Delly support.
-    awk '/^#/{print;next} \$8~/SVTYPE=TRA/ && \$8~/SUPP_VEC=001/{next} {print}' \\
-        ${meta.id}.sv_merged.vcf > ${meta.id}.sv_merged_filt.vcf
+    # Also strip FORMAT to GT-only: at min_support=1, Delly-only records enter
+    # the merged VCF with Delly-specific FORMAT tags (GL, RCL, RC...) that are
+    # not declared in Manta's header, crashing bcftools/Truvari.
+    awk 'BEGIN{OFS="\\t"}
+        /^##FORMAT/{if(/ID=GT,/)print; next}
+        /^#/{print;next}
+        \$8~/SVTYPE=TRA/ && \$8~/SUPP_VEC=001/{next}
+        {
+            n=split(\$9,f,":"); gt_i=1
+            for(i=1;i<=n;i++){if(f[i]=="GT"){gt_i=i;break}}
+            split(\$10,s,":"); \$9="GT"; \$10=s[gt_i]
+            print
+        }' ${meta.id}.sv_merged.vcf > ${meta.id}.sv_merged_filt.vcf
     mv ${meta.id}.sv_merged_filt.vcf ${meta.id}.sv_merged.vcf
 
     # Jasmine output is not coordinate-sorted; tabix requires contiguous chromosome blocks
