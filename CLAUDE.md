@@ -12,9 +12,10 @@ SVcaller is a Nextflow DSL2 pipeline for human WGS structural variant (SV), copy
 
 ```bash
 # SV/CNV validation — HG002 only; Truvari benchmark against GIAB SV truth
+# Use hg38.canonical.fa (chr1-22+X+Y+M only) for FASTQ inputs — skips 25-min FILTER_CHROMS step
 nextflow run main.nf -profile docker \
   --input validation/validation_samplesheet.csv \
-  --ref_fasta /data/alvin/ref/GRCh38/hg38.fa \
+  --ref_fasta /data/alvin/ref/GRCh38/hg38.canonical.fa \
   --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
   --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
   --giab_truth /data/alvin/ref/GIAB/GRCh38_HG002-T2TQ100-V1.0_stvar.vcf.gz \
@@ -51,6 +52,8 @@ tail -20 /data/alvin/tmp/main_pipeline_run34.log
 ```
 
 **PON location:** `/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5` (446 MB, built from HG001-HG007)
+
+**Canonical reference:** `/data/alvin/ref/GRCh38/hg38.canonical.fa` (chr1-22+X+Y+M, 1.49 GB). Use for FASTQ inputs so aligned BAMs contain only canonical chromosomes. The pipeline automatically skips FILTER_CHROMS for FASTQ-derived BAMs (saves ~25 min/sample). BWA-MEM2 index at same path prefix. BAM inputs always run FILTER_CHROMS regardless of reference used.
 
 ## Python Tests
 
