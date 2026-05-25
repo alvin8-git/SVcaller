@@ -12,8 +12,13 @@ process DELLY_MERGE {
 
     script:
     """
-    # Delly outputs BCF (BGZF binary) even with .vcf extension — bcftools concat handles
-    # both BCF and VCF uniformly; grep-based text merge silently corrupts BCF input.
+    # Delly outputs BCF (BGZF binary) even with .vcf extension; bcftools reads by magic.
+    # --allow-overlaps requires index files which are not staged; index each file first.
+    for vcf in ${meta.id}.delly.DEL.vcf ${meta.id}.delly.INS.vcf \
+                ${meta.id}.delly.INV.vcf ${meta.id}.delly.DUP.vcf \
+                ${meta.id}.delly.BND.vcf; do
+        bcftools index "\$vcf"
+    done
     bcftools concat -a --allow-overlaps \\
         ${meta.id}.delly.DEL.vcf \\
         ${meta.id}.delly.INS.vcf \\
