@@ -51,9 +51,15 @@ process JASMINE_MERGE {
         file_list=vcf_list.txt \\
         out_file=${meta.id}.sv_merged.vcf \\
         genome_file=${fasta} \\
-        min_support=${params.skip_gridss ? 1 : 2} \\
+        min_support=1 \\
         --normalize_type \\
         --ignore_strand
+
+    # Remove GRIDSS-only TRA (SUPP_VEC=001 = 3rd file/GRIDSS only).
+    # These are 100K+ GRIDSS BND noise records with no Manta/Delly support.
+    awk '/^#/{print;next} \$8~/SVTYPE=TRA/ && \$8~/SUPP_VEC=001/{next} {print}' \\
+        ${meta.id}.sv_merged.vcf > ${meta.id}.sv_merged_filt.vcf
+    mv ${meta.id}.sv_merged_filt.vcf ${meta.id}.sv_merged.vcf
 
     # Jasmine output is not coordinate-sorted; tabix requires contiguous chromosome blocks
     grep '^#' ${meta.id}.sv_merged.vcf > ${meta.id}.sv_merged.sorted.vcf
