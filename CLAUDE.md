@@ -17,7 +17,7 @@ nextflow run main.nf -profile docker \
   --ref_fasta /data/alvin/ref/GRCh38/hg38.fa \
   --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
   --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
-  --giab_truth /data/alvin/ref/GIAB/HG002_SV_v0.6.vcf.gz \
+  --giab_truth /data/alvin/ref/GIAB/GRCh38_HG002-T2TQ100-V1.0_stvar.vcf.gz \
   --eh_catalog assets/eh_catalog.json \
   --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
   --outdir /data/alvin/SVcaller/results \
@@ -107,6 +107,10 @@ main.nf                          # Entry: parse samplesheet, set up channels, ca
 - **BWA-MEM2 index path**: The bwt_index is staged as a directory in the work dir. BWA-MEM2 must be called with `${bwt_index}/${fasta}` (not just `${fasta}`) so it finds index files inside the staged directory rather than the work dir root.
 - **samtools not in bwa-mem2 container**: `quay.io/biocontainers/bwa-mem2:2.2.1--he70b90d_8` does not include samtools. Sorting is done in a separate `SAMTOOLS_SORT` process using `quay.io/biocontainers/samtools:1.23.1--ha83d96e_0`.
 - **annotsv not in conda env**: runs via Docker (`quay.io/biocontainers/annotsv:3.4.6--py313hdfd78af_0`) or gracefully skipped (emits empty TSV header) when `--annotsv_db` not provided.
+- **AnnotSV `-annotationsDir` path**: pass `\$(dirname ${annotsv_db})` (parent of `Annotations_Human`), not `${annotsv_db}` itself — AnnotSV appends `Annotations_Human` internally.
+- **Delly BCF format**: Delly 1.2.6 outputs BCF binary even with `.vcf` extension. `DELLY_MERGE` uses `bcftools concat | bcftools sort` in `broadinstitute/gatk:4.5.0.0` container (has bcftools 1.13).
+- **Jasmine unsorted output**: Jasmine does not sort its merged VCF. `JASMINE_MERGE` runs `sort -k1,1 -k2,2n` after Jasmine before `bgzip | tabix`.
+- **svcaller/utils:1.1**: rebuilt from `Dockerfile.utils` to add `COPY assets/ /usr/local/assets/` (report template) and fix STR VCF gzip reading and null Truvari precision/recall values.
 - **samtools flagstat not wired**: `mapped_pct` shows "N/A" in HTML QC section; mosdepth gives depth and Picard gives dup rate.
 
 ## Python Scripts (`bin/`)
@@ -150,7 +154,7 @@ validation/giab_samplesheet.csv
 | `--giab_truth` | null | GIAB truth VCF.gz (enables Truvari in REPORT) |
 | `--min_depth` | 30 | Mosdepth coverage threshold |
 | `--outdir` | results | Output directory |
-| `--utils_container` | `svcaller/utils:1.0` | Container for Python bin/ scripts |
+| `--utils_container` | `svcaller/utils:1.1` | Container for Python bin/ scripts |
 
 # context-mode — MANDATORY routing rules
 
