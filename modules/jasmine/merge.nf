@@ -67,6 +67,7 @@ process JASMINE_MERGE {
         /^#/{print;next}
         \$1~/^chr([0-9]+|X|Y|M)\$/{
             if(\$7 != "PASS" && \$7 != ".") next
+            if(\$6+0 < 70) next
             svlen=300
             if(\$5 ~ /L1/) svlen=6000
             else if(\$5 ~ /SVA/) svlen=1500
