@@ -68,8 +68,19 @@ def parse_str_vcf(path: Optional[str]) -> List[dict]:
     return loci
 
 
-def parse_sv_vcf_links(path: str) -> List[dict]:
-    links = []
+def parse_sv_vcf_links(path: str,
+                       min_svlen_intra: int = 50_000,
+                       max_links: int = 100) -> List[dict]:
+    """Return SV links filtered for clinical Circos display.
+
+    Filtering rationale (ACMG/ClinGen germline SV practice):
+    - BND/TRA: all inter-chromosomal rearrangements (always significant if confirmed)
+    - DEL/DUP/INV: >= min_svlen_intra (default 50 kb; smaller are typically benign)
+    - INS/MEI: excluded (< 1 kb insertions are unreadable in Circos; table is better)
+    - Multi-caller only (SUPP ones >= 2) to reduce false-positive visual noise
+    - Capped at max_links total, prioritised by SVLEN descending
+    """
+    all_links = []
     opener = gzip.open if str(path).endswith(".gz") else open
     with opener(path, "rt") as fh:
         for line in fh:
@@ -83,23 +94,53 @@ def parse_sv_vcf_links(path: str) -> List[dict]:
             if not svtype_m:
                 continue
             svtype = svtype_m.group(1).upper()
+
+            # Skip MEI insertions — too small for meaningful Circos display
+            if svtype == "INS":
+                continue
+
+            # Multi-caller filter: require SUPP_VEC with >= 2 supporting callers
+            supp_m = re.search(r"SUPP_VEC=([01]+)", info)
+            if supp_m:
+                ones = supp_m.group(1).count("1")
+                if ones < 2:
+                    continue
+
+            svlen_m = re.search(r"SVLEN=(-?\d+)", info)
+            svlen = abs(int(svlen_m.group(1))) if svlen_m else 0
             end_m = re.search(r"END=(\d+)", info)
-            if svtype == "BND":
+
+            if svtype in ("BND", "TRA"):
                 alt = parts[4]
                 mate_m = re.search(r"[\[\]]([^:[\]]+):(\d+)[\[\]]", alt)
                 if not mate_m:
                     continue
                 chrom2, pos2 = mate_m.group(1), int(mate_m.group(2))
+                if chrom2 == chrom1:
+                    continue  # intra-chromosomal BND: treat as intra, apply size filter
             else:
+                if svlen < min_svlen_intra:
+                    continue
                 chrom2 = chrom1
-                pos2 = int(end_m.group(1)) if end_m else pos1 + 1000
+                pos2 = int(end_m.group(1)) if end_m else pos1 + svlen
+
             if chrom1 not in CHROM_ORDER or chrom2 not in CHROM_ORDER:
                 continue
-            links.append({
+            all_links.append({
                 "chrom1": chrom1, "pos1": pos1,
                 "chrom2": chrom2, "pos2": pos2,
-                "svtype": svtype, "colour": sv_colour(svtype),
+                "svtype": svtype, "svlen": svlen,
+                "colour": sv_colour(svtype),
             })
+
+    # Prioritise by SVLEN descending; BND/TRA (svlen=0) get lowest priority by size
+    # but keep all BND/TRA up to the cap
+    bnd = [l for l in all_links if l["svtype"] in ("BND", "TRA")]
+    intra = sorted([l for l in all_links if l["svtype"] not in ("BND", "TRA")],
+                   key=lambda x: x["svlen"], reverse=True)
+    # Fill cap: BND first (up to half), then largest intra-chromosomal SVs
+    max_bnd = min(len(bnd), max_links // 2)
+    links = bnd[:max_bnd] + intra[:max_links - max_bnd]
     return links
 
 
@@ -136,8 +177,9 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
 
     chrom_sizes = load_chrom_sizes(cytobands)
     gains, losses = parse_cnv_bed(cnv_bed)
-    links = parse_sv_vcf_links(sv_vcf)
+    links = parse_sv_vcf_links(sv_vcf)  # filtered: BND/TRA + DEL/DUP/INV>=50kb, multi-caller, cap 100
     str_loci = parse_str_vcf(str_vcf)
+    print(f"Circos: {len(links)} SV links selected for display")
 
     circos = Circos(chrom_sizes, space=1.5)
     circos.text(f"SVcaller\n{sample_id}", size=10, r=15)
@@ -195,7 +237,7 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
 
     fig = circos.plotfig(figsize=(12, 12))
     fig.savefig(out_svg)
-    fig.savefig(out_png, dpi=1200)
+    fig.savefig(out_png, dpi=150)  # 150 dpi sufficient for HTML; 1200 dpi produced 60 MB PNG
     plt.close(fig)
     print(f"Circos plot saved: {out_svg}, {out_png}")
 
