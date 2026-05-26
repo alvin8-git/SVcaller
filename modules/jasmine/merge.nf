@@ -53,19 +53,25 @@ process JASMINE_MERGE {
             }
             \$8=(new_info=="")?".":new_info; print
         }' > ${vcfs[2].baseName}
-    # Scramble MEI: canonical-chromosome filter; strip MEI-specific INFO fields
+    # Scramble MEI: canonical-chromosome filter; add FORMAT/GT (Scramble VCF has none);
+    # add SVTYPE=INS and canonical SVLEN (SCRAMble.R declares these in header but omits
+    # them from data lines). Jasmine needs both to merge INS records correctly.
     zcat ${vcfs[3]} | awk '
-        BEGIN{OFS="\\t"; keep="^(SVTYPE|SVLEN|END|CIPOS|CIEND)\$"}
+        BEGIN{OFS="\\t"}
+        /^##FORMAT/{next}
+        /^#CHROM/{
+            print "##FORMAT=<ID=GT,Number=1,Type=String,Description=\\"Genotype\\">"
+            print \$0 "\\tFORMAT\\t${meta.id}"
+            next
+        }
         /^#/{print;next}
         \$1~/^chr([0-9]+|X|Y|M)\$/{
             if(\$7 != "PASS" && \$7 != ".") next
-            n=split(\$8,info,";"); new_info=""
-            for(i=1;i<=n;i++){
-                key=info[i]; if(index(key,"=")) key=substr(key,1,index(key,"=")-1)
-                if(key ~ keep)
-                    new_info=(new_info=="")?info[i]:new_info";"info[i]
-            }
-            \$8=(new_info=="")?".":new_info; print
+            svlen=300
+            if(\$5 ~ /L1/) svlen=6000
+            else if(\$5 ~ /SVA/) svlen=1500
+            \$8="SVTYPE=INS;SVLEN=" svlen
+            print \$0 "\\tGT\\t0/1"
         }' > ${vcfs[3].baseName}
 
     # Build vcf_list.txt. If Scramble produced no calls (stub or empty sample),
