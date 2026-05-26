@@ -17,11 +17,12 @@ process SCRAMBLE_CALL {
     # Step 1: find split-read clusters
     cluster_identifier ${bam} > clusters.txt
 
-    # Step 2: call MEI — scramble.sh hardcodes --install-dir and --mei-refs internally
+    # Step 2: call MEI — scramble.sh hardcodes --install-dir and --mei-refs internally.
+    # SCRAMble.R does setwd(INSTALL.DIR) before reading the cluster file, so absolute path required.
     scramble.sh \\
-        --cluster-file clusters.txt \\
-        --ref ${fasta} \\
-        --out-name ${meta.id}.scramble \\
+        --cluster-file \$PWD/clusters.txt \\
+        --ref \$PWD/${fasta} \\
+        --out-name \$PWD/${meta.id}.scramble \\
         --eval-meis || true
 
     if [ -f "${meta.id}.scramble.vcf" ] && grep -qv '^#' "${meta.id}.scramble.vcf" 2>/dev/null; then
