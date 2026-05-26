@@ -21,13 +21,12 @@ process SCRAMBLE_CALL {
     scramble.sh \\
         --cluster-file clusters.txt \\
         --ref ${fasta} \\
-        --sample ${meta.id} \\
         --out-name ${meta.id}.scramble \\
         --eval-meis || true
 
-    if [ -f "${meta.id}.scramble.MEI.vcf" ] && grep -qv '^#' "${meta.id}.scramble.MEI.vcf" 2>/dev/null; then
-        grep '^#' ${meta.id}.scramble.MEI.vcf > ${meta.id}.scramble.sorted.vcf
-        grep -v '^#' ${meta.id}.scramble.MEI.vcf | sort -k1,1 -k2,2n >> ${meta.id}.scramble.sorted.vcf
+    if [ -f "${meta.id}.scramble.vcf" ] && grep -qv '^#' "${meta.id}.scramble.vcf" 2>/dev/null; then
+        grep '^#' ${meta.id}.scramble.vcf > ${meta.id}.scramble.sorted.vcf
+        grep -v '^#' ${meta.id}.scramble.vcf | sort -k1,1 -k2,2n >> ${meta.id}.scramble.sorted.vcf
         bgzip ${meta.id}.scramble.sorted.vcf
         mv ${meta.id}.scramble.sorted.vcf.gz ${meta.id}.scramble.vcf.gz
     else
