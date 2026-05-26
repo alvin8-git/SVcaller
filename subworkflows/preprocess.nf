@@ -62,6 +62,7 @@ workflow PREPROCESS {
     emit:
     bam           = ch_final_bam
     coverage      = MOSDEPTH.out.summary
+    regions_bed   = MOSDEPTH.out.regions_bed
     metrics       = ch_markdup_metrics
     insert_size   = PICARD_INSERT_SIZE.out.metrics
     flagstat      = SAMTOOLS_FLAGSTAT.out.flagstat

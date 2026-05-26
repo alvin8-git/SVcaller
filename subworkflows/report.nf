@@ -67,13 +67,19 @@ workflow REPORT {
     ch_metrics       // [ meta, picard_metrics ]   for HTML section 2
     ch_flagstat      // [ meta, flagstat_txt ]      for HTML section 2
     ch_insert_size   // [ meta, insert_size_metrics ] for HTML section 2
+    ch_depth_bed     // [ meta, regions.bed.gz ]    mosdepth 50kb windows for Circos ring A
+    ch_annotsv_tsv   // [ meta, annotated.tsv ]     raw AnnotSV output for Circos rings B/C
 
     main:
     ch_circos_in = ch_sv_vcf
         .join(ch_cnv_bed)
         .join(ch_str_vcf, remainder: true)
         .filter { it[1] != null }   // drop tuples fired before sv_vcf is ready (str_vcf caches before Jasmine)
-        .map { meta, sv, cnv, str -> [meta, sv, cnv, str ?: file("NO_STR")] }
+        .join(ch_depth_bed, remainder: true)
+        .join(ch_annotsv_tsv, remainder: true)
+        .map { meta, sv, cnv, str, depth, annotsv ->
+            [meta, sv, cnv, str ?: file("NO_STR"), depth ?: file("NO_FILE"), annotsv ?: file("NO_FILE")]
+        }
     CIRCOS_PLOT(ch_circos_in, ch_cytobands)
 
     MULTIQC(ch_multiqc_files.ifEmpty([]))

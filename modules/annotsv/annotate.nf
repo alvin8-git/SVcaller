@@ -25,12 +25,16 @@ process ANNOTSV {
         -SVinputFile ${sv_vcf} \\
         -annotationsDir \$(dirname ${annotsv_db}) \\
         -genomeBuild GRCh38 \\
-        -outputFile ${meta.id}.annotated \\
+        -outputFile \$PWD/${meta.id}.annotated \\
         -SVminSize 50 \\
         -tx ENSEMBL \\
         -annotationMode both
 
-    [ -f "${meta.id}.annotated.tsv" ] || mv ${meta.id}.annotated.tsv.gz ${meta.id}.annotated.tsv 2>/dev/null || touch ${meta.id}.annotated.tsv
+    # AnnotSV may write to a date-stamped subdir even with an absolute -outputFile path
+    if [ ! -s "${meta.id}.annotated.tsv" ]; then
+        f=\$(find . -maxdepth 2 -name "${meta.id}.annotated.tsv" | head -1)
+        [ -n "\$f" ] && mv "\$f" . || touch ${meta.id}.annotated.tsv
+    fi
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

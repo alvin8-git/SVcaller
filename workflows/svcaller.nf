@@ -69,6 +69,8 @@ workflow SVCALLER {
         PREPROCESS.out.metrics,
         PREPROCESS.out.flagstat,
         PREPROCESS.out.insert_size,
+        PREPROCESS.out.regions_bed,
+        ANNOTATE.out.annotated_tsv,
     )
 
     emit:

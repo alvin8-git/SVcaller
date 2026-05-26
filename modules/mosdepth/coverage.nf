@@ -7,7 +7,8 @@ process MOSDEPTH {
     val   min_depth
 
     output:
-    tuple val(meta), path("${meta.id}.mosdepth.summary.txt"), emit: summary
+    tuple val(meta), path("${meta.id}.mosdepth.summary.txt"),  emit: summary
+    tuple val(meta), path("${meta.id}.regions.bed.gz"),        emit: regions_bed
     path "versions.yml",                                        emit: versions
 
     script:
@@ -15,6 +16,7 @@ process MOSDEPTH {
     mosdepth \\
         --threads ${task.cpus} \\
         --quantize 0:5:30:500: \\
+        --by 50000 \\
         ${meta.id} \\
         ${bam}
 

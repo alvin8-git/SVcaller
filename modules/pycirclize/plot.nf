@@ -5,7 +5,7 @@ process CIRCOS_PLOT {
     publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.circos.png"
 
     input:
-    tuple val(meta), path(sv_vcf), path(cnv_bed), path(str_vcf)
+    tuple val(meta), path(sv_vcf), path(cnv_bed), path(str_vcf), path(depth_bed), path(annotsv_tsv)
     path cytobands
 
     output:
@@ -13,8 +13,10 @@ process CIRCOS_PLOT {
     tuple val(meta), path("${meta.id}.circos.png"), emit: png
 
     script:
-    def str_arg = str_vcf.name != "NO_STR" ? "--str-vcf ${str_vcf}" : ""
-    // v2: filtered links (BND/TRA + DEL/DUP/INV>=50kb, multi-caller, cap 100); 150dpi PNG
+    def str_arg     = str_vcf.name    != "NO_STR"  ? "--str-vcf    ${str_vcf}"    : ""
+    def depth_arg   = depth_bed.name  != "NO_FILE" ? "--depth-bed  ${depth_bed}"  : ""
+    def annotsv_arg = annotsv_tsv.name != "NO_FILE" ? "--annotsv-tsv ${annotsv_tsv}" : ""
+    // v3: depth ring (50kb windows), gene loci ring, ACMG class ring; revised layout
     """
     export PATH=${projectDir}/bin:\$PATH
     circos_plot.py \\
@@ -23,6 +25,8 @@ process CIRCOS_PLOT {
         --cytobands ${cytobands} \\
         --sample    ${meta.id} \\
         ${str_arg} \\
+        ${depth_arg} \\
+        ${annotsv_arg} \\
         --out       ${meta.id}.circos.svg
     """
 }

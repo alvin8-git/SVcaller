@@ -11,5 +11,6 @@ workflow ANNOTATE {
     GNOMAD_SV_FILTER(ANNOTSV.out.tsv, 0.01)
 
     emit:
-    tsv = GNOMAD_SV_FILTER.out.tsv
+    tsv           = GNOMAD_SV_FILTER.out.tsv
+    annotated_tsv = ANNOTSV.out.tsv
 }
