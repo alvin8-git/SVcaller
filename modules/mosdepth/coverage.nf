@@ -20,9 +20,10 @@ process MOSDEPTH {
         ${meta.id} \\
         ${bam}
 
-    # Fail pipeline if mean depth below threshold
-    MEAN_DEPTH=\$(grep "^total" ${meta.id}.mosdepth.summary.txt | awk '{print \$4}')
-    if awk "BEGIN{exit (\$MEAN_DEPTH >= ${min_depth}) ? 0 : 1}"; then
+    # Fail pipeline if mean depth below threshold.
+    # awk /^total/{exit} stops at first match — avoids multi-line MEAN_DEPTH when --by is used.
+    MEAN_DEPTH=\$(awk '/^total/{print \$4; exit}' ${meta.id}.mosdepth.summary.txt)
+    if awk -v d="\$MEAN_DEPTH" -v m="${min_depth}" 'BEGIN{exit (d >= m) ? 0 : 1}'; then
         echo "PASS: mean depth \$MEAN_DEPTH >= ${min_depth}x"
     else
         echo "ERROR: mean depth \$MEAN_DEPTH < ${min_depth}x (required). Aborting." >&2
