@@ -25,8 +25,9 @@ process BUILD_HTML_REPORT {
     def str_arg      = str_vcf.name          != "NO_STR"  ? "--str-vcf   ${str_vcf}"          : ""
     def flagstat_arg     = flagstat_txt.name        != "NO_FILE" ? "--flagstat    ${flagstat_txt}"        : ""
     def insert_size_arg  = insert_size_metrics.name != "NO_FILE" ? "--insert-size ${insert_size_metrics}" : ""
-    // v2: updated Circos (clinical filtering, 150 dpi PNG)
+    // v3: PATH override so host bin/ scripts take precedence over container baked-in versions
     """
+    export PATH=${projectDir}/bin:\$PATH
     smn_report.py \\
         --tsv    ${smn_tsv} \\
         --sample ${meta.id} \\

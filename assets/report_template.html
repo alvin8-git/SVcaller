@@ -44,7 +44,7 @@
     <div class="card-header"><h5>Structural Variant Summary</h5></div>
     <div class="card-body">
       <table class="table table-sm sv-table">
-        <thead><tr><th>Type</th><th>Count (PASS)</th><th>HIGH confidence</th></tr></thead>
+        <thead><tr><th>Type</th><th>Count</th><th>Path/LP (Class 4/5)</th></tr></thead>
         <tbody>
         {% for row in sv_summary %}
           <tr><td>{{ row.svtype }}</td><td>{{ row.total }}</td><td>{{ row.high }}</td></tr>
@@ -92,19 +92,20 @@
 
   <!-- Top Annotated SVs -->
   <div class="card section-card">
-    <div class="card-header"><h5>Top Annotated SVs (ACMG Class 4/5 and OMIM genes)</h5></div>
+    <div class="card-header"><h5>Top Annotated SVs (sorted by AnnotSV ranking score)</h5></div>
     <div class="card-body">
       <table class="table table-sm sv-table">
         <thead>
           <tr><th>Chr</th><th>Start</th><th>End</th><th>Type</th>
-              <th>Size</th><th>Gene</th><th>ACMG</th><th>OMIM</th></tr>
+              <th>Size</th><th>Gene</th><th>Score</th><th>Class</th><th>OMIM</th></tr>
         </thead>
         <tbody>
         {% for row in top_svs %}
           <tr>
             <td>{{ row.chrom }}</td><td>{{ row.start }}</td><td>{{ row.end }}</td>
             <td>{{ row.svtype }}</td><td>{{ row.size }}</td>
-            <td>{{ row.gene }}</td><td>{{ row.acmg }}</td><td>{{ row.omim }}</td>
+            <td>{{ row.gene }}</td><td>{{ row.acmg }}</td>
+            <td>{{ row.acmg_class }}</td><td>{{ row.omim }}</td>
           </tr>
         {% endfor %}
         </tbody>

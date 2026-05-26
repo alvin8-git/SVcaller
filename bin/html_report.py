@@ -10,49 +10,65 @@ TEMPLATE_DIR = Path(__file__).parent.parent / "assets"
 
 
 def parse_sv_summary(sv_tsv_path: str) -> list:
+    """Count SVs per type from AnnotSV full-annotation rows (one row per SV).
+
+    Uses Annotation_mode=='full' to avoid double-counting split (per-transcript) rows.
+    'high' field = ACMG class 4 or 5 count (Pathogenic/Likely Pathogenic).
+    """
     counts: dict = {}
-    high: dict = {}
+    pathogenic: dict = {}
     try:
         with open(sv_tsv_path) as fh:
             reader = csv.DictReader(fh, delimiter="\t")
             for row in reader:
+                if row.get("Annotation_mode", "") != "full":
+                    continue
                 st = row.get("SV_type", row.get("SVTYPE", "UNK")).upper()
-                supp = row.get("SUPPORT", row.get("caller_support", ""))
                 counts[st] = counts.get(st, 0) + 1
-                if "BOTH" in supp or "HIGH" in supp:
-                    high[st] = high.get(st, 0) + 1
+                if str(row.get("ACMG_class", "")).strip() in ("4", "5"):
+                    pathogenic[st] = pathogenic.get(st, 0) + 1
     except (FileNotFoundError, KeyError):
         pass
-    return [{"svtype": k, "total": v, "high": high.get(k, 0)}
+    return [{"svtype": k, "total": v, "high": pathogenic.get(k, 0)}
             for k, v in sorted(counts.items())]
 
 
 def parse_top_svs(sv_tsv_path: str, n: int = 20) -> list:
+    """Return top N annotated SVs sorted by AnnotSV ranking score (all scores shown).
+
+    Uses Annotation_mode=='full' rows only. No score threshold — clinician sees all.
+    """
     rows = []
     try:
         with open(sv_tsv_path) as fh:
             reader = csv.DictReader(fh, delimiter="\t")
             for row in reader:
+                if row.get("Annotation_mode", "") != "full":
+                    continue
                 acmg = row.get("AnnotSV_ranking_score", row.get("Ranking", ""))
                 try:
                     acmg_score = float(acmg)
                 except (ValueError, TypeError):
-                    acmg_score = 0
-                if acmg_score >= 0.9:
-                    chrom = row.get("SV_chrom", row.get("Chr", ""))
-                    start = row.get("SV_start", row.get("Start", ""))
-                    end   = row.get("SV_end",   row.get("End",   ""))
-                    size  = abs(int(end) - int(start)) if start and end else 0
-                    rows.append({
-                        "chrom": chrom, "start": start, "end": end,
-                        "svtype": row.get("SV_type", ""),
-                        "size": _fmt_size(size),
-                        "gene": row.get("Gene_name", row.get("Gene", "")),
-                        "acmg": acmg,
-                        "omim": row.get("OMIM_morbid", row.get("OMIM", "")),
-                    })
+                    acmg_score = 0.0
+                chrom = row.get("SV_chrom", row.get("Chr", ""))
+                start = row.get("SV_start", row.get("Start", ""))
+                end   = row.get("SV_end",   row.get("End",   ""))
+                size  = abs(int(end) - int(start)) if start and end else 0
+                rows.append({
+                    "chrom": chrom, "start": start, "end": end,
+                    "svtype": row.get("SV_type", ""),
+                    "size": _fmt_size(size),
+                    "gene": row.get("Gene_name", row.get("Gene", "")),
+                    "acmg": acmg,
+                    "acmg_class": str(row.get("ACMG_class", "")).strip(),
+                    "omim": row.get("OMIM_morbid", row.get("OMIM", "")),
+                    "_score": acmg_score,
+                })
     except (FileNotFoundError, KeyError):
         pass
+    rows.sort(key=lambda x: x["_score"], reverse=True)
+    for r in rows:
+        del r["_score"]
     return rows[:n]
 
 
