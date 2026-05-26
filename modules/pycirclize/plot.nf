@@ -16,6 +16,7 @@ process CIRCOS_PLOT {
     def str_arg = str_vcf.name != "NO_STR" ? "--str-vcf ${str_vcf}" : ""
     // v2: filtered links (BND/TRA + DEL/DUP/INV>=50kb, multi-caller, cap 100); 150dpi PNG
     """
+    export PATH=${projectDir}/bin:\$PATH
     circos_plot.py \\
         --sv-vcf    ${sv_vcf} \\
         --cnv-bed   ${cnv_bed} \\
