@@ -14,7 +14,7 @@ process CIRCOS_PLOT {
 
     script:
     def str_arg = str_vcf.name != "NO_STR" ? "--str-vcf ${str_vcf}" : ""
-    # v2: filtered links (BND/TRA + DEL/DUP/INV>=50kb, multi-caller, cap 100); 150dpi PNG
+    // v2: filtered links (BND/TRA + DEL/DUP/INV>=50kb, multi-caller, cap 100); 150dpi PNG
     """
     circos_plot.py \\
         --sv-vcf    ${sv_vcf} \\
