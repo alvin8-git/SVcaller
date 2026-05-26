@@ -57,7 +57,7 @@ workflow PREPROCESS {
 
     // Stub metrics for pre-supplied BAMs so downstream report join has an entry
     ch_markdup_metrics = PICARD_MARKDUP.out.metrics
-        .mix(ch_bam_in.map { meta, bam, bai -> [meta, file("NO_FILE")] })
+        .mix(ch_bam_in.map { meta, bam, bai -> [[*:meta, needs_chr_filter: true], file("NO_FILE")] })
 
     emit:
     bam           = ch_final_bam
