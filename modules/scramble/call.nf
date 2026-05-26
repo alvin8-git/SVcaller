@@ -17,15 +17,9 @@ process SCRAMBLE_CALL {
     # Step 1: find split-read clusters
     cluster_identifier ${bam} > clusters.txt
 
-    # Locate MEI consensus sequences bundled with the container
-    MEI_REFS=\$(find /usr/local/share/scramble /opt/conda/share/scramble 2>/dev/null \
-        -name 'MEI_consensus_seqs.fa' | head -1)
-    [ -z "\$MEI_REFS" ] && MEI_REFS=/usr/local/share/scramble/MEI_consensus_seqs.fa
-
-    # Step 2: call MEI (|| true: exits 1 when no clusters found)
-    scramble \\
+    # Step 2: call MEI — scramble.sh hardcodes --install-dir and --mei-refs internally
+    scramble.sh \\
         --cluster-file clusters.txt \\
-        --mei-refs "\$MEI_REFS" \\
         --ref ${fasta} \\
         --sample ${meta.id} \\
         --out-name ${meta.id}.scramble \\
@@ -44,7 +38,7 @@ process SCRAMBLE_CALL {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        scramble: \$(cluster_identifier --version 2>&1 | grep -oP '[0-9]+\\.[0-9]+\\.[0-9]+' | head -1 || echo "unknown")
+        scramble: \$(cluster_identifier --version 2>&1 | grep -o '[0-9]*\\.[0-9]*\\.[0-9]*' | head -1 || echo "unknown")
     END_VERSIONS
     """
 }
