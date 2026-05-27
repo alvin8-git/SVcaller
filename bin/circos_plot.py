@@ -125,6 +125,8 @@ def parse_annotsv_tsv(path: Optional[str],
                 if row.get("Annotation_mode", "") != "full":
                     continue
                 chrom = row.get("SV_chrom", "")
+                if not chrom.startswith("chr"):
+                    chrom = "chr" + chrom
                 if chrom not in CHROM_ORDER:
                     continue
                 try:
@@ -295,18 +297,20 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
             if l["chrom"] == sector.name:
                 t.rect(l["start"], l["end"], fc="#1F77B4", alpha=0.7)
 
-    # --- Ring 4: depth scatter — outlier windows only (62-72) ---
+    # --- Ring 4: depth track — grey background always; coloured outliers ±15% ---
     for sector in circos.sectors:
         t = sector.add_track((62, 72), r_pad_ratio=0.1)
         t.axis()
+        clen = chrom_sizes.get(sector.name, 1)
+        t.rect(0, clen, fc="#CCCCCC", alpha=0.25)  # always-visible grey background
         for w in depth_wins:
             if w["chrom"] != sector.name:
                 continue
             ratio = w["depth"] / global_median
-            if ratio > 1.3:
-                t.rect(w["start"], w["end"], fc="#D62728", alpha=0.55)
-            elif ratio < 0.7:
-                t.rect(w["start"], w["end"], fc="#1F77B4", alpha=0.55)
+            if ratio > 1.15:
+                t.rect(w["start"], w["end"], fc="#D62728", alpha=0.7)
+            elif ratio < 0.85:
+                t.rect(w["start"], w["end"], fc="#1F77B4", alpha=0.7)
 
     # --- Ring 5: STR loci (51-61) ---
     for sector in circos.sectors:
