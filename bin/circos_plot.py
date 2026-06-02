@@ -3,11 +3,11 @@
 
 Ring layout (radius):
   95-100  chromosome ideograms
-  64-95   coverage depth dot plot (log2 ratio vs median; -2=CN0, 0=CN2, +1=CN4)
-  54-64   STR expansion loci
-  44-54   AnnotSV gene loci (top 30 by ranking score) + SMN marker
-  34-44   ACMG class dots (class 3/4/5, cap 50)
-  0-34    SV links centre (34% of diameter — ≥ 1/3)
+  65-95   coverage depth dot plot (log2 ratio vs median; -2=CN0, 0=CN2, +1=CN4)
+  60-65   STR expansion loci
+  55-60   AnnotSV gene loci (top 30 by ranking score) + SMN marker
+  50-55   ACMG class dots (class 3/4/5, cap 50)
+  0-50    SV links centre (50% of diameter)
 """
 import argparse, re, gzip, csv, statistics, math
 from typing import List, Tuple, Dict, Optional
@@ -271,7 +271,7 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
           f"gene_loci={len(gene_rows)}, acmg_dots={len(acmg_rows)}")
 
     circos = Circos(chrom_sizes, space=1.5)
-    circos.text(f"SVcaller\n{sample_id}", size=10, r=17)
+    circos.text(f"SVcaller\n{sample_id}", size=10, r=25)
 
     # --- Ring 1: chromosome ideograms (95-100) ---
     for sector in circos.sectors:
@@ -279,7 +279,7 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
         t.axis(fc=_chrom_colour(sector.name))
         t.text(sector.name.replace("chr", ""), size=6, color="white")
 
-    # --- Ring 2: Coverage depth dot plot (64-95) ---
+    # --- Ring 2: Coverage depth dot plot (65-95) ---
     # Y-axis = log2(window_depth / genome_median), normalised to [0,1]:
     #   0.0  → log2 = -2  (CN=0, homozygous deletion)
     #   0.25 → log2 = -1  (CN=1, hemizygous loss)
@@ -288,7 +288,7 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
     #   0.75 → log2 = +1  (CN=4, +2 copy gain)
     #   1.0  → log2 = +2  (high-level amplification)
     for sector in circos.sectors:
-        t = sector.add_track((64, 95), r_pad_ratio=0.05)
+        t = sector.add_track((65, 95), r_pad_ratio=0.05)
         t.axis()
         clen = chrom_sizes.get(sector.name, 1)
         # Dashed reference line at CN=2 (log2=0 → y=0.5)
@@ -322,9 +322,9 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
         if loss_x:
             t.scatter(loss_x,   loss_y,   color="#1F77B4", s=0.8, alpha=0.85)
 
-    # --- Ring 3: STR loci (54-64) ---
+    # --- Ring 3: STR loci (60-65) ---
     for sector in circos.sectors:
-        t = sector.add_track((54, 64), r_pad_ratio=0.1)
+        t = sector.add_track((60, 65), r_pad_ratio=0.1)
         t.axis()
         clen = chrom_sizes.get(sector.name, 1)
         for locus in str_loci:
@@ -332,10 +332,10 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
                 w = max(500_000, clen // 500)
                 t.rect(locus["pos"], locus["pos"] + w, fc="#8C564B", alpha=0.9)
 
-    # --- Ring 4: AnnotSV gene loci (44-54) + SMN locus (chr5, gold) ---
+    # --- Ring 4: AnnotSV gene loci (55-60) + SMN locus (chr5, gold) ---
     top5_genes = {r["gene"] for r in gene_rows[:5] if r["gene"]}
     for sector in circos.sectors:
-        t = sector.add_track((44, 54), r_pad_ratio=0.1)
+        t = sector.add_track((55, 60), r_pad_ratio=0.1)
         t.axis()
         clen = chrom_sizes.get(sector.name, 1)
         if sector.name == "chr5":
@@ -352,11 +352,11 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
                 except Exception:
                     pass
 
-    # --- Ring 5: ACMG class dots (34-44) ---
+    # --- Ring 5: ACMG class dots (50-55) ---
     top3_acmg_genes = set(list({r["gene"] for r in acmg_rows
                                  if r["acmg_class"] in ("4", "5") and r["gene"]})[:3])
     for sector in circos.sectors:
-        t = sector.add_track((34, 44), r_pad_ratio=0.1)
+        t = sector.add_track((50, 55), r_pad_ratio=0.1)
         t.axis()
         clen = chrom_sizes.get(sector.name, 1)
         for row in acmg_rows:
