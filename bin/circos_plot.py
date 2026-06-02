@@ -3,15 +3,13 @@
 
 Ring layout (radius):
   95-100  chromosome ideograms
-  84-94   CNV gains (DUP)
-  73-83   CNV losses (DEL)
-  62-72   depth scatter (mosdepth 50kb windows, outliers only)
-  51-61   STR expansion loci
+  63-93   coverage depth dot plot (log2 ratio vs median; -2=CN0, 0=CN2, +1=CN4)
+  51-62   STR expansion loci
   40-50   AnnotSV gene loci (top 30 by ranking score) + SMN marker
   28-39   ACMG class dots (class 3/4/5, cap 50)
   0-27    SV links (BND/TRA + DEL/DUP/INV>=50kb, multi-caller, cap 100)
 """
-import argparse, re, gzip, csv, statistics
+import argparse, re, gzip, csv, statistics, math
 from typing import List, Tuple, Dict, Optional
 
 
@@ -281,40 +279,50 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
         t.axis(fc=_chrom_colour(sector.name))
         t.text(sector.name.replace("chr", ""), size=6, color="white")
 
-    # --- Ring 2: CNV gains / DUP (84-94) ---
+    # --- Ring 2: Coverage depth dot plot (63-93) ---
+    # Y-axis = log2(window_depth / genome_median), normalised to [0,1]:
+    #   0.0  → log2 = -2  (CN=0, homozygous deletion)
+    #   0.25 → log2 = -1  (CN=1, hemizygous loss)
+    #   0.50 → log2 =  0  (CN=2, normal diploid)  ← dashed reference line
+    #   0.65 → log2 ≈+0.58 (CN=3, +1 copy gain)
+    #   0.75 → log2 = +1  (CN=4, +2 copy gain)
+    #   1.0  → log2 = +2  (high-level amplification)
     for sector in circos.sectors:
-        t = sector.add_track((84, 94), r_pad_ratio=0.1)
-        t.axis()
-        for g in gains:
-            if g["chrom"] == sector.name and g["cn"] > 2:
-                t.rect(g["start"], g["end"], fc="#D62728", alpha=0.7)
-
-    # --- Ring 3: CNV losses / DEL (73-83) ---
-    for sector in circos.sectors:
-        t = sector.add_track((73, 83), r_pad_ratio=0.1)
-        t.axis()
-        for l in losses:
-            if l["chrom"] == sector.name:
-                t.rect(l["start"], l["end"], fc="#1F77B4", alpha=0.7)
-
-    # --- Ring 4: depth track — grey background always; coloured outliers ±15% ---
-    for sector in circos.sectors:
-        t = sector.add_track((62, 72), r_pad_ratio=0.1)
+        t = sector.add_track((63, 93), r_pad_ratio=0.05)
         t.axis()
         clen = chrom_sizes.get(sector.name, 1)
-        t.rect(0, clen, fc="#CCCCCC", alpha=0.25)  # always-visible grey background
+        # Dashed reference line at CN=2 (log2=0 → y=0.5)
+        try:
+            t.line([0, clen], [0.5, 0.5], color="#888888", lw=0.8, alpha=0.5)
+        except Exception:
+            pass
+        # Group windows by colour to avoid per-point colour lists
+        normal_x, normal_y = [], []
+        gain_x,   gain_y   = [], []
+        loss_x,   loss_y   = [], []
         for w in depth_wins:
             if w["chrom"] != sector.name:
                 continue
-            ratio = w["depth"] / global_median
-            if ratio > 1.15:
-                t.rect(w["start"], w["end"], fc="#D62728", alpha=0.7)
-            elif ratio < 0.85:
-                t.rect(w["start"], w["end"], fc="#1F77B4", alpha=0.7)
+            mid = (w["start"] + w["end"]) // 2
+            lr  = math.log2(max(w["depth"], 0.01) / global_median) if global_median > 0 else 0.0
+            lr  = max(-2.0, min(2.0, lr))
+            y_n = (lr + 2.0) / 4.0     # [-2, +2] → [0, 1]
+            if lr > 0.3:                # CN ≥ 2.5 (gain)
+                gain_x.append(mid);   gain_y.append(y_n)
+            elif lr < -0.5:             # CN ≤ 1.4 (loss)
+                loss_x.append(mid);   loss_y.append(y_n)
+            else:
+                normal_x.append(mid); normal_y.append(y_n)
+        if normal_x:
+            t.scatter(normal_x, normal_y, color="#AAAAAA", s=0.4, alpha=0.5)
+        if gain_x:
+            t.scatter(gain_x,   gain_y,   color="#D62728", s=0.8, alpha=0.85)
+        if loss_x:
+            t.scatter(loss_x,   loss_y,   color="#1F77B4", s=0.8, alpha=0.85)
 
-    # --- Ring 5: STR loci (51-61) ---
+    # --- Ring 3: STR loci (51-62) ---
     for sector in circos.sectors:
-        t = sector.add_track((51, 61), r_pad_ratio=0.1)
+        t = sector.add_track((51, 62), r_pad_ratio=0.1)
         t.axis()
         clen = chrom_sizes.get(sector.name, 1)
         for locus in str_loci:
@@ -322,7 +330,7 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
                 w = max(500_000, clen // 500)
                 t.rect(locus["pos"], locus["pos"] + w, fc="#8C564B", alpha=0.9)
 
-    # --- Ring 6: AnnotSV gene loci (40-50) + SMN locus (chr5, gold) ---
+    # --- Ring 4: AnnotSV gene loci (40-50) + SMN locus (chr5, gold) ---
     top5_genes = {r["gene"] for r in gene_rows[:5] if r["gene"]}
     for sector in circos.sectors:
         t = sector.add_track((40, 50), r_pad_ratio=0.1)
@@ -342,7 +350,7 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
                 except Exception:
                     pass
 
-    # --- Ring 7: ACMG class dots (28-39) ---
+    # --- Ring 5: ACMG class dots (28-39) ---
     top3_acmg_genes = set(list({r["gene"] for r in acmg_rows
                                  if r["acmg_class"] in ("4", "5") and r["gene"]})[:3])
     for sector in circos.sectors:
@@ -386,13 +394,15 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
     handles = [
         _hdr("── Rings (outer → inner) ──"),
         mpatches.Patch(fc="#888888", alpha=0.8,  label="Chromosomes"),
-        mpatches.Patch(fc="#D62728", alpha=0.7,  label="CNV gain (DUP)"),
-        mpatches.Patch(fc="#1F77B4", alpha=0.7,  label="CNV loss (DEL)"),
-        mpatches.Patch(fc="#CCCCCC", alpha=0.7,  label="Coverage depth (50 kb windows)"),
+        mpatches.Patch(fc="#AAAAAA", alpha=0.7,  label="Coverage depth (50 kb dots, log₂ ratio)"),
         mpatches.Patch(fc="#8C564B", alpha=0.9,  label="STR expansion loci"),
         mpatches.Patch(fc="#888888", alpha=0.5,  label="Gene loci (top 30 by AnnotSV score)"),
         mpatches.Patch(fc="#7F7F7F", alpha=0.6,  label="ACMG class dots"),
         mlines.Line2D([], [], color="#FF7F0E", lw=1.5, alpha=0.6, label="SV links (centre)"),
+        _hdr("── Coverage depth (log₂ ratio) ──"),
+        mpatches.Patch(fc="#D62728", alpha=0.85, label="Gain  log₂ > +0.3  (CN ≥ 3)"),
+        mpatches.Patch(fc="#AAAAAA", alpha=0.6,  label="Normal  log₂ ≈ 0  (CN = 2)"),
+        mpatches.Patch(fc="#1F77B4", alpha=0.85, label="Loss  log₂ < −0.5  (CN ≤ 1)"),
         _hdr("── SV Types ──"),
         mpatches.Patch(fc="#1F77B4", label="DEL"),
         mpatches.Patch(fc="#D62728", label="DUP"),
@@ -403,9 +413,6 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
         mpatches.Patch(fc="#D62728", label="Class 5 — Pathogenic"),
         mpatches.Patch(fc="#FF7F0E", label="Class 4 — Likely Pathogenic"),
         mpatches.Patch(fc="#7F7F7F", label="Class 3 — VUS"),
-        _hdr("── Coverage depth ──"),
-        mpatches.Patch(fc="#D62728", alpha=0.7, label="> 115 % median (gain)"),
-        mpatches.Patch(fc="#1F77B4", alpha=0.7, label="< 85 % median (loss)"),
     ]
     fig.legend(
         handles=handles,
