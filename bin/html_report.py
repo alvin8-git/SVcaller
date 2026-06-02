@@ -152,13 +152,22 @@ def _parse_flagstat(flagstat_path: str, qc: dict) -> None:
     if not flagstat_path or flagstat_path in ("NO_FILE", "null"):
         return
     try:
+        primary = 0
+        primary_dup = 0
         with open(flagstat_path) as fh:
             for line in fh:
-                if " mapped (" in line:
+                if " mapped (" in line and "primary" not in line:
                     m = re.search(r'\(([0-9.]+)%', line)
                     if m:
                         qc["mapped_pct"] = m.group(1)
-                    break
+                m = re.match(r'(\d+) \+ \d+ primary duplicates', line)
+                if m:
+                    primary_dup = int(m.group(1))
+                m = re.match(r'(\d+) \+ \d+ primary\s*$', line)
+                if m:
+                    primary = int(m.group(1))
+        if primary > 0:
+            qc["dup_rate"] = f"{primary_dup / primary * 100:.2f}"
     except (FileNotFoundError, ValueError):
         pass
 

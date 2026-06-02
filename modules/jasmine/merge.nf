@@ -73,7 +73,7 @@ process JASMINE_MERGE {
         /^#/{print;next}
         \$1~/^chr([0-9]+|X|Y|M)\$/{
             if(\$7 != "PASS" && \$7 != ".") next
-            if(\$6+0 < 70) next
+            if(\$6+0 < 50) next
             svlen=300
             if(\$5 ~ /L1/) svlen=1500
             else if(\$5 ~ /SVA/) svlen=1500
@@ -111,19 +111,21 @@ process JASMINE_MERGE {
         /^##FORMAT/{if(/ID=GT,/)print; next}
         /^#/{print;next}
         {
-            supp=""; svlen=0; is_tra=0
+            supp=""; svlen=0; is_tra=0; is_dup_inv=0
             n=split(\$8,info,";")
             for(i=1;i<=n;i++){
                 if(index(info[i],"SUPP_VEC=")==1) supp=substr(info[i],10)
                 if(index(info[i],"SVTYPE=")==1){
                     t=substr(info[i],8)
                     if(t=="TRA"||t=="BND") is_tra=1
+                    if(t=="DUP"||t=="INV") is_dup_inv=1
                 }
                 if(index(info[i],"SVLEN=")==1){ svlen=substr(info[i],7)+0; if(svlen<0) svlen=-svlen }
             }
             if(supp!=""){
                 ones=0; for(j=1;j<=length(supp);j++) if(substr(supp,j,1)=="1") ones++
                 if(is_tra && ones==1 && substr(supp,3,1)=="1") next
+                if(is_dup_inv && ones==1 && length(supp)>=3 && substr(supp,3,1)=="1") next
                 if(ones==1 && svlen>10000) next
             }
             m=split(\$9,f,":"); gt_i=1
