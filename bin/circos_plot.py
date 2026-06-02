@@ -313,8 +313,10 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
                 loss_x.append(mid);   loss_y.append(y_n)
             else:
                 normal_x.append(mid); normal_y.append(y_n)
+        # Subsample normal dots (every 10th) to keep SVG size manageable.
+        # Gain/loss dots always shown at full resolution — they are the signal.
         if normal_x:
-            t.scatter(normal_x, normal_y, color="#AAAAAA", s=0.4, alpha=0.5)
+            t.scatter(normal_x[::10], normal_y[::10], color="#AAAAAA", s=0.4, alpha=0.5)
         if gain_x:
             t.scatter(gain_x,   gain_y,   color="#D62728", s=0.8, alpha=0.85)
         if loss_x:
