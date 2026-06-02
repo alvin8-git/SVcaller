@@ -16,7 +16,7 @@ process CIRCOS_PLOT {
     def str_arg     = str_vcf.name    != "NO_STR"  ? "--str-vcf    ${str_vcf}"    : ""
     def depth_arg   = depth_bed.name  != "NO_FILE" ? "--depth-bed  ${depth_bed}"  : ""
     def annotsv_arg = annotsv_tsv.name != "NO_FILE" ? "--annotsv-tsv ${annotsv_tsv}" : ""
-    // v7: subsample normal depth dots 1-in-10 to reduce SVG size
+    // v8: resize rings so SV link centre occupies ≥1/3 of diameter (r=0-34)
     """
     export PATH=${projectDir}/bin:\$PATH
     circos_plot.py \\
