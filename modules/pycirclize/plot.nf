@@ -16,7 +16,7 @@ process CIRCOS_PLOT {
     def str_arg     = str_vcf.name    != "NO_STR"  ? "--str-vcf    ${str_vcf}"    : ""
     def depth_arg   = depth_bed.name  != "NO_FILE" ? "--depth-bed  ${depth_bed}"  : ""
     def annotsv_arg = annotsv_tsv.name != "NO_FILE" ? "--annotsv-tsv ${annotsv_tsv}" : ""
-    // v4: fix chr prefix in annotsv parsing; grey depth bg; ±15% outlier threshold
+    // v5: add legend (rings, SV types, ACMG classification, depth colour scale)
     """
     export PATH=${projectDir}/bin:\$PATH
     circos_plot.py \\

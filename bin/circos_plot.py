@@ -375,6 +375,53 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
             continue
 
     fig = circos.plotfig(figsize=(12, 12))
+
+    # --- Legend ---
+    import matplotlib.patches as mpatches
+    import matplotlib.lines as mlines
+
+    def _hdr(label):
+        return mpatches.Patch(fc="none", ec="none", label=label)
+
+    handles = [
+        _hdr("── Rings (outer → inner) ──"),
+        mpatches.Patch(fc="#888888", alpha=0.8,  label="Chromosomes"),
+        mpatches.Patch(fc="#D62728", alpha=0.7,  label="CNV gain (DUP)"),
+        mpatches.Patch(fc="#1F77B4", alpha=0.7,  label="CNV loss (DEL)"),
+        mpatches.Patch(fc="#CCCCCC", alpha=0.7,  label="Coverage depth (50 kb windows)"),
+        mpatches.Patch(fc="#8C564B", alpha=0.9,  label="STR expansion loci"),
+        mpatches.Patch(fc="#888888", alpha=0.5,  label="Gene loci (top 30 by AnnotSV score)"),
+        mpatches.Patch(fc="#7F7F7F", alpha=0.6,  label="ACMG class dots"),
+        mlines.Line2D([], [], color="#FF7F0E", lw=1.5, alpha=0.6, label="SV links (centre)"),
+        _hdr("── SV Types ──"),
+        mpatches.Patch(fc="#1F77B4", label="DEL"),
+        mpatches.Patch(fc="#D62728", label="DUP"),
+        mpatches.Patch(fc="#9467BD", label="INV"),
+        mpatches.Patch(fc="#FF7F0E", label="BND / TRA"),
+        mpatches.Patch(fc="#2CA02C", label="INS"),
+        _hdr("── ACMG Classification ──"),
+        mpatches.Patch(fc="#D62728", label="Class 5 — Pathogenic"),
+        mpatches.Patch(fc="#FF7F0E", label="Class 4 — Likely Pathogenic"),
+        mpatches.Patch(fc="#7F7F7F", label="Class 3 — VUS"),
+        _hdr("── Coverage depth ──"),
+        mpatches.Patch(fc="#D62728", alpha=0.7, label="> 115 % median (gain)"),
+        mpatches.Patch(fc="#1F77B4", alpha=0.7, label="< 85 % median (loss)"),
+    ]
+    fig.legend(
+        handles=handles,
+        loc="lower right",
+        fontsize=6,
+        framealpha=0.92,
+        frameon=True,
+        edgecolor="#AAAAAA",
+        borderpad=0.8,
+        handlelength=1.0,
+        handleheight=0.9,
+        labelspacing=0.35,
+        bbox_to_anchor=(0.99, 0.01),
+        bbox_transform=fig.transFigure,
+    )
+
     fig.savefig(out_svg)
     fig.savefig(out_png, dpi=150)
     plt.close(fig)
