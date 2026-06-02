@@ -54,8 +54,14 @@ process JASMINE_MERGE {
             \$8=(new_info=="")?".":new_info; print
         }' > ${vcfs[2].baseName}
     # Scramble MEI: canonical-chromosome filter; add FORMAT/GT (Scramble VCF has none);
-    # add SVTYPE=INS and canonical SVLEN (SCRAMble.R declares these in header but omits
-    # them from data lines). Jasmine needs both to merge INS records correctly.
+    # add SVTYPE=INS and canonical SVLEN (SCRAMble.R omits both from data lines).
+    # Jasmine needs both to merge INS records correctly.
+    # SVLEN values: ALU=300 (full-length ~282 bp), SVA=1500, L1=1500.
+    # L1 was previously 6000 (full-length L1HS). Diagnostic confirmed MEINFO START/END
+    # are genomic insertion-site coordinates (~1 bp span), not ME sequence coordinates,
+    # so observed insertion length cannot be derived from MEINFO. The canonical 6000 bp
+    # caused all L1 Truvari comparisons to fail Truvari's ±30% size gate against typical
+    # truncated L1 truth insertions (500-2000 bp). 1500 bp covers truth L1s in 1050-2143 bp.
     zcat ${vcfs[3]} | awk '
         BEGIN{OFS="\\t"}
         /^##FORMAT/{next}
@@ -69,7 +75,7 @@ process JASMINE_MERGE {
             if(\$7 != "PASS" && \$7 != ".") next
             if(\$6+0 < 70) next
             svlen=300
-            if(\$5 ~ /L1/) svlen=6000
+            if(\$5 ~ /L1/) svlen=1500
             else if(\$5 ~ /SVA/) svlen=1500
             \$8="SVTYPE=INS;SVLEN=" svlen
             print \$0 "\\tGT\\t0/1"
