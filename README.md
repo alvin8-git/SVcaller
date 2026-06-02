@@ -242,13 +242,29 @@ bash validation/giab_benchmark.sh \
     results/HG002/HG002.sv_merged.vcf.gz
 ```
 
-**Target performance (PE150, 30×, ensemble):**
+**Current benchmark on HG002 (4 callers — Manta + Delly + GRIDSS + Scramble, run69):**
 
-| Metric | Target |
+| Metric | Result |
 |--------|--------|
-| Precision | ≥ 0.85 |
-| Recall | ≥ 0.70 |
-| F1 | ≥ 0.77 |
+| Precision | 0.648 |
+| Recall | 0.231 |
+| F1 | **0.341** |
+
+Recall is limited by MEI insertions (dominated by L1/ALU not caught by Scramble at default settings). See [Design decisions](docs/explanation-design.md#scramble-mei-canonical-svlen-estimates) for context.
+
+---
+
+## Documentation
+
+| Document | What it covers |
+|----------|---------------|
+| [Getting started tutorial](docs/tutorial-getting-started.md) | First run from scratch to open report |
+| [How to run the GIAB validation](docs/howto-run-validation.md) | Benchmarking against GIAB HG002 truth set |
+| [How to build a Panel of Normals](docs/howto-build-pon.md) | GATK gCNV PON construction |
+| [How to interpret the HTML report](docs/howto-interpret-report.md) | Clinical interpretation of all report sections and Circos rings |
+| [Parameter reference](docs/reference-parameters.md) | All CLI flags, samplesheet format, output files, resource labels |
+| [Architecture reference](docs/reference-architecture.md) | Module-by-module technical description with I/O and design notes |
+| [Design decisions](docs/explanation-design.md) | Why the pipeline is built the way it is (channel patterns, sentinel files, PON choices) |
 
 ---
 
