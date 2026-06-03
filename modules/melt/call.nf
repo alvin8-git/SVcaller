@@ -16,6 +16,7 @@ process MELT_CALL {
     def refs_override = params.melt_refs ? "MELT_REFS=\"${params.melt_refs}\"" : ""
     """
     ${refs_override}
+    bowtie2 --version 2>&1 | head -1 || true
 
     # Auto-detect MELT installation if not provided via --melt_refs
     if [ -z "\${MELT_REFS:-}" ]; then
