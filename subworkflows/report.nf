@@ -98,7 +98,7 @@ workflow REPORT {
         ch_sv_for_bench = ch_sv_vcf
             .join(ch_sv_tbi)
             .map { meta, vcf, tbi -> [meta, vcf, tbi] }
-        TRUVARI_BENCH(ch_sv_for_bench, ch_truth_vcf, ch_truth_tbi, ch_truth_bed)
+        TRUVARI_BENCH(ch_sv_for_bench, ch_truth_vcf, ch_truth_tbi, ch_truth_bed, "T2T")
         ch_bench   = TRUVARI_BENCH.out.summary
         ch_sizebin = TRUVARI_BENCH.out.sizebin
     }
@@ -112,7 +112,7 @@ workflow REPORT {
         ch_sv_for_v06 = ch_sv_vcf
             .join(ch_sv_tbi)
             .map { meta, vcf, tbi -> [meta, vcf, tbi] }
-        TRUVARI_BENCH_V06(ch_sv_for_v06, ch_truth_v06, ch_truth_v06_tbi, ch_truth_v06_bed)
+        TRUVARI_BENCH_V06(ch_sv_for_v06, ch_truth_v06, ch_truth_v06_tbi, ch_truth_v06_bed, "v06")
         ch_bench_v06   = TRUVARI_BENCH_V06.out.summary
         ch_sizebin_v06 = TRUVARI_BENCH_V06.out.sizebin
     }
