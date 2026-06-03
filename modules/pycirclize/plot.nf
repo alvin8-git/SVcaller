@@ -14,8 +14,8 @@ process CIRCOS_PLOT {
 
     script:
     def str_arg     = str_vcf.name    != "NO_STR"  ? "--str-vcf    ${str_vcf}"    : ""
-    def depth_arg   = depth_bed.name  != "NO_FILE" ? "--depth-bed  ${depth_bed}"  : ""
-    def annotsv_arg = annotsv_tsv.name != "NO_FILE" ? "--annotsv-tsv ${annotsv_tsv}" : ""
+    def depth_arg   = depth_bed.name   != "NO_DEPTH"   ? "--depth-bed   ${depth_bed}"   : ""
+    def annotsv_arg = annotsv_tsv.name != "NO_ANNOTSV" ? "--annotsv-tsv ${annotsv_tsv}" : ""
     // v9: SV link centre = 50% diameter (r=0-50); depth ring 65-95
     """
     export PATH=${projectDir}/bin:\$PATH

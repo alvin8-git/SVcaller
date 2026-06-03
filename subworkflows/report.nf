@@ -20,15 +20,15 @@ process BUILD_HTML_REPORT {
     tuple val(meta), path("${meta.id}.report.html"), emit: html
 
     script:
-    def bench_arg       = benchmark_json.name      != "NO_FILE" ? "--benchmark     ${benchmark_json}"      : ""
-    def sizebin_arg     = sizebin_json.name        != "NO_FILE" ? "--sizebin       ${sizebin_json}"        : ""
-    def cov_arg         = coverage_summary.name    != "NO_FILE" ? "--coverage      ${coverage_summary}"    : ""
-    def met_arg         = picard_metrics.name      != "NO_FILE" ? "--metrics       ${picard_metrics}"      : ""
-    def str_arg         = str_vcf.name             != "NO_STR"  ? "--str-vcf       ${str_vcf}"             : ""
-    def flagstat_arg    = flagstat_txt.name        != "NO_FILE" ? "--flagstat      ${flagstat_txt}"        : ""
-    def insert_size_arg = insert_size_metrics.name != "NO_FILE" ? "--insert-size   ${insert_size_metrics}" : ""
-    def bench_v06_arg   = benchmark_json_v06.name  != "NO_FILE" ? "--benchmark-v06 ${benchmark_json_v06}"  : ""
-    def sizebin_v06_arg = sizebin_json_v06.name    != "NO_FILE" ? "--sizebin-v06   ${sizebin_json_v06}"    : ""
+    def bench_arg       = benchmark_json.name      != "NO_BENCH"     ? "--benchmark     ${benchmark_json}"      : ""
+    def sizebin_arg     = sizebin_json.name        != "NO_SIZEBIN"   ? "--sizebin       ${sizebin_json}"        : ""
+    def cov_arg         = coverage_summary.name    != "NO_COV"       ? "--coverage      ${coverage_summary}"    : ""
+    def met_arg         = picard_metrics.name      != "NO_METRICS"   ? "--metrics       ${picard_metrics}"      : ""
+    def str_arg         = str_vcf.name             != "NO_STR"       ? "--str-vcf       ${str_vcf}"             : ""
+    def flagstat_arg    = flagstat_txt.name        != "NO_FLAGSTAT"  ? "--flagstat      ${flagstat_txt}"        : ""
+    def insert_size_arg = insert_size_metrics.name != "NO_INSERT"    ? "--insert-size   ${insert_size_metrics}" : ""
+    def bench_v06_arg   = benchmark_json_v06.name  != "NO_BENCH_V06" ? "--benchmark-v06 ${benchmark_json_v06}"  : ""
+    def sizebin_v06_arg = sizebin_json_v06.name    != "NO_SBN_V06"   ? "--sizebin-v06   ${sizebin_json_v06}"    : ""
     // v5: dual benchmark (T2TQ100-V1.0 + GIAB v0.6); Delly PASS-only pre-Jasmine; --typeignore Truvari
     """
     export PATH=${projectDir}/bin:\$PATH
@@ -86,7 +86,7 @@ workflow REPORT {
         .join(ch_annotsv_tsv, remainder: true)
         .filter { it[1] != null }   // drop samples re-introduced by depth/annotsv remainders when cnv_bed absent
         .map { meta, sv, cnv, str, depth, annotsv ->
-            [meta, sv, cnv, str ?: file("NO_STR"), depth ?: file("NO_FILE"), annotsv ?: file("NO_FILE")]
+            [meta, sv, cnv, str ?: file("NO_STR"), depth ?: file("NO_DEPTH"), annotsv ?: file("NO_ANNOTSV")]
         }
     CIRCOS_PLOT(ch_circos_in, ch_cytobands)
 
@@ -132,26 +132,26 @@ workflow REPORT {
         .join(ch_bench, remainder: true)
         .filter   { it[1] != null }
         .map { meta, sv, cnv, smn, svg, cov, met, str, flagstat, ins, bench ->
-            [meta, sv, cnv, smn, svg, bench ?: file("NO_FILE"), cov, met, str, flagstat, ins]
+            [meta, sv, cnv, smn, svg, bench ?: file("NO_BENCH"), cov, met, str, flagstat, ins]
         }
         // tuple: [meta, sv, cnv, smn, svg, bench, cov, met, str, flagstat, ins]
         .join(ch_sizebin, remainder: true)
         .filter   { it[1] != null }
         .map { meta, sv, cnv, smn, svg, bench, cov, met, str, flagstat, ins, sizebin ->
-            [meta, sv, cnv, smn, svg, bench, sizebin ?: file("NO_FILE"), cov, met, str, flagstat, ins]
+            [meta, sv, cnv, smn, svg, bench, sizebin ?: file("NO_SIZEBIN"), cov, met, str, flagstat, ins]
         }
         // tuple: [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins]
         .join(ch_bench_v06, remainder: true)
         .filter   { it[1] != null }
         .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v06 ->
-            [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v06 ?: file("NO_FILE")]
+            [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v06 ?: file("NO_BENCH_V06")]
         }
         // tuple: [meta, ..., bench_v06]
         .join(ch_sizebin_v06, remainder: true)
         .filter   { it[1] != null }
         .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v06, sizebin_v06 ->
             [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins,
-             bench_v06, sizebin_v06 ?: file("NO_FILE")]
+             bench_v06, sizebin_v06 ?: file("NO_SBN_V06")]
         }
         // final: [meta, sv_tsv, cnv_bed, smn_tsv, circos_svg, benchmark_json, sizebin_json,
         //         coverage_summary, picard_metrics, str_vcf, flagstat_txt, insert_size_metrics,
