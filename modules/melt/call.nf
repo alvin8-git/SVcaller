@@ -77,14 +77,14 @@ process MELT_CALL {
     ) | awk '
         BEGIN{OFS="\\t"}
         /^#/{print;next}
-        \$1!~/^chr([0-9]+|X|Y|M)$/{next}
+        \$1!~/^chr([0-9]+|X|Y|M)\$/{next}
         \$7!="PASS" && \$7!="."{next}
         {
             # Normalise SVTYPE: ALU/LINE1/LINE/SVA/HERVK → INS; store original as MEITYPE
             split(\$8,info,";"); new_info=""
             for(i=1;i<=length(info);i++){
                 f=info[i]
-                if(f~/^SVTYPE=(ALU|LINE1|LINE|SVA|HERVK)$/){
+                if(f~/^SVTYPE=(ALU|LINE1|LINE|SVA|HERVK)\$/){
                     me=substr(f,8); f="SVTYPE=INS;MEITYPE="me
                 }
                 new_info=(new_info=="")?f:new_info";"f
