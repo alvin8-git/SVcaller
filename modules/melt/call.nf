@@ -44,12 +44,15 @@ process MELT_CALL {
     mkdir -p melt_tmp
     for zip_file in "\${MELT_REFS}"/*_MELT.zip; do
         me=\$(basename "\$zip_file" _MELT.zip)
-        # -n (prior sites) is optional; add_bed_files/*.deletion.bed is wrong format (6 cols, needs 11+)
-        # Omit -n for discovery mode — MELT calls all MEIs without filtering known sites
+        # Use 1KGP_Hg38 prior-sites BED (generated from GRCh37 VCF during container build)
+        bed="\${MELT_BEDS}/\${me}_MELT.bed"
+        n_arg=""
+        [ -f "\$bed" ] && n_arg="-n \$bed"
         java -Xmx${mem_gb}g -jar "\$melt_jar" Single \\
             -bamfile ${bam} \\
             -h       ${ref_fasta} \\
             -t       "\$zip_file" \\
+            \${n_arg} \\
             -w       melt_tmp/\${me} \\
             -c       ${params.min_depth} \\
             2>&1 || true

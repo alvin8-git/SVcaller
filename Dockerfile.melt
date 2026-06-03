@@ -29,4 +29,47 @@ RUN mkdir -p /opt/melt \
     && rm /tmp/melt.tar.gz \
     && find /opt/melt -name 'MELT.jar' | head -1
 
+# Build 1KGP_Hg38 prior-sites BED files from the bundled GRCh37 VCFs.
+# MELT Single -n requires: chr start end ME_name score strand svlen tsd assess diff internal
+# Coordinates remain GRCh37 (MELT uses a window so minor offsets are tolerated).
+RUN python3 - <<'PYEOF'
+import os, re
+
+def vcf_to_bed(src, dst):
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    with open(src) as f, open(dst, 'w') as o:
+        for line in f:
+            if line.startswith('#'): continue
+            cols = line.rstrip('\n').split('\t')
+            chrom = 'chr' + cols[0]
+            pos   = int(cols[1])
+            info  = dict(
+                (x.split('=',1) if '=' in x else (x, '.'))
+                for x in cols[7].split(';')
+            )
+            svlen    = abs(int(info.get('SVLEN', 300)))
+            end      = pos + svlen
+            meinfo   = info.get('MEINFO', ',,,').split(',')
+            strand   = meinfo[3] if len(meinfo) > 3 and meinfo[3] in '+-' else '.'
+            tsd      = info.get('TSD', 'null')
+            assess   = info.get('ASSESS', '.')
+            diff     = info.get('DIFF', '.')
+            internal = info.get('INTERNAL', 'null,null').replace(',', '|')
+            o.write('\t'.join([chrom, str(pos-1), str(end),
+                               cols[2], '0', strand,
+                               str(svlen), tsd, assess, diff, internal]) + '\n')
+
+base = '/opt/melt'
+for me, src_name, dst_name in [
+    ('ALU',   'ALU.1KGP.sites.vcf',   'ALU_MELT.bed'),
+    ('LINE1', 'LINE1.1KGP.sites.vcf', 'LINE1_MELT.bed'),
+    ('SVA',   'SVA.1KGP.sites.vcf',   'SVA_MELT.bed'),
+]:
+    src = f'{base}/prior_files/{src_name}'
+    dst = f'{base}/add_bed_files/1KGP_Hg38/{dst_name}'
+    if os.path.exists(src):
+        vcf_to_bed(src, dst)
+        print(f'Created {dst}')
+PYEOF
+
 ENV MELT_HOME=/opt/melt
