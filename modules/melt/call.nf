@@ -26,9 +26,9 @@ process MELT_CALL {
         fi
         MELT_DIR=\$(dirname "\$melt_jar")
         MELT_REFS="\${MELT_DIR}/me_refs/Hg38"
-        MELT_BEDS="\${MELT_DIR}/add_bed_files/1KGP_Hg38"
+        MELT_BEDS="\${MELT_DIR}/add_bed_files/Hg38"
     else
-        MELT_BEDS="\${MELT_REFS}/../add_bed_files/1KGP_Hg38"
+        MELT_BEDS="\${MELT_REFS}/../add_bed_files/Hg38"
         melt_jar=\$(find /usr/share /opt/conda/share -name "MELT.jar" 2>/dev/null | head -1 || true)
     fi
 
@@ -44,13 +44,19 @@ process MELT_CALL {
     mkdir -p melt_tmp
     for zip_file in "\${MELT_REFS}"/*_MELT.zip; do
         me=\$(basename "\$zip_file" _MELT.zip)
-        bed="\${MELT_BEDS}/\${me}_MELT.bed"
-        [ -f "\$bed" ] || continue
+        # MELT v2.2.2 bed names: ALU→AluY.deletion.bed, LINE1→LINE1.deletion.bed; none for SVA/HERVK
+        case "\$me" in
+            ALU)   bed="\${MELT_BEDS}/AluY.deletion.bed" ;;
+            LINE1) bed="\${MELT_BEDS}/LINE1.deletion.bed" ;;
+            *)     bed="" ;;
+        esac
+        n_arg=""
+        [ -n "\$bed" ] && [ -f "\$bed" ] && n_arg="-n \$bed"
         java -Xmx${mem_gb}g -jar "\$melt_jar" Single \\
             -bamfile ${bam} \\
             -h       ${ref_fasta} \\
             -t       "\$zip_file" \\
-            -n       "\$bed" \\
+            \${n_arg} \\
             -w       melt_tmp/\${me} \\
             -c       ${params.min_depth} \\
             2>&1 || true

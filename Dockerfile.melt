@@ -11,9 +11,9 @@
 # ME refs at /opt/melt/me_refs/Hg38/ and /opt/melt/add_bed_files/1KGP_Hg38/
 # These paths are auto-detected by the MELT_CALL process script.
 
-FROM openjdk:17-slim
+FROM eclipse-temurin:17-jre-jammy
 
-ARG MELT_TARBALL=MELT_v2.2.2.tar.gz
+ARG MELT_TARBALL=MELTv2.2.2.tar.gz
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         samtools \
