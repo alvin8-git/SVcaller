@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         bwa \
         gzip \
         libgomp1 \
+        python3-minimal \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ${MELT_TARBALL} /tmp/melt.tar.gz
