@@ -44,10 +44,10 @@ process MELT_CALL {
     mkdir -p melt_tmp
     for zip_file in "\${MELT_REFS}"/*_MELT.zip; do
         me=\$(basename "\$zip_file" _MELT.zip)
-        # Use 1KGP_Hg38 prior-sites BED (generated from GRCh37 VCF during container build)
-        bed="\${MELT_BEDS}/\${me}_MELT.bed"
+        # -n takes gene annotation BED12 (not prior sites); Hg38.genes.bed is standard BED12
+        gene_bed="\${MELT_DIR}/add_bed_files/Hg38/Hg38.genes.bed"
         n_arg=""
-        [ -f "\$bed" ] && n_arg="-n \$bed"
+        [ -f "\$gene_bed" ] && n_arg="-n \$gene_bed"
         java -Xmx${mem_gb}g -jar "\$melt_jar" Single \\
             -bamfile ${bam} \\
             -h       ${ref_fasta} \\
