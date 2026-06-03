@@ -18,7 +18,7 @@ process MELT_CALL {
 
     # Auto-detect MELT installation if not provided via --melt_refs
     if [ -z "\${MELT_REFS:-}" ]; then
-        melt_jar=\$(find /usr/share /opt/conda/share -name "MELT.jar" 2>/dev/null | head -1 || true)
+        melt_jar=\$(find /usr/share /opt/conda/share /opt -name "MELT.jar" 2>/dev/null | head -1 || true)
         if [ -z "\$melt_jar" ]; then
             echo "WARNING: MELT.jar not found; emitting empty VCF" >&2
             printf "##fileformat=VCFv4.1\\n#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\tFORMAT\\t${meta.id}\\n" | gzip > ${meta.id}.melt.vcf.gz
@@ -29,7 +29,7 @@ process MELT_CALL {
         MELT_BEDS="\${MELT_DIR}/add_bed_files/Hg38"
     else
         MELT_BEDS="\${MELT_REFS}/../add_bed_files/Hg38"
-        melt_jar=\$(find /usr/share /opt/conda/share -name "MELT.jar" 2>/dev/null | head -1 || true)
+        melt_jar=\$(find /usr/share /opt/conda/share /opt -name "MELT.jar" 2>/dev/null | head -1 || true)
     fi
 
     # Check ME refs exist
