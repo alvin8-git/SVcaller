@@ -31,7 +31,7 @@ process JASMINE_MERGE {
     zcat ${vcfs[1]} | awk '
         BEGIN{OFS="\\t"; keep="^(SVTYPE|END|SVLEN|CIPOS|CIEND|HOMLEN|HOMSEQ|INSSEQ)\$"}
         /^#/{print;next}
-        \$1~/^chr([0-9]+|X|Y|M)\$/{
+        \$1~/^chr([0-9]+|X|Y|M)\$/ && \$7=="PASS"{
             n=split(\$8,info,";"); new_info=""
             for(i=1;i<=n;i++){
                 key=info[i]; if(index(key,"=")) key=substr(key,1,index(key,"=")-1)

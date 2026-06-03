@@ -17,7 +17,8 @@ process TRUVARI_BENCH {
     script:
     """
     # Overall benchmark
-    # --pctseq 0: skip sequence similarity check so symbolic alleles (<DEL>, <INS>) are matched
+    # --pctseq 0: skip sequence similarity (symbolic alleles have no sequence)
+    # --typeignore: allow DUP/INV calls to match truth INS/DEL (T2TQ100-V1.0 has no DUP/INV)
     truvari bench \\
         -b ${truth_vcf} \\
         -c ${query_vcf} \\
@@ -26,17 +27,18 @@ process TRUVARI_BENCH {
         --passonly \\
         --pick multi \\
         --pctseq 0 \\
+        --typeignore \\
         --sizemin 50
 
     # Per-size-bin benchmarks: 50-300 bp, 300 bp-1 kb, 1-10 kb, >10 kb
     truvari bench -b ${truth_vcf} -c ${query_vcf} --includebed ${truth_bed} \\
-        -o ${meta.id}.truvari_50_300  --passonly --pick multi --pctseq 0 --sizemin 50   --sizemax 300   || true
+        -o ${meta.id}.truvari_50_300  --passonly --pick multi --pctseq 0 --typeignore --sizemin 50   --sizemax 300   || true
     truvari bench -b ${truth_vcf} -c ${query_vcf} --includebed ${truth_bed} \\
-        -o ${meta.id}.truvari_300_1k  --passonly --pick multi --pctseq 0 --sizemin 300  --sizemax 1000  || true
+        -o ${meta.id}.truvari_300_1k  --passonly --pick multi --pctseq 0 --typeignore --sizemin 300  --sizemax 1000  || true
     truvari bench -b ${truth_vcf} -c ${query_vcf} --includebed ${truth_bed} \\
-        -o ${meta.id}.truvari_1k_10k  --passonly --pick multi --pctseq 0 --sizemin 1000 --sizemax 10000 || true
+        -o ${meta.id}.truvari_1k_10k  --passonly --pick multi --pctseq 0 --typeignore --sizemin 1000 --sizemax 10000 || true
     truvari bench -b ${truth_vcf} -c ${query_vcf} --includebed ${truth_bed} \\
-        -o ${meta.id}.truvari_gt10k   --passonly --pick multi --pctseq 0 --sizemin 10000               || true
+        -o ${meta.id}.truvari_gt10k   --passonly --pick multi --pctseq 0 --typeignore --sizemin 10000               || true
 
     # Merge size-bin summaries into one JSON
     python3 - <<'PYEOF'

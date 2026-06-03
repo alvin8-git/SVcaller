@@ -147,6 +147,40 @@
   </div>
   {% endif %}
 
+  <!-- GIAB SV v0.6 Benchmark (conditional) — DEL-focused comparison set -->
+  {% if benchmark_v06 %}
+  <div class="card section-card">
+    <div class="card-header"><h5>GIAB Benchmark v0.6 (Truvari) — DEL-focused</h5></div>
+    <div class="card-body">
+      <table class="table table-sm">
+        <thead><tr><th>Category</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+        <tbody>
+        {% for row in benchmark_v06 %}
+          <tr><td>{{ row.svtype }}</td>
+              <td>{{ "%.3f"|format(row.precision) }}</td>
+              <td>{{ "%.3f"|format(row.recall) }}</td>
+              <td>{{ "%.3f"|format(row.f1) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if benchmark_bins_v06 %}
+      <h6 class="mt-3">Per-size-bin metrics</h6>
+      <table class="table table-sm">
+        <thead><tr><th>Size Bin</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+        <tbody>
+        {% for row in benchmark_bins_v06 %}
+          <tr><td>{{ row.bin }}</td>
+              <td>{{ "%.3f"|format(row.precision) }}</td>
+              <td>{{ "%.3f"|format(row.recall) }}</td>
+              <td>{{ "%.3f"|format(row.f1) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
 </div>
 </body>
 </html>

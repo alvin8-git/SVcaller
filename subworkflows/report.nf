@@ -1,6 +1,7 @@
-include { CIRCOS_PLOT   } from '../modules/pycirclize/plot'
-include { TRUVARI_BENCH } from '../modules/truvari/bench'
-include { MULTIQC       } from '../modules/multiqc/report'
+include { CIRCOS_PLOT                      } from '../modules/pycirclize/plot'
+include { TRUVARI_BENCH                    } from '../modules/truvari/bench'
+include { TRUVARI_BENCH as TRUVARI_BENCH_V06 } from '../modules/truvari/bench'
+include { MULTIQC                          } from '../modules/multiqc/report'
 
 process BUILD_HTML_REPORT {
     tag "${meta.id}"
@@ -12,20 +13,23 @@ process BUILD_HTML_REPORT {
     tuple val(meta), path(sv_tsv), path(cnv_bed), path(smn_tsv),
                      path(circos_svg), path(benchmark_json), path(sizebin_json),
                      path(coverage_summary), path(picard_metrics), path(str_vcf),
-                     path(flagstat_txt), path(insert_size_metrics)
+                     path(flagstat_txt), path(insert_size_metrics),
+                     path(benchmark_json_v06), path(sizebin_json_v06)
 
     output:
     tuple val(meta), path("${meta.id}.report.html"), emit: html
 
     script:
-    def bench_arg    = benchmark_json.name   != "NO_FILE" ? "--benchmark ${benchmark_json}"   : ""
-    def sizebin_arg  = sizebin_json.name     != "NO_FILE" ? "--sizebin   ${sizebin_json}"     : ""
-    def cov_arg      = coverage_summary.name != "NO_FILE" ? "--coverage  ${coverage_summary}" : ""
-    def met_arg      = picard_metrics.name   != "NO_FILE" ? "--metrics   ${picard_metrics}"   : ""
-    def str_arg      = str_vcf.name          != "NO_STR"  ? "--str-vcf   ${str_vcf}"          : ""
-    def flagstat_arg     = flagstat_txt.name        != "NO_FILE" ? "--flagstat    ${flagstat_txt}"        : ""
-    def insert_size_arg  = insert_size_metrics.name != "NO_FILE" ? "--insert-size ${insert_size_metrics}" : ""
-    // v4: _parse_flagstat now derives dup_rate from primary/primary-duplicates counts
+    def bench_arg       = benchmark_json.name      != "NO_FILE" ? "--benchmark     ${benchmark_json}"      : ""
+    def sizebin_arg     = sizebin_json.name        != "NO_FILE" ? "--sizebin       ${sizebin_json}"        : ""
+    def cov_arg         = coverage_summary.name    != "NO_FILE" ? "--coverage      ${coverage_summary}"    : ""
+    def met_arg         = picard_metrics.name      != "NO_FILE" ? "--metrics       ${picard_metrics}"      : ""
+    def str_arg         = str_vcf.name             != "NO_STR"  ? "--str-vcf       ${str_vcf}"             : ""
+    def flagstat_arg    = flagstat_txt.name        != "NO_FILE" ? "--flagstat      ${flagstat_txt}"        : ""
+    def insert_size_arg = insert_size_metrics.name != "NO_FILE" ? "--insert-size   ${insert_size_metrics}" : ""
+    def bench_v06_arg   = benchmark_json_v06.name  != "NO_FILE" ? "--benchmark-v06 ${benchmark_json_v06}"  : ""
+    def sizebin_v06_arg = sizebin_json_v06.name    != "NO_FILE" ? "--sizebin-v06   ${sizebin_json_v06}"    : ""
+    // v5: dual benchmark (T2TQ100-V1.0 + GIAB v0.6); Delly PASS-only pre-Jasmine; --typeignore Truvari
     """
     export PATH=${projectDir}/bin:\$PATH
     smn_report.py \\
@@ -43,6 +47,8 @@ process BUILD_HTML_REPORT {
         --pipeline-version ${workflow.manifest.version} \\
         ${bench_arg} \\
         ${sizebin_arg} \\
+        ${bench_v06_arg} \\
+        ${sizebin_v06_arg} \\
         ${cov_arg} \\
         ${met_arg} \\
         ${flagstat_arg} \\
@@ -97,9 +103,22 @@ workflow REPORT {
         ch_sizebin = TRUVARI_BENCH.out.sizebin
     }
 
-    // Mandatory channels (always populated) joined first with inner join — safe regardless of timing.
-    // Optional channels (bench/sizebin, only with --giab_truth) joined last with remainder: true.
-    // filter { it[1] != null } drops spurious right-side remainders caused by timing races.
+    ch_bench_v06   = Channel.empty()
+    ch_sizebin_v06 = Channel.empty()
+    if (params.giab_truth_v06) {
+        ch_truth_v06     = Channel.fromPath(params.giab_truth_v06, checkIfExists: true)
+        ch_truth_v06_tbi = Channel.fromPath("${params.giab_truth_v06}.tbi", checkIfExists: true)
+        ch_truth_v06_bed = Channel.fromPath("${params.giab_truth_v06}".replaceAll(/\.vcf\.gz$/, '.bed'), checkIfExists: true)
+        ch_sv_for_v06 = ch_sv_vcf
+            .join(ch_sv_tbi)
+            .map { meta, vcf, tbi -> [meta, vcf, tbi] }
+        TRUVARI_BENCH_V06(ch_sv_for_v06, ch_truth_v06, ch_truth_v06_tbi, ch_truth_v06_bed)
+        ch_bench_v06   = TRUVARI_BENCH_V06.out.summary
+        ch_sizebin_v06 = TRUVARI_BENCH_V06.out.sizebin
+    }
+
+    // Mandatory channels joined first (inner join). Optional channels last (remainder: true).
+    // filter { it[1] != null } drops spurious right-side remainders from timing races.
     ch_report_in = ch_sv_tsv
         .join(ch_cnv_bed)
         .join(ch_smn_tsv)
@@ -121,8 +140,22 @@ workflow REPORT {
         .map { meta, sv, cnv, smn, svg, bench, cov, met, str, flagstat, ins, sizebin ->
             [meta, sv, cnv, smn, svg, bench, sizebin ?: file("NO_FILE"), cov, met, str, flagstat, ins]
         }
+        // tuple: [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins]
+        .join(ch_bench_v06, remainder: true)
+        .filter   { it[1] != null }
+        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v06 ->
+            [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v06 ?: file("NO_FILE")]
+        }
+        // tuple: [meta, ..., bench_v06]
+        .join(ch_sizebin_v06, remainder: true)
+        .filter   { it[1] != null }
+        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v06, sizebin_v06 ->
+            [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins,
+             bench_v06, sizebin_v06 ?: file("NO_FILE")]
+        }
         // final: [meta, sv_tsv, cnv_bed, smn_tsv, circos_svg, benchmark_json, sizebin_json,
-        //                coverage_summary, picard_metrics, str_vcf, flagstat_txt, insert_size_metrics]
+        //         coverage_summary, picard_metrics, str_vcf, flagstat_txt, insert_size_metrics,
+        //         benchmark_json_v06, sizebin_json_v06]
 
     BUILD_HTML_REPORT(ch_report_in)
 

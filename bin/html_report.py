@@ -250,6 +250,8 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   pipeline_version: str = "1.0.0",
                   benchmark_json: str = None,
                   sizebin_json: str = None,
+                  benchmark_v06_json: str = None,
+                  sizebin_v06_json: str = None,
                   coverage_path: str = None,
                   metrics_path: str = None,
                   flagstat_path: str = None,
@@ -262,11 +264,13 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     circos_svg_inline = Path(circos_svg_path).read_text()
     sv_summary = parse_sv_summary(sv_tsv_path)
     top_svs    = parse_top_svs(sv_tsv_path)
-    benchmark      = parse_benchmark(benchmark_json) if benchmark_json else None
-    benchmark_bins = parse_benchmark_sizebin(sizebin_json) if sizebin_json else None
-    qc             = parse_qc(coverage_path or "", metrics_path or "",
-                              flagstat_path or "", insert_size_path or "")
-    str_loci       = parse_str_loci(str_vcf_path or "")
+    benchmark          = parse_benchmark(benchmark_json)         if benchmark_json     else None
+    benchmark_bins     = parse_benchmark_sizebin(sizebin_json)   if sizebin_json       else None
+    benchmark_v06      = parse_benchmark(benchmark_v06_json)     if benchmark_v06_json else None
+    benchmark_bins_v06 = parse_benchmark_sizebin(sizebin_v06_json) if sizebin_v06_json else None
+    qc                 = parse_qc(coverage_path or "", metrics_path or "",
+                                  flagstat_path or "", insert_size_path or "")
+    str_loci           = parse_str_loci(str_vcf_path or "")
 
     html = template.render(
         sample_id=sample_id,
@@ -279,6 +283,8 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
         circos_svg_inline=circos_svg_inline,
         benchmark=benchmark,
         benchmark_bins=benchmark_bins,
+        benchmark_v06=benchmark_v06,
+        benchmark_bins_v06=benchmark_bins_v06,
         str_loci=str_loci,
     )
     Path(out_path).write_text(html)
@@ -296,6 +302,10 @@ def main():
     parser.add_argument("--pipeline-version", default="1.0.0")
     parser.add_argument("--benchmark",        default=None)
     parser.add_argument("--sizebin",          default=None, help="per-size-bin Truvari JSON")
+    parser.add_argument("--benchmark-v06",    default=None, dest="benchmark_v06",
+                        help="Truvari summary.json against GIAB SV v0.6")
+    parser.add_argument("--sizebin-v06",      default=None, dest="sizebin_v06",
+                        help="per-size-bin Truvari JSON against GIAB SV v0.6")
     parser.add_argument("--coverage",         default=None, help="mosdepth summary.txt")
     parser.add_argument("--metrics",          default=None, help="Picard MarkDup metrics")
     parser.add_argument("--flagstat",         default=None, help="samtools flagstat output")
@@ -313,6 +323,8 @@ def main():
         pipeline_version=args.pipeline_version,
         benchmark_json=args.benchmark,
         sizebin_json=args.sizebin,
+        benchmark_v06_json=args.benchmark_v06,
+        sizebin_v06_json=args.sizebin_v06,
         coverage_path=args.coverage,
         metrics_path=args.metrics,
         flagstat_path=args.flagstat,
