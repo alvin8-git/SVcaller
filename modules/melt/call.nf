@@ -1,3 +1,4 @@
+// v2: container now includes bowtie2 (required by MELT Single for discordant read extraction)
 process MELT_CALL {
     tag "${meta.id}"
     label 'process_medium'

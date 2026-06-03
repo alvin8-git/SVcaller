@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         samtools \
         tabix \
         bwa \
+        bowtie2 \
         gzip \
         libgomp1 \
         python3-minimal \
