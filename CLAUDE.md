@@ -38,7 +38,8 @@ nextflow run main.nf -profile docker \
   --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
   --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
   --giab_truth /data/alvin/ref/GIAB/GRCh38_HG002-T2TQ100-V1.0_stvar.vcf.gz \
-  --giab_truth_v06 /data/alvin/ref/GIAB/HG002_SV_v0.6.chr.vcf.gz \
+  # --giab_truth_v06 disabled: our v0.6 file (HG002_SV_v0.6.chr.vcf.gz) is GRCh37 — needs GRCh38 liftover
+  # Download from: giab/release/AshkenazimTrio/HG002.../NIST_SV_v0.6/GRCh38/ on NCBI FTP \
   --eh_catalog assets/eh_catalog.json \
   --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
   --outdir /data/alvin/SVcaller/results \
