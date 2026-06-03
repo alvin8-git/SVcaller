@@ -26,9 +26,9 @@ process MELT_CALL {
         fi
         MELT_DIR=\$(dirname "\$melt_jar")
         MELT_REFS="\${MELT_DIR}/me_refs/Hg38"
-        MELT_BEDS="\${MELT_DIR}/add_bed_files/Hg38"
+        MELT_BEDS="\${MELT_DIR}/add_bed_files/1KGP_Hg38"
     else
-        MELT_BEDS="\${MELT_REFS}/../add_bed_files/Hg38"
+        MELT_BEDS="\${MELT_REFS}/../add_bed_files/1KGP_Hg38"
         melt_jar=\$(find /usr/share /opt/conda/share /opt -name "MELT.jar" 2>/dev/null | head -1 || true)
     fi
 
