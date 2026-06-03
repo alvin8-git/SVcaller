@@ -1,0 +1,32 @@
+# Dockerfile.melt — custom MELT MEI-caller container
+#
+# MELT.jar is NOT in bioconda/biocontainers and requires registration.
+# Download MELT_v2.2.2.tar.gz from: https://melt.igs.umaryland.edu/
+# Place the tarball in this directory, then build:
+#
+#   docker build -f Dockerfile.melt -t svcaller/melt:2.2.2 \
+#     --build-arg MELT_TARBALL=MELT_v2.2.2.tar.gz .
+#
+# The container auto-exposes MELT.jar at /opt/melt/MELT.jar and
+# ME refs at /opt/melt/me_refs/Hg38/ and /opt/melt/add_bed_files/1KGP_Hg38/
+# These paths are auto-detected by the MELT_CALL process script.
+
+FROM openjdk:17-slim
+
+ARG MELT_TARBALL=MELT_v2.2.2.tar.gz
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        samtools \
+        tabix \
+        bwa \
+        gzip \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY ${MELT_TARBALL} /tmp/melt.tar.gz
+RUN mkdir -p /opt/melt \
+    && tar -xzf /tmp/melt.tar.gz -C /opt/melt --strip-components=1 \
+    && rm /tmp/melt.tar.gz \
+    && find /opt/melt -name 'MELT.jar' | head -1
+
+ENV MELT_HOME=/opt/melt
