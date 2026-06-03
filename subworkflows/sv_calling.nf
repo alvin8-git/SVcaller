@@ -10,6 +10,8 @@ include { EXPANSIONHUNTER        } from '../modules/expansionhunter/call'
 include { JASMINE_MERGE          } from '../modules/jasmine/merge'
 include { SCRAMBLE_CALL          } from '../modules/scramble/call'
 include { SCRAMBLE_STUB          } from '../modules/scramble/stub'
+include { MELT_CALL              } from '../modules/melt/call'
+include { MELT_STUB              } from '../modules/melt/stub'
 include { SAMTOOLS_FILTER_CHROMS } from '../modules/samtools/filter_chroms'
 
 workflow SV_CALLING {
@@ -84,14 +86,25 @@ workflow SV_CALLING {
         ch_scramble_vcf = SCRAMBLE_STUB.out.vcf
     }
 
+    // MELT MEI caller: ALU/LINE1/SVA/HERVK; runs in parallel with other callers
+    // SUPP_VEC position 5 (0-indexed 4): Manta[0] Delly[1] GRIDSS[2] Scramble[3] MELT[4]
+    if (!params.skip_melt) {
+        MELT_CALL(ch_filtered_bam, ch_fasta, ch_fai)
+        ch_melt_vcf = MELT_CALL.out.vcf
+    } else {
+        MELT_STUB(ch_filtered_bam)
+        ch_melt_vcf = MELT_STUB.out.vcf
+    }
+
     // Collect VCFs per sample and merge with JASMINE (min_support=1)
-    // File order: [manta, delly, gridss, scramble] — determines SUPP_VEC bit positions
+    // File order: [manta, delly, gridss, scramble, melt] — determines SUPP_VEC bit positions
     ch_to_merge = MANTA_CALL.out.vcf
         .join(DELLY_MERGE.out.vcf)
         .join(ch_gridss_vcf)
         .join(ch_scramble_vcf)
-        .map { meta, manta_vcf, delly_vcf, gridss_vcf, scramble_vcf ->
-            [meta, [manta_vcf, delly_vcf, gridss_vcf, scramble_vcf]]
+        .join(ch_melt_vcf)
+        .map { meta, manta_vcf, delly_vcf, gridss_vcf, scramble_vcf, melt_vcf ->
+            [meta, [manta_vcf, delly_vcf, gridss_vcf, scramble_vcf, melt_vcf]]
         }
 
     JASMINE_MERGE(ch_to_merge, ch_fasta, ch_fai)
