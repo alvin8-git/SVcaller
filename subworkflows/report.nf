@@ -78,6 +78,7 @@ workflow REPORT {
         .filter { it[1] != null }   // drop tuples fired before sv_vcf is ready (str_vcf caches before Jasmine)
         .join(ch_depth_bed, remainder: true)
         .join(ch_annotsv_tsv, remainder: true)
+        .filter { it[1] != null }   // drop samples re-introduced by depth/annotsv remainders when cnv_bed absent
         .map { meta, sv, cnv, str, depth, annotsv ->
             [meta, sv, cnv, str ?: file("NO_STR"), depth ?: file("NO_FILE"), annotsv ?: file("NO_FILE")]
         }
