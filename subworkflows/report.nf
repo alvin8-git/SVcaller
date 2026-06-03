@@ -1,6 +1,6 @@
 include { CIRCOS_PLOT                      } from '../modules/pycirclize/plot'
 include { TRUVARI_BENCH                    } from '../modules/truvari/bench'
-include { TRUVARI_BENCH as TRUVARI_BENCH_V06 } from '../modules/truvari/bench'
+include { TRUVARI_BENCH as TRUVARI_BENCH_V5Q } from '../modules/truvari/bench'
 include { MULTIQC                          } from '../modules/multiqc/report'
 
 process BUILD_HTML_REPORT {
@@ -14,7 +14,7 @@ process BUILD_HTML_REPORT {
                      path(circos_svg), path(benchmark_json), path(sizebin_json),
                      path(coverage_summary), path(picard_metrics), path(str_vcf),
                      path(flagstat_txt), path(insert_size_metrics),
-                     path(benchmark_json_v06), path(sizebin_json_v06)
+                     path(benchmark_json_v5q), path(sizebin_json_v5q)
 
     output:
     tuple val(meta), path("${meta.id}.report.html"), emit: html
@@ -27,8 +27,8 @@ process BUILD_HTML_REPORT {
     def str_arg         = str_vcf.name             != "NO_STR"       ? "--str-vcf       ${str_vcf}"             : ""
     def flagstat_arg    = flagstat_txt.name        != "NO_FLAGSTAT"  ? "--flagstat      ${flagstat_txt}"        : ""
     def insert_size_arg = insert_size_metrics.name != "NO_INSERT"    ? "--insert-size   ${insert_size_metrics}" : ""
-    def bench_v06_arg   = benchmark_json_v06.name  != "NO_BENCH_V06" ? "--benchmark-v06 ${benchmark_json_v06}"  : ""
-    def sizebin_v06_arg = sizebin_json_v06.name    != "NO_SBN_V06"   ? "--sizebin-v06   ${sizebin_json_v06}"    : ""
+    def bench_v5q_arg   = benchmark_json_v5q.name  != "NO_BENCH_V5Q" ? "--benchmark-v5q ${benchmark_json_v5q}"  : ""
+    def sizebin_v5q_arg = sizebin_json_v5q.name    != "NO_SBN_V5Q"   ? "--sizebin-v5q   ${sizebin_json_v5q}"    : ""
     // v5: dual benchmark (T2TQ100-V1.0 + GIAB v0.6); Delly PASS-only pre-Jasmine; --typeignore Truvari
     """
     export PATH=${projectDir}/bin:\$PATH
@@ -47,8 +47,8 @@ process BUILD_HTML_REPORT {
         --pipeline-version ${workflow.manifest.version} \\
         ${bench_arg} \\
         ${sizebin_arg} \\
-        ${bench_v06_arg} \\
-        ${sizebin_v06_arg} \\
+        ${bench_v5q_arg} \\
+        ${sizebin_v5q_arg} \\
         ${cov_arg} \\
         ${met_arg} \\
         ${flagstat_arg} \\
@@ -103,18 +103,18 @@ workflow REPORT {
         ch_sizebin = TRUVARI_BENCH.out.sizebin
     }
 
-    ch_bench_v06   = Channel.empty()
-    ch_sizebin_v06 = Channel.empty()
-    if (params.giab_truth_v06) {
-        ch_truth_v06     = Channel.fromPath(params.giab_truth_v06, checkIfExists: true)
-        ch_truth_v06_tbi = Channel.fromPath("${params.giab_truth_v06}.tbi", checkIfExists: true)
-        ch_truth_v06_bed = Channel.fromPath("${params.giab_truth_v06}".replaceAll(/\.vcf\.gz$/, '.bed'), checkIfExists: true)
-        ch_sv_for_v06 = ch_sv_vcf
+    ch_bench_v5q   = Channel.empty()
+    ch_sizebin_v5q = Channel.empty()
+    if (params.giab_truth_v5q) {
+        ch_truth_v5q     = Channel.fromPath(params.giab_truth_v5q, checkIfExists: true)
+        ch_truth_v5q_tbi = Channel.fromPath("${params.giab_truth_v5q}.tbi", checkIfExists: true)
+        ch_truth_v5q_bed = Channel.fromPath("${params.giab_truth_v5q}".replaceAll(/\.vcf\.gz$/, '.bed'), checkIfExists: true)
+        ch_sv_for_v5q = ch_sv_vcf
             .join(ch_sv_tbi)
             .map { meta, vcf, tbi -> [meta, vcf, tbi] }
-        TRUVARI_BENCH_V06(ch_sv_for_v06, ch_truth_v06, ch_truth_v06_tbi, ch_truth_v06_bed, "v06")
-        ch_bench_v06   = TRUVARI_BENCH_V06.out.summary
-        ch_sizebin_v06 = TRUVARI_BENCH_V06.out.sizebin
+        TRUVARI_BENCH_V5Q(ch_sv_for_v5q, ch_truth_v5q, ch_truth_v5q_tbi, ch_truth_v5q_bed, "v5q")
+        ch_bench_v5q   = TRUVARI_BENCH_V5Q.out.summary
+        ch_sizebin_v5q = TRUVARI_BENCH_V5Q.out.sizebin
     }
 
     // Mandatory channels joined first (inner join). Optional channels last (remainder: true).
@@ -141,21 +141,21 @@ workflow REPORT {
             [meta, sv, cnv, smn, svg, bench, sizebin ?: file("NO_SIZEBIN"), cov, met, str, flagstat, ins]
         }
         // tuple: [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins]
-        .join(ch_bench_v06, remainder: true)
+        .join(ch_bench_v5q, remainder: true)
         .filter   { it[1] != null }
-        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v06 ->
-            [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v06 ?: file("NO_BENCH_V06")]
+        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v5q ->
+            [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v5q ?: file("NO_BENCH_V5Q")]
         }
-        // tuple: [meta, ..., bench_v06]
-        .join(ch_sizebin_v06, remainder: true)
+        // tuple: [meta, ..., bench_v5q]
+        .join(ch_sizebin_v5q, remainder: true)
         .filter   { it[1] != null }
-        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v06, sizebin_v06 ->
+        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v5q, sizebin_v5q ->
             [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins,
-             bench_v06, sizebin_v06 ?: file("NO_SBN_V06")]
+             bench_v5q, sizebin_v5q ?: file("NO_SBN_V5Q")]
         }
         // final: [meta, sv_tsv, cnv_bed, smn_tsv, circos_svg, benchmark_json, sizebin_json,
         //         coverage_summary, picard_metrics, str_vcf, flagstat_txt, insert_size_metrics,
-        //         benchmark_json_v06, sizebin_json_v06]
+        //         benchmark_json_v5q, sizebin_json_v5q]
 
     BUILD_HTML_REPORT(ch_report_in)
 
