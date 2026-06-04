@@ -80,19 +80,32 @@ process MELT_CALL {
         done
     ) | awk '
         BEGIN{OFS="\\t"}
+        /^##fileformat/{
+            print
+            print "##INFO=<ID=MEITYPE,Number=1,Type=String,Description=\\"Mobile element insertion type (ALU/LINE1/SVA/HERVK)\\">"
+            next
+        }
         /^#/{print;next}
         \$1!~/^chr([0-9]+|X|Y|M)\$/{next}
         \$7!="PASS" && \$7!="."{next}
         {
-            # Normalise SVTYPE: ALU/LINE1/LINE/SVA/HERVK → INS; store original as MEITYPE
-            split(\$8,info,";"); new_info=""
-            for(i=1;i<=length(info);i++){
+            # Strip INFO to essentials; normalise SVTYPE → INS; store ME type as MEITYPE
+            svtype="INS"; meitype=""; svlen=""; end_=""
+            n=split(\$8,info,";")
+            for(i=1;i<=n;i++){
                 f=info[i]
-                if(f~/^SVTYPE=(ALU|LINE1|LINE|SVA|HERVK)\$/){
-                    me=substr(f,8); f="SVTYPE=INS;MEITYPE="me
+                if(f~/^SVTYPE=/){
+                    t=substr(f,8)
+                    if(t~/^(ALU|LINE1|LINE|SVA|HERVK)\$/) { meitype=t; svtype="INS" }
+                    else svtype=t
                 }
-                new_info=(new_info=="")?f:new_info";"f
+                else if(f~/^SVLEN=/) svlen=f
+                else if(f~/^END=/)   end_=f
             }
+            new_info="SVTYPE=" svtype
+            if(meitype!="") new_info=new_info ";MEITYPE=" meitype
+            if(svlen!="")   new_info=new_info ";" svlen
+            if(end_!="")    new_info=new_info ";" end_
             \$8=new_info
             # Add FORMAT/GT if absent
             if(\$9=="" || \$9=="."){

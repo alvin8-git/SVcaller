@@ -112,6 +112,10 @@ process JASMINE_MERGE {
     #    Delly-specific FORMAT tags not declared in Manta's header, crashing bcftools/Truvari.
     awk 'BEGIN{OFS="\\t"}
         /^##FORMAT/{if(/ID=GT,/)print; next}
+        /^#CHROM/{
+            print "##INFO=<ID=MEITYPE,Number=1,Type=String,Description=\\"Mobile element insertion type (ALU/LINE1/SVA/HERVK)\\">"
+            print; next
+        }
         /^#/{print;next}
         {
             supp=""; svlen=0; is_tra=0; is_ins=0
