@@ -12,7 +12,8 @@ STR_RANGES_PATH = TEMPLATE_DIR / "str_disease_ranges.tsv"
 # Canonical autosomes + sex chrs for per-chr QC table
 _CANONICAL = [f"chr{c}" for c in list(range(1, 23)) + ["X", "Y"]]
 _LOW_COV_THRESHOLD = 15.0
-_MAX_REPORT_SIZE = 1_000_000    # SVs larger than this are excluded from findings highlight
+_MAX_ARTIFACT_SIZE = 50_000_000  # chromosome-spanning calls — always artifacts
+_LARGE_SV_SUPP_MIN = 2           # require multi-caller support for SVs >1 Mb
 
 
 def _dedup_pathogenic(rows: list) -> list:
@@ -111,11 +112,14 @@ def parse_sv_pathogenic(sv_tsv_path: str) -> list:
                     size_bp = abs(int(row.get("SV_end", 0) or 0) - int(row.get("SV_start", 0) or 0))
                 except (ValueError, TypeError):
                     size_bp = 0
-                if size_bp > _MAX_REPORT_SIZE:
-                    continue   # exclude chromosome-spanning artifacts from clinical findings
                 gene = row.get("Gene_name", row.get("Gene", ""))
                 primary_gene = gene.split(";")[0] if gene else "—"
                 supp = _parse_supp_vec(row.get("INFO", ""))
+                supp_n = int(supp["supp"]) if str(supp["supp"]).isdigit() else 0
+                if size_bp > _MAX_ARTIFACT_SIZE:
+                    continue   # chromosome-spanning: always artifact
+                if size_bp > 1_000_000 and supp_n < _LARGE_SV_SUPP_MIN:
+                    continue   # large SV with single-caller support: likely artifact
                 rows.append({
                     "svtype":     row.get("SV_type", ""),
                     "chrom":      row.get("SV_chrom", ""),
