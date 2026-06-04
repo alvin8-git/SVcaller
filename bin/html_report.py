@@ -16,14 +16,21 @@ _MAX_ARTIFACT_SIZE = 50_000_000  # chromosome-spanning calls — always artifact
 _LARGE_SV_SUPP_MIN = 2           # require multi-caller support for SVs >1 Mb
 
 
-def _dedup_pathogenic(rows: list) -> list:
-    """Deduplicate overlapping P/LP calls — keep best-supported per (gene, svtype).
+_SD_PAIR_POS_WINDOW = 50_000   # bp — start position proximity for SD pair detection
+_SD_PAIR_SIZE_TOL   = 0.20     # fractional size difference tolerance
 
-    Multiple calls in the same gene with the same SVTYPE (e.g. CHROMR×3 DEL,
-    PRKRA×4 DEL) are collapsed to the single best-supported representative.
-    DUP and DEL at the same locus are kept separately (different event types).
+
+def _dedup_pathogenic(rows: list) -> list:
+    """Deduplicate P/LP calls: collapse same-(gene,svtype) groups, then remove
+    reciprocal DUP+DEL pairs at the same locus (segmental duplication artifacts).
+
+    SD artifact signature: same gene, one DUP + one DEL, starts within 50 kb,
+    sizes within 20%. Both callers being fooled by the same SD copy-number
+    ambiguity produces concordant but opposite-sign calls — not a real event.
     """
     from collections import defaultdict
+
+    # Step 1: collapse same-(gene,svtype) groups → best-supported representative
     groups: dict = defaultdict(list)
     for r in rows:
         groups[(r["gene"], r["svtype"])].append(r)
@@ -35,9 +42,33 @@ def _dedup_pathogenic(rows: list) -> list:
         ))
         best = group[0]
         if len(group) > 1:
-            best = dict(best)   # copy so we can annotate without mutating
+            best = dict(best)
             best["collapsed"] = len(group)
         deduped.append(best)
+
+    # Step 2: remove reciprocal DUP+DEL pairs at the same locus.
+    # Match by CHROMOSOME + POSITION, not gene name, because paired calls at the
+    # same locus often get different primary gene annotations from AnnotSV.
+    dups_all = [r for r in deduped if r["svtype"] == "DUP"]
+    dels_all = [r for r in deduped if r["svtype"] == "DEL"]
+
+    sd_artifact_ids: set = set()
+    for dup in dups_all:
+        for del_ in dels_all:
+            if dup.get("chrom") != del_.get("chrom"):
+                continue
+            try:
+                pos_diff  = abs(int(dup["start"]) - int(del_["start"]))
+                dup_size  = dup.get("size_bp", 0)
+                del_size  = del_.get("size_bp", 0)
+                size_diff = abs(dup_size - del_size) / max(dup_size, del_size, 1)
+            except (ValueError, TypeError):
+                continue
+            if pos_diff <= _SD_PAIR_POS_WINDOW and size_diff <= _SD_PAIR_SIZE_TOL:
+                sd_artifact_ids.add(id(dup))
+                sd_artifact_ids.add(id(del_))
+
+    deduped = [r for r in deduped if id(r) not in sd_artifact_ids]
     deduped.sort(key=lambda r: (-int(r["acmg_class"]), r["gene"], r["svtype"]))
     return deduped
 
@@ -129,6 +160,7 @@ def parse_sv_pathogenic(sv_tsv_path: str) -> list:
                     "omim":       row.get("OMIM_morbid", ""),
                     "acmg_class": cls,
                     "size":       _fmt_size(size_bp),
+                    "size_bp":    size_bp,
                     "callers":    supp["callers"],
                     "supp":       supp["supp"],
                     "collapsed":  0,
