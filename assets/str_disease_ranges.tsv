@@ -1,0 +1,26 @@
+locus_id	gene	disease	inheritance	repeat_unit	normal_max	premut_max	path_min	notes
+FMR1	FMR1	Fragile X Syndrome	XLD	CGG	44	199	200	Premutation 55-199 may cause FXTAS/FXPOI
+AFF2	AFF2	Fragile XE Syndrome	XLR	GCC	25		200
+HTT	HTT	Huntington Disease	AD	CAG	35		36	Reduced penetrance 36-39; full ≥40
+ATXN1	ATXN1	Spinocerebellar Ataxia 1 (SCA1)	AD	CAG	35		39
+ATXN2	ATXN2	Spinocerebellar Ataxia 2 / ALS modifier	AD	CAG	31		33	31-32 intermediate
+ATXN3	ATXN3	Spinocerebellar Ataxia 3 / MJD (SCA3)	AD	CAG	44		60	45-59 intermediate
+ATXN7	ATXN7	Spinocerebellar Ataxia 7 (SCA7)	AD	CAG	35		37	36 intermediate
+ATXN8OS	ATXN8OS	Spinocerebellar Ataxia 8 (SCA8)	AD	CTG	79		80	Reduced penetrance
+ATXN10	ATXN10	Spinocerebellar Ataxia 10 (SCA10)	AD	ATTCT	32		800
+DMPK	DMPK	Myotonic Dystrophy Type 1 (DM1)	AD	CTG	37	49	50	Premutation 38-49; congenital ≥1000
+CNBP	CNBP	Myotonic Dystrophy Type 2 (DM2)	AD	CCTG	30		75
+FXN	FXN	Friedreich Ataxia	AR	GAA	65		66	Biallelic expansion required
+C9ORF72	C9ORF72	ALS / Frontotemporal Dementia (C9-FTD)	AD	GGGGCC	30		200	Most common genetic cause of ALS/FTD
+AR	AR	Spinal Bulbar Muscular Atrophy (SBMA / Kennedy)	XLR	CAG	35		38	36-37 reduced penetrance
+CACNA1A	CACNA1A	Spinocerebellar Ataxia 6 (SCA6)	AD	CAG	18		20	19 intermediate
+PPP2R2B	PPP2R2B	Spinocerebellar Ataxia 12 (SCA12)	AD	CAG	24		50
+TBP	TBP	Spinocerebellar Ataxia 17 (SCA17)	AD	CAG	43	48	49	44-48 intermediate
+PABPN1	PABPN1	Oculopharyngeal Muscular Dystrophy (OPMD)	AD	GCG	10		12
+NOTCH2NLC	NOTCH2NLC	Neuronal Intranuclear Inclusion Disease (NIID)	AD	GGC	60		61
+RFC1	RFC1	CANVAS Syndrome	AR	AAGGG	11		400	Biallelic; AAGGG pathogenic; AAAAG benign
+NIPA1	NIPA1	Hereditary Spastic Paraplegia 6 (SPG6)	AD	GCG	7		9	8 reduced penetrance
+NOP56	NOP56	Spinocerebellar Ataxia 36 (SCA36)	AD	GGCCTG	14		650
+BEAN1	BEAN1	Spinocerebellar Ataxia 31 (SCA31)	AD	TGGAA		 	110	Complex insertion
+EIF4A3	EIF4A3	Richieri-Costa-Pereira Syndrome	AR	CGCA		 	14	Biallelic
+MARCHF6	MARCHF6	Familial Adult Myoclonic Epilepsy 3	AD	TTTTA		 	785

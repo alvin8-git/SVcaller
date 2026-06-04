@@ -2,59 +2,183 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SVcaller Report — {{ sample_id }}</title>
-  <link rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
   <style>
-    body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; }
-    .header-bar { background: #2c3e50; color: white; padding: 1.5rem; }
-    .section-card { margin-bottom: 1.5rem; }
-    .badge-danger  { background-color: #dc3545; color: white; }
-    .badge-warning { background-color: #ffc107; color: black; }
-    .badge-success { background-color: #198754; color: white; }
+    body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; font-size: 0.9rem; }
+    .header-bar { background: #1a3a5c; color: white; padding: 1rem 1.5rem; }
+    .header-bar h2 { margin: 0; font-size: 1.4rem; }
+    .header-bar h4 { margin: 0.2rem 0 0; font-size: 1rem; opacity: 0.85; }
+    .pipeline-version { font-size: 0.75rem; opacity: 0.65; }
+    .section-card { margin-bottom: 1.4rem; }
+    .card-header h5 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+    table.sv-table { font-size: 0.82rem; }
+    .badge-path5  { background-color: #dc3545; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; }
+    .badge-path4  { background-color: #fd7e14; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; }
+    .badge-vus    { background-color: #ffc107; color: black;  padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; }
+    .badge-benign { background-color: #198754; color: white;  padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; }
+    .badge-expanded     { background-color: #dc3545; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; }
+    .badge-premutation  { background-color: #fd7e14; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; }
+    .badge-normal       { background-color: #198754; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; }
+    .badge-intermediate { background-color: #ffc107; color: black;  padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; }
+    .badge-unknown      { background-color: #6c757d; color: white;  padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; }
+    .qc-flag-row { color: #dc3545; font-weight: 600; }
+    .findings-box { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: 0.8rem 1rem; margin-bottom: 0.8rem; }
+    .findings-box h6 { margin: 0 0 0.5rem; font-weight: 700; color: #856404; }
+    .no-findings { background: #d1e7dd; border: 1px solid #0f5132; border-radius: 6px; padding: 0.6rem 1rem; color: #0f5132; font-weight: 600; }
+    details summary { cursor: pointer; color: #0d6efd; font-size: 0.82rem; }
     .circos-container svg { max-width: 100%; height: auto; }
-    table.sv-table { font-size: 0.85rem; }
-    .pipeline-version { font-size: 0.75rem; color: #adb5bd; }
+    .bench-label { font-size: 0.72rem; color: #6c757d; font-style: italic; }
+    .footer-meta { background: #e9ecef; border-top: 1px solid #dee2e6; padding: 0.6rem 1.5rem; font-size: 0.75rem; color: #6c757d; margin-top: 1rem; }
   </style>
 </head>
 <body>
+
 <div class="header-bar">
-  <h2>SVcaller Report</h2>
-  <h4>{{ sample_id }}</h4>
-  <span class="pipeline-version">Pipeline v{{ pipeline_version }} | GRCh38 | Generated {{ run_date }}</span>
+  <h2>SVcaller Structural Variant Report</h2>
+  <h4>Sample: {{ sample_id }}</h4>
+  <span class="pipeline-version">Pipeline v{{ pipeline_version }} | Reference: GRCh38 (hg38.canonical) | Generated: {{ run_date }}</span>
 </div>
 
-<div class="container-fluid mt-3">
+<div class="container-fluid mt-3 px-4">
 
-  <!-- QC Metrics -->
+  <!-- QC STATUS BANNER -->
+  {% if qc.qc_pass %}
+  <div class="alert alert-success py-2 mb-3" role="alert">
+    <strong>QC STATUS: PASS</strong> — Coverage, mapping rate, and duplicate rate within acceptable limits.
+  </div>
+  {% else %}
+  <div class="alert alert-danger py-2 mb-3" role="alert">
+    <strong>QC STATUS: CAUTION</strong> —
+    {% for w in qc.qc_warnings %}{{ w }}{% if not loop.last %}; {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- CLINICAL FINDINGS SUMMARY -->
+  <div class="card section-card">
+    <div class="card-header bg-danger text-white"><h5>Clinical Findings Summary</h5></div>
+    <div class="card-body">
+      {% if sv_pathogenic %}
+      <div class="findings-box">
+        <h6>Pathogenic / Likely Pathogenic Structural Variants (ACMG Class 4/5)</h6>
+        <table class="table table-sm sv-table mb-0">
+          <thead><tr><th>Class</th><th>Type</th><th>Chr</th><th>Start</th><th>End</th><th>Size</th><th>Gene</th><th>OMIM</th></tr></thead>
+          <tbody>
+          {% for r in sv_pathogenic %}
+            <tr>
+              <td>{% if r.acmg_class == "5" %}<span class="badge-path5">Class 5 Path</span>
+                  {% else %}<span class="badge-path4">Class 4 LP</span>{% endif %}</td>
+              <td>{{ r.svtype }}</td><td>{{ r.chrom }}</td>
+              <td>{{ r.start }}</td><td>{{ r.end }}</td><td>{{ r.size }}</td>
+              <td><strong>{{ r.gene }}</strong></td><td>{{ r.omim }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="no-findings">No ACMG Class 4/5 structural variants detected.</div>
+      {% endif %}
+      <p class="text-muted mb-0 mt-2" style="font-size:0.78rem;">
+        This report is for research/clinical use. All findings require validation and interpretation by a qualified geneticist.
+      </p>
+    </div>
+  </div>
+
+  <!-- ALIGNMENT QC -->
   <div class="card section-card">
     <div class="card-header"><h5>Alignment QC</h5></div>
     <div class="card-body">
-      <table class="table table-sm">
-        <tr><th>Mean coverage</th><td>{{ qc.mean_depth }}x</td></tr>
-        <tr><th>Duplicate rate</th><td>{{ qc.dup_rate }}%</td></tr>
-        <tr><th>Mapped reads</th><td>{{ qc.mapped_pct }}%</td></tr>
-      </table>
+      <div class="row">
+        <div class="col-md-6">
+          <table class="table table-sm">
+            <tr><th>Reference genome</th><td>GRCh38 (hg38.canonical, chr1-22+X+Y+M)</td></tr>
+            <tr><th>Total reads (primary)</th><td>{{ qc.total_reads }}</td></tr>
+            <tr><th>Read pairs</th><td>{{ qc.read_pairs }}</td></tr>
+            <tr><th>Mapped reads</th><td>{{ qc.mapped_pct }}%</td></tr>
+            <tr><th>Properly paired</th><td>{{ qc.properly_paired_pct }}%</td></tr>
+            <tr><th>Supplementary reads</th><td>{{ qc.supplementary_pct }}%</td></tr>
+            <tr><th>Mean coverage</th><td>{{ qc.mean_depth }}x</td></tr>
+            <tr><th>Duplicate rate</th><td>{{ qc.dup_rate }}%</td></tr>
+            <tr><th>Median insert size</th><td>{{ qc.median_insert_size }} bp</td></tr>
+            <tr><th>Mean insert size (SD)</th><td>{{ qc.mean_insert_size }} bp (&plusmn;{{ qc.insert_size_std }})</td></tr>
+          </table>
+        </div>
+        <div class="col-md-6">
+          {% if qc.chr_coverage %}
+          <details>
+            <summary>Per-chromosome coverage
+              {% if qc.low_cov_chrs %}<span class="text-danger">(low: {{ qc.low_cov_chrs|join(', ') }})</span>{% endif %}
+            </summary>
+            <table class="table table-sm mt-2" style="font-size:0.78rem;">
+              <thead><tr><th>Chr</th><th>Mean depth</th><th></th></tr></thead>
+              <tbody>
+              {% for c in qc.chr_coverage %}
+                <tr class="{% if c.flag %}qc-flag-row{% endif %}">
+                  <td>{{ c.chrom }}</td><td>{{ c.mean }}x</td>
+                  <td>{% if c.flag %}Low{% endif %}</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </details>
+          {% endif %}
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- SV Summary -->
+  <!-- SV SUMMARY -->
   <div class="card section-card">
     <div class="card-header"><h5>Structural Variant Summary</h5></div>
     <div class="card-body">
-      <table class="table table-sm sv-table">
-        <thead><tr><th>Type</th><th>Count</th><th>Path/LP (Class 4/5)</th></tr></thead>
+      <table class="table table-sm sv-table" style="max-width:600px;">
+        <thead>
+          <tr><th>SV Type</th><th>Total Calls</th><th>Pathogenic / LP (Class 4/5)</th><th>Notes</th></tr>
+        </thead>
         <tbody>
         {% for row in sv_summary %}
-          <tr><td>{{ row.svtype }}</td><td>{{ row.total }}</td><td>{{ row.high }}</td></tr>
+          <tr>
+            <td><strong>{{ row.svtype }}</strong></td>
+            <td>{{ row.total }}</td>
+            <td>{% if row.high > 0 %}<span class="badge-path4">{{ row.high }}</span>{% else %}0{% endif %}</td>
+            <td style="font-size:0.78rem;color:#6c757d;">
+              {% if row.svtype == "INS" %}Includes MEI (ALU/HERVK/LINE1/SVA) from MELT{% endif %}
+              {% if row.svtype == "TRA" %}Translocations; BND pairs from GRIDSS{% endif %}
+            </td>
+          </tr>
         {% endfor %}
         </tbody>
       </table>
+      <p class="text-muted mb-0" style="font-size:0.78rem;">
+        Callers: Manta + Delly + GRIDSS + Scramble + MELT. Single-caller DUP/INV excluded. Filtered against gnomAD-SV v2.1 (AF &gt;1% removed).
+      </p>
     </div>
   </div>
 
-  <!-- Circos Plot -->
+  <!-- CNV SUMMARY -->
+  <div class="card section-card">
+    <div class="card-header"><h5>Copy Number Variant (CNV) Summary</h5></div>
+    <div class="card-body">
+      {% if cnv_summary.total == 0 %}
+      <p class="text-muted mb-0">No CNVs detected (CNVpytor + GATK gCNV consensus threshold not met).</p>
+      {% else %}
+      <table class="table table-sm" style="max-width:380px;">
+        <tr><th>Total CNVs</th><td>{{ cnv_summary.total }}</td></tr>
+        <tr><th>Deletions (DEL)</th><td>{{ cnv_summary.del }}</td></tr>
+        <tr><th>Duplications (DUP)</th><td>{{ cnv_summary.dup }}</td></tr>
+        <tr><th>Both-caller consensus (HIGH)</th><td>{{ cnv_summary.both }}</td></tr>
+        <tr><th>GATK-only (MEDIUM)</th><td>{{ cnv_summary.medium }}</td></tr>
+      </table>
+      <p class="text-muted mb-0" style="font-size:0.78rem;">
+        BOTH = CNVpytor + GATK gCNV (reciprocal overlap &ge;50%). MEDIUM = GATK gCNV quality &ge;30, single caller.
+      </p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- CIRCOS PLOT -->
   <div class="card section-card">
     <div class="card-header"><h5>Genome-wide SV/CNV Circos Plot</h5></div>
     <div class="card-body circos-container">
@@ -62,50 +186,84 @@
     </div>
   </div>
 
-  <!-- SMN Section -->
+  <!-- SMN SECTION -->
   <div class="section-card">
     {{ smn_html | safe }}
   </div>
 
-  <!-- STR Expansion Loci -->
+  <!-- STR EXPANSION LOCI -->
   {% if str_loci %}
   <div class="card section-card">
-    <div class="card-header"><h5>STR Expansion Loci (ExpansionHunter)</h5></div>
+    <div class="card-header"><h5>Short Tandem Repeat (STR) Expansion Loci — ExpansionHunter</h5></div>
     <div class="card-body">
       <table class="table table-sm sv-table">
         <thead>
-          <tr><th>Locus</th><th>Chr</th><th>Position</th><th>Repeat Unit</th><th>Observed CN</th></tr>
+          <tr>
+            <th>Status</th><th>Locus</th><th>Disease</th><th>Inh.</th>
+            <th>Chr:Pos</th><th>Unit</th><th>Ref CN</th><th>Observed CN</th>
+            <th>CI</th><th>Normal &le;</th><th>Path &ge;</th><th>Reads (Span/Flank)</th>
+          </tr>
         </thead>
         <tbody>
         {% for row in str_loci %}
           <tr>
+            <td>
+              {% if row.status == "EXPANDED" %}<span class="badge-expanded">EXPANDED</span>
+              {% elif row.status == "PREMUTATION" %}<span class="badge-premutation">PREMUTATION</span>
+              {% elif row.status == "NORMAL" %}<span class="badge-normal">NORMAL</span>
+              {% elif row.status == "INTERMEDIATE" %}<span class="badge-intermediate">INTERMEDIATE</span>
+              {% else %}<span class="badge-unknown">UNKNOWN</span>{% endif %}
+            </td>
             <td><strong>{{ row.locus }}</strong></td>
-            <td>{{ row.chrom }}</td><td>{{ row.pos }}</td>
-            <td><code>{{ row.repunit }}</code></td><td>{{ row.repcn }}</td>
+            <td style="font-size:0.78rem;">{{ row.disease }}</td>
+            <td>{{ row.inheritance }}</td>
+            <td>{{ row.chrom }}:{{ row.pos }}</td>
+            <td><code>{{ row.repunit }}</code></td>
+            <td>{{ row.ref_cn }}</td>
+            <td><strong>{{ row.repcn }}</strong></td>
+            <td style="font-size:0.78rem;">{{ row.repci }}</td>
+            <td>{{ row.normal_max }}</td>
+            <td>{{ row.path_min }}</td>
+            <td style="font-size:0.78rem;">{{ row.spanning }} / {{ row.flanking }}</td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
+      <p class="text-muted mb-0" style="font-size:0.78rem;">
+        Disease ranges sourced from STRchive/OMIM. EXPANDED = observed CN &ge; pathogenic threshold. CI = 95% confidence interval.
+      </p>
     </div>
   </div>
   {% endif %}
 
-  <!-- Top Annotated SVs -->
+  <!-- TOP ANNOTATED SVs -->
   <div class="card section-card">
-    <div class="card-header"><h5>Top Annotated SVs (sorted by AnnotSV ranking score)</h5></div>
+    <div class="card-header"><h5>Top Annotated SVs (AnnotSV score; SVs &gt;10 Mb excluded as annotation artifacts)</h5></div>
     <div class="card-body">
       <table class="table table-sm sv-table">
         <thead>
-          <tr><th>Chr</th><th>Start</th><th>End</th><th>Type</th>
-              <th>Size</th><th>Gene</th><th>Score</th><th>Class</th><th>OMIM</th></tr>
+          <tr>
+            <th>Class</th><th>Chr</th><th>Start</th><th>End</th><th>Type</th>
+            <th>Size</th><th>Gene</th><th>OMIM</th><th>Inheritance</th><th>gnomAD AF</th><th>Score</th>
+          </tr>
         </thead>
         <tbody>
         {% for row in top_svs %}
           <tr>
+            <td>
+              {% if row.acmg_class == "5" %}<span class="badge-path5">Path (5)</span>
+              {% elif row.acmg_class == "4" %}<span class="badge-path4">LP (4)</span>
+              {% elif row.acmg_class == "3" %}<span class="badge-vus">VUS (3)</span>
+              {% elif row.acmg_class in ("1","2") %}<span class="badge-benign">B/LB</span>
+              {% else %}—{% endif %}
+            </td>
             <td>{{ row.chrom }}</td><td>{{ row.start }}</td><td>{{ row.end }}</td>
             <td>{{ row.svtype }}</td><td>{{ row.size }}</td>
-            <td>{{ row.gene }}</td><td>{{ row.acmg }}</td>
-            <td>{{ row.acmg_class }}</td><td>{{ row.omim }}</td>
+            <td><span title="{{ row.gene_full }}"><strong>{{ row.gene }}</strong>{% if row.gene_full and ';' in row.gene_full %}&nbsp;<small class="text-muted">+more</small>{% endif %}</span></td>
+            <td style="font-size:0.78rem;">{{ row.omim }}</td>
+            <td style="font-size:0.78rem;">{{ row.inheritance }}</td>
+            <td style="font-size:0.78rem;">{{ row.gnomad_af if row.gnomad_af else '—' }}</td>
+            <td>{{ row.acmg }}</td>
           </tr>
         {% endfor %}
         </tbody>
@@ -113,74 +271,89 @@
     </div>
   </div>
 
-  <!-- GIAB Benchmark (conditional) -->
+  <!-- GIAB BENCHMARK — T2TQ100-V1.0 -->
   {% if benchmark %}
   <div class="card section-card">
-    <div class="card-header"><h5>GIAB Benchmark (Truvari)</h5></div>
+    <div class="card-header"><h5>Validation Benchmark — GIAB HG002 T2TQ100-V1.0 (GRCh38)</h5></div>
     <div class="card-body">
-      <table class="table table-sm">
-        <thead><tr><th>Category</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+      <p class="bench-label mb-2">Truth: GIAB HG002 T2T-Q100 v1.0 SV benchmark (2023). Truvari v4.3.1 — passonly, typeignore, pctseq=0, sizemin=50 bp.</p>
+      <table class="table table-sm" style="max-width:560px;">
+        <thead><tr><th>Category</th><th>Precision</th><th>Recall</th><th>F1</th><th>TP</th><th>FP</th><th>FN</th></tr></thead>
         <tbody>
         {% for row in benchmark %}
-          <tr><td>{{ row.svtype }}</td>
-              <td>{{ "%.3f"|format(row.precision) }}</td>
-              <td>{{ "%.3f"|format(row.recall) }}</td>
-              <td>{{ "%.3f"|format(row.f1) }}</td></tr>
+          <tr>
+            <td>{{ row.svtype }}</td>
+            <td>{{ "%.3f"|format(row.precision) }}</td>
+            <td>{{ "%.3f"|format(row.recall) }}</td>
+            <td><strong>{{ "%.3f"|format(row.f1) }}</strong></td>
+            <td>{{ row.tp }}</td><td>{{ row.fp }}</td><td>{{ row.fn }}</td>
+          </tr>
         {% endfor %}
         </tbody>
       </table>
       {% if benchmark_bins %}
-      <h6 class="mt-3">Per-size-bin metrics</h6>
-      <table class="table table-sm">
-        <thead><tr><th>Size Bin</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
-        <tbody>
-        {% for row in benchmark_bins %}
-          <tr><td>{{ row.bin }}</td>
-              <td>{{ "%.3f"|format(row.precision) }}</td>
-              <td>{{ "%.3f"|format(row.recall) }}</td>
-              <td>{{ "%.3f"|format(row.f1) }}</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
+      <details class="mt-2"><summary>Per-size-bin metrics</summary>
+        <table class="table table-sm mt-2" style="max-width:420px; font-size:0.8rem;">
+          <thead><tr><th>Size Bin</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+          <tbody>
+          {% for row in benchmark_bins %}
+            <tr><td>{{ row.bin }}</td><td>{{ "%.3f"|format(row.precision) }}</td>
+                <td>{{ "%.3f"|format(row.recall) }}</td><td>{{ "%.3f"|format(row.f1) }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </details>
       {% endif %}
     </div>
   </div>
   {% endif %}
 
-  <!-- GIAB SV v0.6 Benchmark (conditional) — DEL-focused comparison set -->
-  {% if benchmark_v06 %}
+  <!-- GIAB BENCHMARK — v5.0q -->
+  {% if benchmark_v5q %}
   <div class="card section-card">
-    <div class="card-header"><h5>GIAB Benchmark v0.6 (Truvari) — DEL-focused</h5></div>
+    <div class="card-header"><h5>Validation Benchmark — GIAB HG002 v5.0q (GRCh38, 2026-03-02)</h5></div>
     <div class="card-body">
-      <table class="table table-sm">
-        <thead><tr><th>Category</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+      <p class="bench-label mb-2">Truth: GIAB HG002 v5.0q SV benchmark (2026-03-02) — MEI-complete, 46,504 SVs. Truvari v4.3.1 — passonly, typeignore, pctseq=0, sizemin=50 bp.</p>
+      <table class="table table-sm" style="max-width:560px;">
+        <thead><tr><th>Category</th><th>Precision</th><th>Recall</th><th>F1</th><th>TP</th><th>FP</th><th>FN</th></tr></thead>
         <tbody>
-        {% for row in benchmark_v06 %}
-          <tr><td>{{ row.svtype }}</td>
-              <td>{{ "%.3f"|format(row.precision) }}</td>
-              <td>{{ "%.3f"|format(row.recall) }}</td>
-              <td>{{ "%.3f"|format(row.f1) }}</td></tr>
+        {% for row in benchmark_v5q %}
+          <tr>
+            <td>{{ row.svtype }}</td>
+            <td>{{ "%.3f"|format(row.precision) }}</td>
+            <td>{{ "%.3f"|format(row.recall) }}</td>
+            <td><strong>{{ "%.3f"|format(row.f1) }}</strong></td>
+            <td>{{ row.tp }}</td><td>{{ row.fp }}</td><td>{{ row.fn }}</td>
+          </tr>
         {% endfor %}
         </tbody>
       </table>
-      {% if benchmark_bins_v06 %}
-      <h6 class="mt-3">Per-size-bin metrics</h6>
-      <table class="table table-sm">
-        <thead><tr><th>Size Bin</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
-        <tbody>
-        {% for row in benchmark_bins_v06 %}
-          <tr><td>{{ row.bin }}</td>
-              <td>{{ "%.3f"|format(row.precision) }}</td>
-              <td>{{ "%.3f"|format(row.recall) }}</td>
-              <td>{{ "%.3f"|format(row.f1) }}</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
+      {% if benchmark_bins_v5q %}
+      <details class="mt-2"><summary>Per-size-bin metrics</summary>
+        <table class="table table-sm mt-2" style="max-width:420px; font-size:0.8rem;">
+          <thead><tr><th>Size Bin</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+          <tbody>
+          {% for row in benchmark_bins_v5q %}
+            <tr><td>{{ row.bin }}</td><td>{{ "%.3f"|format(row.precision) }}</td>
+                <td>{{ "%.3f"|format(row.recall) }}</td><td>{{ "%.3f"|format(row.f1) }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </details>
       {% endif %}
     </div>
   </div>
   {% endif %}
 
 </div>
+
+<div class="footer-meta">
+  <strong>Pipeline:</strong> SVcaller v{{ pipeline_version }} |
+  <strong>Callers:</strong> Manta &middot; Delly &middot; GRIDSS &middot; Scramble &middot; MELT v2.2.2 &middot; ExpansionHunter &middot; CNVpytor &middot; GATK gCNV &middot; SMNCopyNumberCaller |
+  <strong>Annotation:</strong> AnnotSV 3.4 &middot; gnomAD-SV v2.1 |
+  <strong>Reference:</strong> GRCh38 (hg38.canonical) |
+  <strong>Generated:</strong> {{ run_date }}
+</div>
+
 </body>
 </html>
