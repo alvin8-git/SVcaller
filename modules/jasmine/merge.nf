@@ -118,7 +118,7 @@ process JASMINE_MERGE {
         }
         /^#/{print;next}
         {
-            supp=""; svlen=0; is_tra=0; is_ins=0
+            supp=""; svlen=0; is_tra=0; is_ins=0; is_dup_inv=0
             n=split(\$8,info,";")
             for(i=1;i<=n;i++){
                 if(index(info[i],"SUPP_VEC=")==1) supp=substr(info[i],10)
@@ -126,6 +126,7 @@ process JASMINE_MERGE {
                     t=substr(info[i],8)
                     if(t=="TRA"||t=="BND") is_tra=1
                     if(t=="INS") is_ins=1
+                    if(t=="DUP"||t=="INV") is_dup_inv=1
                 }
                 if(index(info[i],"SVLEN=")==1){ svlen=substr(info[i],7)+0; if(svlen<0) svlen=-svlen }
             }
@@ -133,6 +134,7 @@ process JASMINE_MERGE {
                 ones=0; for(j=1;j<=length(supp);j++) if(substr(supp,j,1)=="1") ones++
                 if(is_tra && ones==1 && substr(supp,3,1)=="1") next
                 if(ones==1 && svlen>10000 && !is_ins) next
+                if(ones==1 && is_dup_inv) next
             }
             m=split(\$9,f,":"); gt_i=1
             for(i=1;i<=m;i++){if(f[i]=="GT"){gt_i=i;break}}

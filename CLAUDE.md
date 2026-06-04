@@ -134,7 +134,7 @@ main.nf                          # Entry: parse samplesheet, set up channels, ca
 - **Delly BCF format**: Delly 1.2.6 outputs BCF binary even with `.vcf` extension. `DELLY_MERGE` uses `bcftools concat | bcftools sort` in `broadinstitute/gatk:4.5.0.0` container (has bcftools 1.13).
 - **Jasmine unsorted output**: Jasmine does not sort its merged VCF. `JASMINE_MERGE` runs `sort -k1,1 -k2,2n` after Jasmine before `bgzip | tabix`.
 - **svcaller/utils:1.1**: rebuilt from `Dockerfile.utils` to add `COPY assets/ /usr/local/assets/` (report template) and fix STR VCF gzip reading and null Truvari precision/recall values.
-- **samtools flagstat not wired**: `mapped_pct` shows "N/A" in HTML QC section; mosdepth gives depth and Picard gives dup rate.
+- **samtools flagstat**: wired and working — `mapped_pct` and `dup_rate` both parsed from `HG002.flagstat.txt` and shown in HTML QC section.
 - **MELT container**: `svcaller/melt:2.2.2` — must be built locally from `MELTv2.2.2.tar.gz` (MELT.jar requires registration at melt.igs.umaryland.edu; not in bioconda/biocontainers). Build: `docker build -f Dockerfile.melt -t svcaller/melt:2.2.2 .`. Requires bowtie2 in PATH (included in container). ME types run alphabetically: ALU→HERVK→LINE1→SVA (~2h total at 30×).
 - **MELT INFO headers**: MELT outputs many INFO fields (DIFF/LP/RP/RA/PRIOR/SR/MEINFO etc.) that Jasmine drops from the merged VCF header, causing bcftools/Truvari to fatal-exit. Fixed: `call.nf` strips INFO to SVTYPE/MEITYPE/SVLEN/END; `merge.nf` injects `##INFO=<ID=MEITYPE,...>` before `#CHROM`.
 - **MELT -n argument**: takes gene annotation BED12 (`Hg38.genes.bed` inside container at `/opt/melt/add_bed_files/Hg38/Hg38.genes.bed`), NOT prior insertion sites. This argument is mandatory in v2.2.2.
