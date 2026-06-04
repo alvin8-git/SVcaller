@@ -15,6 +15,32 @@ _LOW_COV_THRESHOLD = 15.0
 _MAX_REPORT_SIZE = 1_000_000    # SVs larger than this are excluded from findings highlight
 
 
+def _dedup_pathogenic(rows: list) -> list:
+    """Deduplicate overlapping P/LP calls — keep best-supported per (gene, svtype).
+
+    Multiple calls in the same gene with the same SVTYPE (e.g. CHROMR×3 DEL,
+    PRKRA×4 DEL) are collapsed to the single best-supported representative.
+    DUP and DEL at the same locus are kept separately (different event types).
+    """
+    from collections import defaultdict
+    groups: dict = defaultdict(list)
+    for r in rows:
+        groups[(r["gene"], r["svtype"])].append(r)
+    deduped = []
+    for group in groups.values():
+        group.sort(key=lambda r: (
+            -(int(r["supp"]) if str(r["supp"]).isdigit() else 0),
+            -(int(r["acmg_class"]) if str(r["acmg_class"]).isdigit() else 0),
+        ))
+        best = group[0]
+        if len(group) > 1:
+            best = dict(best)   # copy so we can annotate without mutating
+            best["collapsed"] = len(group)
+        deduped.append(best)
+    deduped.sort(key=lambda r: (-int(r["acmg_class"]), r["gene"], r["svtype"]))
+    return deduped
+
+
 def _parse_supp_vec(info_str: str) -> dict:
     """Extract SUPP, SUPP_VEC and caller breakdown from Jasmine INFO field."""
     info_d = dict(
@@ -101,10 +127,11 @@ def parse_sv_pathogenic(sv_tsv_path: str) -> list:
                     "size":       _fmt_size(size_bp),
                     "callers":    supp["callers"],
                     "supp":       supp["supp"],
+                    "collapsed":  0,
                 })
     except (FileNotFoundError, KeyError, ValueError):
         pass
-    return rows
+    return _dedup_pathogenic(rows)
 
 
 def parse_top_svs(sv_tsv_path: str, n: int = 20) -> list:

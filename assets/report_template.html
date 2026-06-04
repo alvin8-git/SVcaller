@@ -71,7 +71,8 @@
                   {% else %}<span class="badge-path4">Class 4 LP</span>{% endif %}</td>
               <td>{{ r.svtype }}</td><td>{{ r.chrom }}</td>
               <td>{{ r.start }}</td><td>{{ r.end }}</td><td>{{ r.size }}</td>
-              <td><strong>{{ r.gene }}</strong></td><td>{{ r.omim }}</td>
+              <td><strong>{{ r.gene }}</strong>{% if r.collapsed > 1 %}&nbsp;<small class="text-muted">({{ r.collapsed }} calls merged)</small>{% endif %}</td>
+              <td>{{ r.omim }}</td>
               <td>
                 {{ r.callers }}
                 {% if r.supp == "1" %}<small class="text-danger">&nbsp;(single-caller)</small>{% endif %}
