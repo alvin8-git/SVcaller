@@ -63,7 +63,7 @@
       <div class="findings-box">
         <h6>Pathogenic / Likely Pathogenic Structural Variants (ACMG Class 4/5)</h6>
         <table class="table table-sm sv-table mb-0">
-          <thead><tr><th>Class</th><th>Type</th><th>Chr</th><th>Start</th><th>End</th><th>Size</th><th>Gene</th><th>OMIM</th></tr></thead>
+          <thead><tr><th>Class</th><th>Type</th><th>Chr</th><th>Start</th><th>End</th><th>Size</th><th>Gene</th><th>OMIM</th><th>Caller Support</th></tr></thead>
           <tbody>
           {% for r in sv_pathogenic %}
             <tr>
@@ -72,6 +72,10 @@
               <td>{{ r.svtype }}</td><td>{{ r.chrom }}</td>
               <td>{{ r.start }}</td><td>{{ r.end }}</td><td>{{ r.size }}</td>
               <td><strong>{{ r.gene }}</strong></td><td>{{ r.omim }}</td>
+              <td>
+                {{ r.callers }}
+                {% if r.supp == "1" %}<small class="text-danger">&nbsp;(single-caller)</small>{% endif %}
+              </td>
             </tr>
           {% endfor %}
           </tbody>
@@ -244,7 +248,7 @@
         <thead>
           <tr>
             <th>Class</th><th>Chr</th><th>Start</th><th>End</th><th>Type</th>
-            <th>Size</th><th>Gene</th><th>OMIM</th><th>Inheritance</th><th>gnomAD AF</th><th>Score</th>
+            <th>Size</th><th>Gene</th><th>OMIM</th><th>Inheritance</th><th>gnomAD AF</th><th>Callers</th><th>Score</th>
           </tr>
         </thead>
         <tbody>
@@ -263,6 +267,10 @@
             <td style="font-size:0.78rem;">{{ row.omim }}</td>
             <td style="font-size:0.78rem;">{{ row.inheritance }}</td>
             <td style="font-size:0.78rem;">{{ row.gnomad_af if row.gnomad_af else '—' }}</td>
+            <td style="font-size:0.78rem;">
+              {{ row.callers }}
+              {% if row.supp == "1" %}<small class="text-danger">&nbsp;(single)</small>{% endif %}
+            </td>
             <td>{{ row.acmg }}</td>
           </tr>
         {% endfor %}

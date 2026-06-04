@@ -12,6 +12,23 @@ STR_RANGES_PATH = TEMPLATE_DIR / "str_disease_ranges.tsv"
 # Canonical autosomes + sex chrs for per-chr QC table
 _CANONICAL = [f"chr{c}" for c in list(range(1, 23)) + ["X", "Y"]]
 _LOW_COV_THRESHOLD = 15.0
+_MAX_REPORT_SIZE = 10_000_000   # SVs larger than this are excluded from findings highlight
+
+
+def _parse_supp_vec(info_str: str) -> dict:
+    """Extract SUPP, SUPP_VEC and caller breakdown from Jasmine INFO field."""
+    info_d = dict(
+        (f.split("=", 1) if "=" in f else (f, ""))
+        for f in info_str.split(";")
+    )
+    supp     = info_d.get("SUPP", "?")
+    supp_vec = info_d.get("SUPP_VEC", "")
+    callers  = []
+    names    = ["Manta", "Delly", "GRIDSS", "Scramble", "MELT"]
+    for i, bit in enumerate(supp_vec):
+        if bit == "1" and i < len(names):
+            callers.append(names[i])
+    return {"supp": supp, "supp_vec": supp_vec, "callers": "/".join(callers) or "?"}
 
 
 def _load_str_ranges() -> dict:
@@ -53,7 +70,7 @@ def parse_sv_summary(sv_tsv_path: str) -> list:
 
 
 def parse_sv_pathogenic(sv_tsv_path: str) -> list:
-    """Return Class 4/5 SVs with gene/disease info for the findings highlight."""
+    """Return Class 4/5 SVs ≤10 Mb with caller support for the findings highlight."""
     rows = []
     try:
         with open(sv_tsv_path) as fh:
@@ -64,17 +81,26 @@ def parse_sv_pathogenic(sv_tsv_path: str) -> list:
                 cls = str(row.get("ACMG_class", "")).strip()
                 if cls not in ("4", "5"):
                     continue
+                try:
+                    size_bp = abs(int(row.get("SV_end", 0) or 0) - int(row.get("SV_start", 0) or 0))
+                except (ValueError, TypeError):
+                    size_bp = 0
+                if size_bp > _MAX_REPORT_SIZE:
+                    continue   # exclude chromosome-spanning artifacts from clinical findings
                 gene = row.get("Gene_name", row.get("Gene", ""))
                 primary_gene = gene.split(";")[0] if gene else "—"
+                supp = _parse_supp_vec(row.get("INFO", ""))
                 rows.append({
-                    "svtype": row.get("SV_type", ""),
-                    "chrom":  row.get("SV_chrom", ""),
-                    "start":  row.get("SV_start", ""),
-                    "end":    row.get("SV_end", ""),
-                    "gene":   primary_gene,
-                    "omim":   row.get("OMIM_morbid", ""),
+                    "svtype":     row.get("SV_type", ""),
+                    "chrom":      row.get("SV_chrom", ""),
+                    "start":      row.get("SV_start", ""),
+                    "end":        row.get("SV_end", ""),
+                    "gene":       primary_gene,
+                    "omim":       row.get("OMIM_morbid", ""),
                     "acmg_class": cls,
-                    "size":   _fmt_size(abs(int(row.get("SV_end", 0) or 0) - int(row.get("SV_start", 0) or 0))),
+                    "size":       _fmt_size(size_bp),
+                    "callers":    supp["callers"],
+                    "supp":       supp["supp"],
                 })
     except (FileNotFoundError, KeyError, ValueError):
         pass
@@ -108,6 +134,7 @@ def parse_top_svs(sv_tsv_path: str, n: int = 20) -> list:
                 acmg_class   = str(row.get("ACMG_class", "")).strip()
                 gnomad_af    = row.get("GD_AF", row.get("gnomAD_SV_AF", row.get("GNOMAD_AF", "")))
                 inh_mode     = row.get("OMIM_inheritance", row.get("Gene_inheritance", ""))
+                supp = _parse_supp_vec(row.get("INFO", ""))
                 rows.append({
                     "chrom": row.get("SV_chrom", row.get("Chr", "")),
                     "start": start, "end": end,
@@ -120,6 +147,8 @@ def parse_top_svs(sv_tsv_path: str, n: int = 20) -> list:
                     "omim":  row.get("OMIM_morbid", row.get("OMIM", "")),
                     "gnomad_af": gnomad_af,
                     "inheritance": inh_mode,
+                    "callers": supp["callers"],
+                    "supp":    supp["supp"],
                     "_score": acmg_score,
                 })
     except (FileNotFoundError, KeyError):
