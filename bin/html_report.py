@@ -12,7 +12,7 @@ STR_RANGES_PATH = TEMPLATE_DIR / "str_disease_ranges.tsv"
 # Canonical autosomes + sex chrs for per-chr QC table
 _CANONICAL = [f"chr{c}" for c in list(range(1, 23)) + ["X", "Y"]]
 _LOW_COV_THRESHOLD = 15.0
-_MAX_REPORT_SIZE = 10_000_000   # SVs larger than this are excluded from findings highlight
+_MAX_REPORT_SIZE = 1_000_000    # SVs larger than this are excluded from findings highlight
 
 
 def _parse_supp_vec(info_str: str) -> dict:
