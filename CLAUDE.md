@@ -67,8 +67,8 @@ nextflow run workflows/pon_build.nf -profile docker \
   -work-dir /data/alvin/SVcaller/work \
   -resume
 
-# Check pipeline progress
-tail -20 /data/alvin/tmp/main_pipeline_run34.log
+# Check pipeline progress (update log path to latest run)
+tail -20 /data/alvin/tmp/melt_header_fix_run.log
 ```
 
 **PON location:** `/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5` (446 MB, built from HG001-HG007)
@@ -106,7 +106,7 @@ HG003,,,/path/HG003.bam
 main.nf                          # Entry: parse samplesheet, set up channels, call SVCALLER
 └── workflows/svcaller.nf        # Top-level orchestration
     ├── subworkflows/preprocess.nf   # M1: BWA-MEM2 align → SAMTOOLS_SORT → Picard MarkDup → Mosdepth QC
-    ├── subworkflows/sv_calling.nf   # M2: Manta + Delly + GRIDSS (parallel) → Jasmine merge; ExpansionHunter (STRs)
+    ├── subworkflows/sv_calling.nf   # M2: Manta + Delly + GRIDSS + Scramble + MELT (parallel) → Jasmine merge; ExpansionHunter (STRs)
     ├── subworkflows/cnv_calling.nf  # M3: CNVpytor + GATK gCNV → cnv_consensus.py (reciprocal overlap merge)
     ├── subworkflows/smn_calling.nf  # M4: SMNCopyNumberCaller
     ├── subworkflows/annotate.nf     # M5: AnnotSV
@@ -116,7 +116,7 @@ main.nf                          # Entry: parse samplesheet, set up channels, ca
 **Key design points:**
 - M2, M3, M4 run in parallel on the same BAM channel after preprocessing.
 - M3 case mode runs `GATK_PREPROCESS_INTERVALS` (bin-length 1000) before `CollectReadCounts` — must match PON build intervals.
-- SV merge (Jasmine) requires all 3 callers to succeed (inner join — fail-fast on any caller error).
+- SV merge (Jasmine) requires Manta+Delly+GRIDSS to succeed; Scramble and MELT are optional (only added to vcf_list.txt if they have calls).
 - CNV consensus (`bin/cnv_consensus.py`) uses reciprocal overlap ≥0.5 to call `BOTH`/`HIGH` calls; GATK-only calls with quality ≥30 are included as `MEDIUM`.
 - Mosdepth halts the pipeline if coverage < `params.min_depth` (default 30).
 - Optional inputs (PoN, intervals, AnnotSV DB, GIAB truth) use `Channel.value(file("NO_PON"))` / `Channel.empty()` sentinel patterns. ANNOTSV emits a stub empty TSV when `--annotsv_db` is not provided.
@@ -135,10 +135,13 @@ main.nf                          # Entry: parse samplesheet, set up channels, ca
 - **Jasmine unsorted output**: Jasmine does not sort its merged VCF. `JASMINE_MERGE` runs `sort -k1,1 -k2,2n` after Jasmine before `bgzip | tabix`.
 - **svcaller/utils:1.1**: rebuilt from `Dockerfile.utils` to add `COPY assets/ /usr/local/assets/` (report template) and fix STR VCF gzip reading and null Truvari precision/recall values.
 - **samtools flagstat not wired**: `mapped_pct` shows "N/A" in HTML QC section; mosdepth gives depth and Picard gives dup rate.
+- **MELT container**: `svcaller/melt:2.2.2` — must be built locally from `MELTv2.2.2.tar.gz` (MELT.jar requires registration at melt.igs.umaryland.edu; not in bioconda/biocontainers). Build: `docker build -f Dockerfile.melt -t svcaller/melt:2.2.2 .`. Requires bowtie2 in PATH (included in container). ME types run alphabetically: ALU→HERVK→LINE1→SVA (~2h total at 30×).
+- **MELT INFO headers**: MELT outputs many INFO fields (DIFF/LP/RP/RA/PRIOR/SR/MEINFO etc.) that Jasmine drops from the merged VCF header, causing bcftools/Truvari to fatal-exit. Fixed: `call.nf` strips INFO to SVTYPE/MEITYPE/SVLEN/END; `merge.nf` injects `##INFO=<ID=MEITYPE,...>` before `#CHROM`.
+- **MELT -n argument**: takes gene annotation BED12 (`Hg38.genes.bed` inside container at `/opt/melt/add_bed_files/Hg38/Hg38.genes.bed`), NOT prior insertion sites. This argument is mandatory in v2.2.2.
 
 ## Python Scripts (`bin/`)
 
-All run inside `svcaller/utils:1.0`. Each is a standalone CLI tool:
+All run inside `svcaller/utils:1.1`. Each is a standalone CLI tool:
 
 | Script | Purpose |
 |---|---|
@@ -151,6 +154,15 @@ All run inside `svcaller/utils:1.0`. Each is a standalone CLI tool:
 ## Module Conventions
 
 Each module under `modules/<tool>/` follows: `input` tuple → `script` block → `output` tuple with named `emit`. Resource labels (`process_single`, `process_low`, `process_medium`, `process_high`, `process_gridss`) map to CPU/memory tiers in `conf/base.config`. Retry on OOM exit codes (137, 143, 104, 134, 139) is automatic.
+
+## Current F1 Baseline (2026-06-04, 5-caller: Manta+Delly+GRIDSS+Scramble+MELT)
+
+| Benchmark | F1 | Precision | Recall | TP | FP |
+|---|---|---|---|---|---|
+| GIAB T2TQ100-V1.0 | 0.385 | 0.735 | 0.261 | 7255 | 2615 |
+| GIAB v5.0q | 0.486 | 0.624 | 0.398 | 2628 | 1587 |
+
+Next target: P2 calibrated GRIDSS DUP/INV filter (expected +0.005–0.015 T2T).
 
 ## Validation
 
@@ -174,7 +186,10 @@ validation/giab_samplesheet.csv
 | `--pon` | null | GATK gCNV Panel of Normals HDF5 |
 | `--intervals` | null | Target capture BED |
 | `--annotsv_db` | null | AnnotSV database directory — use `/data/alvin/ref/annotsv/Annotations_Human` |
-| `--giab_truth` | null | GIAB truth VCF.gz (enables Truvari in REPORT) |
+| `--giab_truth` | null | GIAB T2TQ100-V1.0 truth VCF.gz (enables Truvari T2T benchmark) |
+| `--giab_truth_v5q` | null | GIAB v5.0q truth VCF.gz (enables Truvari v5q benchmark) |
+| `--skip_melt` | false | Skip MELT MEI calling (saves ~2h; use when MELT container unavailable) |
+| `--melt_refs` | null | Path to MELT me_refs dir (auto-detected from container if unset) |
 | `--min_depth` | 30 | Mosdepth coverage threshold |
 | `--outdir` | results | Output directory |
 | `--utils_container` | `svcaller/utils:1.1` | Container for Python bin/ scripts |
