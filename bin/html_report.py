@@ -19,6 +19,8 @@ _LARGE_SV_SUPP_MIN = 2           # require multi-caller support for SVs >1 Mb
 _SD_PAIR_POS_WINDOW = 50_000   # bp — start position proximity for SD pair detection
 _SD_PAIR_SIZE_TOL   = 0.20     # fractional size difference tolerance
 
+_GNOMAD_AF_THRESHOLD = 0.01   # SVs with population AF > 1% are common variation, not P/LP
+
 
 def _dedup_pathogenic(rows: list) -> list:
     """Deduplicate P/LP calls: collapse same-(gene,svtype) groups, then remove
@@ -151,19 +153,48 @@ def parse_sv_pathogenic(sv_tsv_path: str) -> list:
                     continue   # chromosome-spanning: always artifact
                 if size_bp > 1_000_000 and supp_n < _LARGE_SV_SUPP_MIN:
                     continue   # large SV with single-caller support: likely artifact
+
+                # P2 — gnomAD-SV population AF filter (hard): common variants are not P/LP
+                svt = row.get("SV_type", "").upper()
+                if svt in ("DUP",):
+                    af_raw = row.get("B_gain_AFmax", "") or ""
+                elif svt == "DEL":
+                    af_raw = row.get("B_loss_AFmax", "") or ""
+                elif svt == "INS":
+                    af_raw = row.get("B_ins_AFmax", "") or ""
+                elif svt == "INV":
+                    af_raw = row.get("B_inv_AFmax", "") or ""
+                else:
+                    af_raw = ""
+                try:
+                    pop_af = float(af_raw) if af_raw and af_raw not in (".", "") else 0.0
+                except ValueError:
+                    pop_af = 0.0
+                if pop_af > _GNOMAD_AF_THRESHOLD:
+                    continue   # common variant (gnomAD-SV AF > 1%): not P/LP
+
+                # P1 — SD boundary annotation (soft flag): both breakpoints in segdup
+                sd_left  = (row.get("SegDup_left",  "") or "").strip()
+                sd_right = (row.get("SegDup_right", "") or "").strip()
+                both_sd  = bool(sd_left and sd_right
+                                and sd_left  not in (".", "")
+                                and sd_right not in (".", ""))
+
                 rows.append({
-                    "svtype":     row.get("SV_type", ""),
-                    "chrom":      row.get("SV_chrom", ""),
-                    "start":      row.get("SV_start", ""),
-                    "end":        row.get("SV_end", ""),
-                    "gene":       primary_gene,
-                    "omim":       row.get("OMIM_morbid", ""),
-                    "acmg_class": cls,
-                    "size":       _fmt_size(size_bp),
-                    "size_bp":    size_bp,
-                    "callers":    supp["callers"],
-                    "supp":       supp["supp"],
-                    "collapsed":  0,
+                    "svtype":         row.get("SV_type", ""),
+                    "chrom":          row.get("SV_chrom", ""),
+                    "start":          row.get("SV_start", ""),
+                    "end":            row.get("SV_end", ""),
+                    "gene":           primary_gene,
+                    "omim":           row.get("OMIM_morbid", ""),
+                    "acmg_class":     cls,
+                    "size":           _fmt_size(size_bp),
+                    "size_bp":        size_bp,
+                    "callers":        supp["callers"],
+                    "supp":           supp["supp"],
+                    "collapsed":      0,
+                    "pop_af":         f"{pop_af:.4f}" if pop_af > 0 else "",
+                    "sd_boundary":    both_sd,
                 })
     except (FileNotFoundError, KeyError, ValueError):
         pass

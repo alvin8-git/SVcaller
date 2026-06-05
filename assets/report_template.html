@@ -63,10 +63,10 @@
       <div class="findings-box">
         <h6>Pathogenic / Likely Pathogenic Structural Variants (ACMG Class 4/5)</h6>
         <table class="table table-sm sv-table mb-0">
-          <thead><tr><th>Class</th><th>Type</th><th>Chr</th><th>Start</th><th>End</th><th>Size</th><th>Gene</th><th>OMIM</th><th>Caller Support</th></tr></thead>
+          <thead><tr><th>Class</th><th>Type</th><th>Chr</th><th>Start</th><th>End</th><th>Size</th><th>Gene</th><th>OMIM</th><th>Caller Support</th><th>Flags</th></tr></thead>
           <tbody>
           {% for r in sv_pathogenic %}
-            <tr>
+            <tr{% if r.sd_boundary %} class="table-warning"{% endif %}>
               <td>{% if r.acmg_class == "5" %}<span class="badge-path5">Class 5 Path</span>
                   {% else %}<span class="badge-path4">Class 4 LP</span>{% endif %}</td>
               <td>{{ r.svtype }}</td><td>{{ r.chrom }}</td>
@@ -76,6 +76,10 @@
               <td>
                 {{ r.callers }}
                 {% if r.supp == "1" %}<small class="text-danger">&nbsp;(single-caller)</small>{% endif %}
+              </td>
+              <td>
+                {% if r.sd_boundary %}<span class="badge bg-warning text-dark" title="Both SV breakpoints fall within segmental duplication regions — array CGH confirmation recommended">⚠ SD boundary</span>{% endif %}
+                {% if r.pop_af %}<small class="text-muted d-block">gnomAD AF: {{ r.pop_af }}</small>{% endif %}
               </td>
             </tr>
           {% endfor %}
