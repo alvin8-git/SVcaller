@@ -1,9 +1,10 @@
-include { PREPROCESS   } from '../subworkflows/preprocess'
-include { SV_CALLING   } from '../subworkflows/sv_calling'
-include { CNV_CALLING  } from '../subworkflows/cnv_calling'
-include { SMN_CALLING  } from '../subworkflows/smn_calling'
-include { ANNOTATE     } from '../subworkflows/annotate'
-include { REPORT       } from '../subworkflows/report'
+include { PREPROCESS      } from '../subworkflows/preprocess'
+include { SV_CALLING      } from '../subworkflows/sv_calling'
+include { CNV_CALLING     } from '../subworkflows/cnv_calling'
+include { SMN_CALLING     } from '../subworkflows/smn_calling'
+include { ANNOTATE        } from '../subworkflows/annotate'
+include { REPORT          } from '../subworkflows/report'
+include { SV_PON_ANNOTATE } from '../modules/sv_pon/annotate'
 
 workflow SVCALLER {
     take:
@@ -29,8 +30,23 @@ workflow SVCALLER {
     CNV_CALLING(ch_bam, ch_fasta, ch_fai, ch_dict, ch_pon, ch_intervals)
     SMN_CALLING(ch_bam, ch_fasta, ch_fai)
 
+    // P3: Optional GIAB SV PON annotation — annotates Jasmine VCF with SV_PON=1
+    // before AnnotSV so the flag is preserved in the TSV INFO column.
+    if (params.sv_pon) {
+        ch_pon_bed = Channel.value(file(params.sv_pon, checkIfExists: true))
+        SV_PON_ANNOTATE(
+            SV_CALLING.out.sv_vcf.join(SV_CALLING.out.sv_tbi),
+            ch_pon_bed
+        )
+        ch_sv_for_annotate = SV_PON_ANNOTATE.out.vcf
+        ch_sv_tbi_for_report = SV_PON_ANNOTATE.out.tbi
+    } else {
+        ch_sv_for_annotate   = SV_CALLING.out.sv_vcf
+        ch_sv_tbi_for_report = SV_CALLING.out.sv_tbi
+    }
+
     // M5: Annotate SVs
-    ANNOTATE(SV_CALLING.out.sv_vcf, ch_annotsv_db)
+    ANNOTATE(ch_sv_for_annotate, ch_annotsv_db)
 
     // Optional truvari truth channels
     ch_truth     = params.giab_truth
@@ -57,8 +73,8 @@ workflow SVCALLER {
         ANNOTATE.out.tsv,
         CNV_CALLING.out.cnv_bed,
         SMN_CALLING.out.tsv,
-        SV_CALLING.out.sv_vcf,
-        SV_CALLING.out.sv_tbi,
+        ch_sv_for_annotate,
+        ch_sv_tbi_for_report,
         SV_CALLING.out.str_vcf,
         ch_cytobands,
         ch_truth,
@@ -71,6 +87,7 @@ workflow SVCALLER {
         PREPROCESS.out.insert_size,
         PREPROCESS.out.regions_bed,
         ANNOTATE.out.annotated_tsv,
+        SV_CALLING.out.strling_tsv,
     )
 
     emit:

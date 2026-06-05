@@ -14,22 +14,23 @@ process BUILD_HTML_REPORT {
                      path(circos_svg), path(benchmark_json), path(sizebin_json),
                      path(coverage_summary), path(picard_metrics), path(str_vcf),
                      path(flagstat_txt), path(insert_size_metrics),
-                     path(benchmark_json_v5q), path(sizebin_json_v5q)
+                     path(benchmark_json_v5q), path(sizebin_json_v5q),
+                     path(strling_tsv)
 
     output:
     tuple val(meta), path("${meta.id}.report.html"), emit: html
 
     script:
-    def bench_arg       = benchmark_json.name      != "NO_BENCH"     ? "--benchmark     ${benchmark_json}"      : ""
-    def sizebin_arg     = sizebin_json.name        != "NO_SIZEBIN"   ? "--sizebin       ${sizebin_json}"        : ""
-    def cov_arg         = coverage_summary.name    != "NO_COV"       ? "--coverage      ${coverage_summary}"    : ""
-    def met_arg         = picard_metrics.name      != "NO_METRICS"   ? "--metrics       ${picard_metrics}"      : ""
-    def str_arg         = str_vcf.name             != "NO_STR"       ? "--str-vcf       ${str_vcf}"             : ""
-    def flagstat_arg    = flagstat_txt.name        != "NO_FLAGSTAT"  ? "--flagstat      ${flagstat_txt}"        : ""
-    def insert_size_arg = insert_size_metrics.name != "NO_INSERT"    ? "--insert-size   ${insert_size_metrics}" : ""
-    def bench_v5q_arg   = benchmark_json_v5q.name  != "NO_BENCH_V5Q" ? "--benchmark-v5q ${benchmark_json_v5q}"  : ""
-    def sizebin_v5q_arg = sizebin_json_v5q.name    != "NO_SBN_V5Q"   ? "--sizebin-v5q   ${sizebin_json_v5q}"    : ""
-    // v5: dual benchmark (T2TQ100-V1.0 + GIAB v0.6); Delly PASS-only pre-Jasmine; --typeignore Truvari
+    def bench_arg       = benchmark_json.name      != "NO_BENCH"      ? "--benchmark     ${benchmark_json}"      : ""
+    def sizebin_arg     = sizebin_json.name        != "NO_SIZEBIN"    ? "--sizebin       ${sizebin_json}"        : ""
+    def cov_arg         = coverage_summary.name    != "NO_COV"        ? "--coverage      ${coverage_summary}"    : ""
+    def met_arg         = picard_metrics.name      != "NO_METRICS"    ? "--metrics       ${picard_metrics}"      : ""
+    def str_arg         = str_vcf.name             != "NO_STR"        ? "--str-vcf       ${str_vcf}"             : ""
+    def flagstat_arg    = flagstat_txt.name        != "NO_FLAGSTAT"   ? "--flagstat      ${flagstat_txt}"        : ""
+    def insert_size_arg = insert_size_metrics.name != "NO_INSERT"     ? "--insert-size   ${insert_size_metrics}" : ""
+    def bench_v5q_arg   = benchmark_json_v5q.name  != "NO_BENCH_V5Q"  ? "--benchmark-v5q ${benchmark_json_v5q}"  : ""
+    def sizebin_v5q_arg = sizebin_json_v5q.name    != "NO_SBN_V5Q"    ? "--sizebin-v5q   ${sizebin_json_v5q}"    : ""
+    def strling_arg     = strling_tsv.name         != "NO_STRLING"    ? "--strling-tsv   ${strling_tsv}"         : ""
     """
     export PATH=${projectDir}/bin:\$PATH
     smn_report.py \\
@@ -53,7 +54,8 @@ process BUILD_HTML_REPORT {
         ${met_arg} \\
         ${flagstat_arg} \\
         ${insert_size_arg} \\
-        ${str_arg}
+        ${str_arg} \\
+        ${strling_arg}
     """
 }
 
@@ -76,6 +78,7 @@ workflow REPORT {
     ch_insert_size   // [ meta, insert_size_metrics ] for HTML section 2
     ch_depth_bed     // [ meta, regions.bed.gz ]    mosdepth 50kb windows for Circos ring A
     ch_annotsv_tsv   // [ meta, annotated.tsv ]     raw AnnotSV output for Circos rings B/C
+    ch_strling_tsv   // [ meta, tsv ] STRling genome-wide STR expansions (optional)
 
     main:
     ch_circos_in = ch_sv_vcf
@@ -153,9 +156,16 @@ workflow REPORT {
             [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins,
              bench_v5q, sizebin_v5q ?: file("NO_SBN_V5Q")]
         }
+        // tuple: [meta, ..., sizebin_v5q]
+        .join(ch_strling_tsv, remainder: true)
+        .filter   { it[1] != null }
+        .map { meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins, bench_v5q, sizebin_v5q, strling ->
+            [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins,
+             bench_v5q, sizebin_v5q, strling ?: file("NO_STRLING")]
+        }
         // final: [meta, sv_tsv, cnv_bed, smn_tsv, circos_svg, benchmark_json, sizebin_json,
         //         coverage_summary, picard_metrics, str_vcf, flagstat_txt, insert_size_metrics,
-        //         benchmark_json_v5q, sizebin_json_v5q]
+        //         benchmark_json_v5q, sizebin_json_v5q, strling_tsv]
 
     BUILD_HTML_REPORT(ch_report_in)
 

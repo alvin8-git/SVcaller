@@ -57,6 +57,7 @@ process MELT_CALL {
             \${n_arg} \\
             -w       melt_tmp/\${me} \\
             -c       ${params.min_depth} \\
+            -reads   ${params.melt_min_reads} \\
             2>&1 || true
     done
 

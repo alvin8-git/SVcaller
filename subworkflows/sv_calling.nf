@@ -12,6 +12,9 @@ include { SCRAMBLE_CALL          } from '../modules/scramble/call'
 include { SCRAMBLE_STUB          } from '../modules/scramble/stub'
 include { MELT_CALL              } from '../modules/melt/call'
 include { MELT_STUB              } from '../modules/melt/stub'
+include { SVABA_CALL             } from '../modules/svaba/call'
+include { SVABA_STUB             } from '../modules/svaba/call'
+include { STRLING_CALL           } from '../modules/strling/call'
 include { SAMTOOLS_FILTER_CHROMS } from '../modules/samtools/filter_chroms'
 
 workflow SV_CALLING {
@@ -23,7 +26,6 @@ workflow SV_CALLING {
 
     main:
     // FILTER_CHROMS: skip for FASTQ-derived BAMs (aligned to hg38.canonical.fa — no alt contigs).
-    // Pre-supplied BAMs may contain alt-contig reads and always go through filtering.
     ch_bam.branch {
         needs_filter: it[0].get('needs_chr_filter', true)
         canonical:    true
@@ -41,6 +43,14 @@ workflow SV_CALLING {
 
     EXPANSIONHUNTER(ch_bam, ch_fasta, ch_fai, ch_eh_catalog)
 
+    // P6: STRling genome-wide STR expansion detection (parallel with EH)
+    if (!params.skip_strling) {
+        STRLING_CALL(ch_filtered_bam, ch_fasta, ch_fai)
+        ch_strling_tsv = STRLING_CALL.out.tsv
+    } else {
+        ch_strling_tsv = Channel.empty()
+    }
+
     // Manta always runs first; its output feeds tiered GRIDSS when enabled
     MANTA_CALL(ch_filtered_bam, ch_fasta, ch_fai)
 
@@ -48,10 +58,6 @@ workflow SV_CALLING {
         GRIDSS_SETUP(ch_fasta, ch_fai)
 
         if (params.tiered_gridss) {
-            // Tiered mode: GRIDSS runs only on regions where Manta was not PASS.
-            // Trades GRIDSS parallelism with Manta for a much smaller input BAM
-            // (~5–20% of reads in most 30× WGS samples), cutting GRIDSS wall time
-            // from ~4–6 h to ~30–60 min per sample.
             MANTA_RESIDUAL_REGIONS(MANTA_CALL.out.vcf, ch_fai)
             SAMTOOLS_SUBSET(
                 ch_filtered_bam.join(MANTA_RESIDUAL_REGIONS.out.bed)
@@ -63,7 +69,6 @@ workflow SV_CALLING {
                 GRIDSS_SETUP.out.sa
             )
         } else {
-            // Standard mode: GRIDSS runs on full filtered BAM in parallel with Manta
             GRIDSS_CALL(
                 ch_filtered_bam, ch_fasta, ch_fai,
                 GRIDSS_SETUP.out.amb, GRIDSS_SETUP.out.ann,
@@ -77,7 +82,6 @@ workflow SV_CALLING {
         ch_gridss_vcf = GRIDSS_STUB.out.vcf
     }
 
-    // Scramble MEI caller: runs on filtered BAM in parallel with other callers
     if (!params.skip_scramble) {
         SCRAMBLE_CALL(ch_filtered_bam, ch_fasta, ch_fai)
         ch_scramble_vcf = SCRAMBLE_CALL.out.vcf
@@ -86,8 +90,6 @@ workflow SV_CALLING {
         ch_scramble_vcf = SCRAMBLE_STUB.out.vcf
     }
 
-    // MELT MEI caller: ALU/LINE1/SVA/HERVK; runs in parallel with other callers
-    // SUPP_VEC position 5 (0-indexed 4): Manta[0] Delly[1] GRIDSS[2] Scramble[3] MELT[4]
     if (!params.skip_melt) {
         MELT_CALL(ch_filtered_bam, ch_fasta, ch_fai)
         ch_melt_vcf = MELT_CALL.out.vcf
@@ -96,21 +98,33 @@ workflow SV_CALLING {
         ch_melt_vcf = MELT_STUB.out.vcf
     }
 
+    // P7: SvABA local-assembly caller; 6th position in SUPP_VEC
+    // SUPP_VEC positions: Manta[0] Delly[1] GRIDSS[2] Scramble[3] MELT[4] SvABA[5]
+    if (!params.skip_svaba) {
+        SVABA_CALL(ch_filtered_bam, ch_fasta, ch_fai)
+        ch_svaba_vcf = SVABA_CALL.out.vcf
+    } else {
+        SVABA_STUB(ch_filtered_bam)
+        ch_svaba_vcf = SVABA_STUB.out.vcf
+    }
+
     // Collect VCFs per sample and merge with JASMINE (min_support=1)
-    // File order: [manta, delly, gridss, scramble, melt] — determines SUPP_VEC bit positions
+    // File order: [manta, delly, gridss, scramble, melt, svaba] — determines SUPP_VEC bit positions
     ch_to_merge = MANTA_CALL.out.vcf
         .join(DELLY_MERGE.out.vcf)
         .join(ch_gridss_vcf)
         .join(ch_scramble_vcf)
         .join(ch_melt_vcf)
-        .map { meta, manta_vcf, delly_vcf, gridss_vcf, scramble_vcf, melt_vcf ->
-            [meta, [manta_vcf, delly_vcf, gridss_vcf, scramble_vcf, melt_vcf]]
+        .join(ch_svaba_vcf)
+        .map { meta, manta_vcf, delly_vcf, gridss_vcf, scramble_vcf, melt_vcf, svaba_vcf ->
+            [meta, [manta_vcf, delly_vcf, gridss_vcf, scramble_vcf, melt_vcf, svaba_vcf]]
         }
 
     JASMINE_MERGE(ch_to_merge, ch_fasta, ch_fai)
 
     emit:
-    sv_vcf  = JASMINE_MERGE.out.vcf
-    sv_tbi  = JASMINE_MERGE.out.tbi
-    str_vcf = EXPANSIONHUNTER.out.vcf
+    sv_vcf      = JASMINE_MERGE.out.vcf
+    sv_tbi      = JASMINE_MERGE.out.tbi
+    str_vcf     = EXPANSIONHUNTER.out.vcf
+    strling_tsv = ch_strling_tsv
 }

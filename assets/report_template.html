@@ -78,7 +78,9 @@
                 {% if r.supp == "1" %}<small class="text-danger">&nbsp;(single-caller)</small>{% endif %}
               </td>
               <td>
+                {% if r.pon_hit %}<span class="badge bg-danger" title="SV overlaps a recurrent site in the GIAB multi-sample SV PON (≥2 of HG001/HG003–HG007) — likely systematic artifact">⚠ PON hit</span>{% endif %}
                 {% if r.sd_boundary %}<span class="badge bg-warning text-dark" title="Both SV breakpoints fall within segmental duplication regions — array CGH confirmation recommended">⚠ SD boundary</span>{% endif %}
+                {% if r.enc_blacklist %}<span class="badge bg-secondary" title="Both SV breakpoints overlap the ENCODE mappability blacklist — likely alignment artifact">⚠ Blacklist</span>{% endif %}
                 {% if r.pop_af %}<small class="text-muted d-block">gnomAD AF: {{ r.pop_af }}</small>{% endif %}
               </td>
             </tr>
@@ -241,6 +243,35 @@
       <p class="text-muted mb-0" style="font-size:0.78rem;">
         Disease ranges sourced from STRchive/OMIM. EXPANDED = observed CN &ge; pathogenic threshold. CI = 95% confidence interval.
       </p>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- STRLING GENOME-WIDE STR EXPANSIONS -->
+  {% if strling_loci %}
+  <div class="card section-card">
+    <div class="card-header"><h5>Genome-wide STR Expansions — STRling (novel loci)</h5></div>
+    <div class="card-body">
+      <p class="text-muted mb-2" style="font-size:0.78rem;">
+        STRling detects short tandem repeat expansions genome-wide, beyond the catalogued EH loci above.
+        Shown: loci with estimated allele &ge;50 repeat units or expansion probability &ge;0.5.
+        These are candidate findings requiring clinical interpretation and orthogonal confirmation.
+      </p>
+      <table class="table table-sm sv-table">
+        <thead><tr><th>Chr</th><th>Left</th><th>Right</th><th>Repeat Unit</th><th>Allele 1</th><th>Allele 2 (est.)</th><th>Spanning</th><th>Flanking</th><th>P(expansion)</th></tr></thead>
+        <tbody>
+        {% for r in strling_loci %}
+          <tr{% if r.prob|float >= 0.8 %} class="table-warning"{% endif %}>
+            <td>{{ r.chrom }}</td><td>{{ r.left }}</td><td>{{ r.right }}</td>
+            <td><code>{{ r.repeatunit }}</code></td>
+            <td>{{ r.allele1 }}</td>
+            <td><strong>{{ r.allele2 }}</strong></td>
+            <td>{{ r.spanning }}</td><td>{{ r.flanking }}</td>
+            <td>{{ r.prob }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
   {% endif %}

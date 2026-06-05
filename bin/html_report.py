@@ -84,7 +84,7 @@ def _parse_supp_vec(info_str: str) -> dict:
     supp     = info_d.get("SUPP", "?")
     supp_vec = info_d.get("SUPP_VEC", "")
     callers  = []
-    names    = ["Manta", "Delly", "GRIDSS", "Scramble", "MELT"]
+    names    = ["Manta", "Delly", "GRIDSS", "Scramble", "MELT", "SvABA"]
     for i, bit in enumerate(supp_vec):
         if bit == "1" and i < len(names):
             callers.append(names[i])
@@ -180,6 +180,13 @@ def parse_sv_pathogenic(sv_tsv_path: str) -> list:
                                 and sd_left  not in (".", "")
                                 and sd_right not in (".", ""))
 
+                # P4 — ENCODE blacklist annotation (soft flag): both breakpoints in blacklist
+                enc_left  = (row.get("ENCODE_blacklist_left",  "") or "").strip()
+                enc_right = (row.get("ENCODE_blacklist_right", "") or "").strip()
+                both_enc  = bool(enc_left and enc_right
+                                 and enc_left  not in (".", "")
+                                 and enc_right not in (".", ""))
+
                 rows.append({
                     "svtype":         row.get("SV_type", ""),
                     "chrom":          row.get("SV_chrom", ""),
@@ -195,6 +202,8 @@ def parse_sv_pathogenic(sv_tsv_path: str) -> list:
                     "collapsed":      0,
                     "pop_af":         f"{pop_af:.4f}" if pop_af > 0 else "",
                     "sd_boundary":    both_sd,
+                    "enc_blacklist":  both_enc,
+                    "pon_hit":        "SV_PON" in (row.get("INFO", "") or ""),
                 })
     except (FileNotFoundError, KeyError, ValueError):
         pass
@@ -292,6 +301,50 @@ def parse_cnv_summary(cnv_bed_path: str) -> dict:
     except (FileNotFoundError, IndexError):
         pass
     return summary
+
+
+# ---------------------------------------------------------------------------
+# STRling genome-wide STR parsing (P6)
+# ---------------------------------------------------------------------------
+
+def parse_strling(tsv_path: str, min_allele2: float = 50.0,
+                  min_prob: float = 0.5, top_n: int = 30) -> list:
+    """Parse STRling genotype TSV; return novel expansion candidates.
+
+    Reports loci where allele2_est >= min_allele2 OR prob_expansion >= min_prob,
+    sorted by allele2_est descending. Distinct from EH (which only calls catalogued
+    disease loci); STRling detects genome-wide expansions at novel sites.
+    """
+    rows = []
+    if not tsv_path or tsv_path in ("NO_STRLING", "NO_FILE", "null"):
+        return rows
+    try:
+        with open(tsv_path) as fh:
+            reader = csv.DictReader(fh, delimiter="\t")
+            for row in reader:
+                try:
+                    a2   = float(row.get("allele2_est", 0) or 0)
+                    prob = float(row.get("prob_expansion", 0) or 0)
+                except (ValueError, TypeError):
+                    continue
+                if a2 < min_allele2 and prob < min_prob:
+                    continue
+                ru  = row.get("repeatunit", row.get("repeat_unit", ""))
+                rows.append({
+                    "chrom":      row.get("#chrom", row.get("chrom", "")),
+                    "left":       row.get("left",  ""),
+                    "right":      row.get("right", ""),
+                    "repeatunit": ru,
+                    "allele1":    row.get("allele1_est", ""),
+                    "allele2":    f"{a2:.0f}",
+                    "spanning":   row.get("spanning", ""),
+                    "flanking":   row.get("flanking", ""),
+                    "prob":       f"{prob:.2f}",
+                })
+    except (FileNotFoundError, KeyError):
+        pass
+    rows.sort(key=lambda r: float(r["allele2"]) if r["allele2"] else 0, reverse=True)
+    return rows[:top_n]
 
 
 # ---------------------------------------------------------------------------
@@ -614,25 +667,27 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   metrics_path: str = None,
                   flagstat_path: str = None,
                   insert_size_path: str = None,
-                  str_vcf_path: str = None) -> None:
+                  str_vcf_path: str = None,
+                  strling_tsv_path: str = None) -> None:
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("report_template.html")
 
     str_ranges = _load_str_ranges()
 
-    smn_html         = Path(smn_html_path).read_text()
+    smn_html          = Path(smn_html_path).read_text()
     circos_svg_inline = Path(circos_svg_path).read_text()
-    sv_summary       = parse_sv_summary(sv_tsv_path)
-    sv_pathogenic    = parse_sv_pathogenic(sv_tsv_path)
-    top_svs          = parse_top_svs(sv_tsv_path)
-    cnv_summary      = parse_cnv_summary(cnv_bed_path)
+    sv_summary        = parse_sv_summary(sv_tsv_path)
+    sv_pathogenic     = parse_sv_pathogenic(sv_tsv_path)
+    top_svs           = parse_top_svs(sv_tsv_path)
+    cnv_summary       = parse_cnv_summary(cnv_bed_path)
     benchmark          = parse_benchmark(benchmark_json)           if benchmark_json      else None
     benchmark_bins     = parse_benchmark_sizebin(sizebin_json)     if sizebin_json        else None
     benchmark_v5q      = parse_benchmark(benchmark_v5q_json)       if benchmark_v5q_json  else None
     benchmark_bins_v5q = parse_benchmark_sizebin(sizebin_v5q_json) if sizebin_v5q_json    else None
-    qc               = parse_qc(coverage_path or "", metrics_path or "",
-                                flagstat_path or "", insert_size_path or "")
-    str_loci         = parse_str_loci(str_vcf_path or "", str_ranges)
+    qc                = parse_qc(coverage_path or "", metrics_path or "",
+                                 flagstat_path or "", insert_size_path or "")
+    str_loci          = parse_str_loci(str_vcf_path or "", str_ranges)
+    strling_loci      = parse_strling(strling_tsv_path or "")
 
     html = template.render(
         sample_id=sample_id,
@@ -650,6 +705,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
         benchmark_v5q=benchmark_v5q,
         benchmark_bins_v5q=benchmark_bins_v5q,
         str_loci=str_loci,
+        strling_loci=strling_loci,
     )
     Path(out_path).write_text(html)
     print(f"HTML report written to {out_path}")
@@ -673,6 +729,7 @@ def main():
     parser.add_argument("--flagstat",         default=None)
     parser.add_argument("--insert-size",      default=None, dest="insert_size")
     parser.add_argument("--str-vcf",          default=None)
+    parser.add_argument("--strling-tsv",      default=None, dest="strling_tsv")
     args = parser.parse_args()
     render_report(
         sample_id=args.sample,
@@ -691,6 +748,7 @@ def main():
         flagstat_path=args.flagstat,
         insert_size_path=args.insert_size,
         str_vcf_path=args.str_vcf,
+        strling_tsv_path=args.strling_tsv,
     )
 
 
