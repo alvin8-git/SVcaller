@@ -349,16 +349,22 @@ def parse_strling(tsv_path: str, min_allele2: float = 100.0,
     return rows[:top_n]
 
 
-def build_str_consensus(str_loci: list, strling_loci: list) -> list:
-    """Merge ExpansionHunter catalog loci + STRling high-confidence hits into one table.
+def build_str_consensus(str_loci: list, strling_loci: list) -> tuple:
+    """Merge ExpansionHunter catalog loci + STRling corroboration into clinical STR table.
 
-    EH loci (known disease catalog) are always shown. STRling-only novel loci are added
-    where no EH position is within 500 bp. Coordinate matches are tagged "Both" (highest
-    confidence). Sort order: EXPANDED → PREMUTATION → CANDIDATE → INTERMEDIATE → UNKNOWN
-    → NORMAL, then by allele size descending within each tier.
+    Clinical report shows ONLY the 32 EH catalog loci (known disease associations).
+    STRling is used exclusively for:
+      (a) corroborating EH hits at the same coordinate (±500 bp) → tags source "Both"
+      (b) counting novel high-confidence expansions for the summary line
+
+    Novel STRling loci (no EH catalog match) are NOT shown in the main table —
+    they lack gene/disease/threshold context required for clinical interpretation and
+    belong in the companion TSV for research review.
+
+    Returns (table, novel_count) where novel_count is the number of STRling-only hits.
     """
-    _STATUS_RANK = {"EXPANDED": 0, "PREMUTATION": 1, "CANDIDATE": 2,
-                    "INTERMEDIATE": 3, "UNKNOWN": 4, "NORMAL": 5}
+    _STATUS_RANK = {"EXPANDED": 0, "PREMUTATION": 1, "INTERMEDIATE": 2,
+                    "UNKNOWN": 3, "NORMAL": 4}
     _COORD_WINDOW = 500
 
     result = []
@@ -378,6 +384,7 @@ def build_str_consensus(str_loci: list, strling_loci: list) -> list:
         chrom = locus["chrom"]
         eh_positions.setdefault(chrom, []).append((pos_int, idx))
 
+    novel_count = 0
     for sl in strling_loci:
         chrom = sl["chrom"]
         try:
@@ -392,34 +399,16 @@ def build_str_consensus(str_loci: list, strling_loci: list) -> list:
                 break
 
         if matched_idx is not None:
+            # Corroborate existing EH entry
             result[matched_idx]["source"]       = "Both"
             result[matched_idx]["allele2_est"]  = sl["allele2"]
             result[matched_idx]["strling_prob"] = sl["prob"]
         else:
-            result.append({
-                "locus":        f"{chrom}:{sl['left']}",
-                "chrom":        chrom,
-                "pos":          sl["left"],
-                "repunit":      sl["repeatunit"],
-                "ref_cn":       "",
-                "repcn":        f"{sl['allele1']}/{sl['allele2']}",
-                "repci":        "",
-                "spanning":     sl["spanning"],
-                "flanking":     sl["flanking"],
-                "gt":           ".",
-                "disease":      "",
-                "inheritance":  "",
-                "normal_max":   "",
-                "path_min":     "",
-                "notes":        "",
-                "status":       "CANDIDATE",
-                "source":       "STRling",
-                "allele2_est":  sl["allele2"],
-                "strling_prob": sl["prob"],
-            })
+            # Novel locus — count only; not added to clinical table
+            novel_count += 1
 
     def _sort_key(r):
-        rank = _STATUS_RANK.get(r["status"], 4)
+        rank = _STATUS_RANK.get(r["status"], 3)
         try:
             nums  = [float(a) for a in r["repcn"].replace("/", " ").split() if a.replace(".", "").isdigit()]
             a_max = max(nums) if nums else 0.0
@@ -428,7 +417,7 @@ def build_str_consensus(str_loci: list, strling_loci: list) -> list:
         return (rank, -a_max)
 
     result.sort(key=_sort_key)
-    return result
+    return result, novel_count
 
 
 # ---------------------------------------------------------------------------
@@ -772,7 +761,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                                  flagstat_path or "", insert_size_path or "")
     str_loci          = parse_str_loci(str_vcf_path or "", str_ranges)
     strling_loci      = parse_strling(strling_tsv_path or "")
-    str_consensus     = build_str_consensus(str_loci, strling_loci)
+    str_consensus, strling_novel_count = build_str_consensus(str_loci, strling_loci)
     cascade_flag      = any(
         not r.get("pon_hit") and not r.get("sd_boundary")
         for r in sv_pathogenic
@@ -794,6 +783,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
         benchmark_v5q=benchmark_v5q,
         benchmark_bins_v5q=benchmark_bins_v5q,
         str_consensus=str_consensus,
+        strling_novel_count=strling_novel_count,
         cascade_flag=cascade_flag,
     )
     Path(out_path).write_text(html)

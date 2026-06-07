@@ -216,11 +216,12 @@
     <div class="card-header"><h5>Short Tandem Repeat (STR) Findings</h5></div>
     <div class="card-body">
       <p class="text-muted mb-2" style="font-size:0.78rem;">
-        <strong>EH</strong> = ExpansionHunter (known disease catalog, high sensitivity at specific loci).
-        <strong>STRling</strong> = novel genome-wide expansion candidate (allele₂ &ge;100 ru or P(exp) &ge;0.90).
-        <strong>EH+STRling</strong> = concordant between callers — highest confidence.
-        CANDIDATE loci lack disease annotation and require orthogonal confirmation (PCR / long-read sequencing).
-        Full unfiltered STRling results are in the companion TSV file.
+        <strong>EH</strong> = ExpansionHunter targeted at 32 known disease loci.
+        <strong>EH+STRling</strong> = concordant between callers at the same position — highest confidence.
+        {% if strling_novel_count > 0 %}
+        <span class="badge bg-secondary" style="font-size:0.75rem;">{{ strling_novel_count }} novel STRling expansion{{ 's' if strling_novel_count != 1 else '' }} detected genome-wide</span>
+        — not shown here (no disease/threshold annotation); available in companion STRling TSV for research review.
+        {% endif %}
       </p>
       <table class="table table-sm sv-table">
         <thead>
