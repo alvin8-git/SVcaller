@@ -23,4 +23,11 @@ NIPA1	NIPA1	Hereditary Spastic Paraplegia 6 (SPG6)	AD	GCG	7		9	8 reduced penetra
 NOP56	NOP56	Spinocerebellar Ataxia 36 (SCA36)	AD	GGCCTG	14		650
 BEAN1	BEAN1	Spinocerebellar Ataxia 31 (SCA31)	AD	TGGAA		 	110	Complex insertion
 EIF4A3	EIF4A3	Richieri-Costa-Pereira Syndrome	AR	CGCA		 	14	Biallelic
-MARCHF6	MARCHF6	Familial Adult Myoclonic Epilepsy 3	AD	TTTTA		 	785
+MARCHF6	MARCHF6	Familial Adult Myoclonic Epilepsy 3 (FAME3)	AD	TTTTA		 	785
+ATN1	ATN1	Dentatorubral-Pallidoluysian Atrophy (DRPLA)	AD	CAG	35		48	36-47 intermediate
+SAMD12	SAMD12	Familial Adult Myoclonic Epilepsy 1 (FAME1)	AD	TTTCA		 	105	Biallelic in some
+RILPL1	RILPL1	Familial Adult Myoclonic Epilepsy 2 (FAME2)	AD	TTTTA		 	320
+STARD7	STARD7	Familial Adult Myoclonic Epilepsy 4 (FAME4)	AD	TTTTA		 	1500
+CSTB	CSTB	Progressive Myoclonic Epilepsy 1 (Unverricht-Lundborg)	AR	CCCCGCCCCGCG	3		30	Biallelic; normal ≤3 dodecamers
+FGF14	FGF14	Spinocerebellar Ataxia 27B (SCA27B)	AD	GAA	200		250	Pathogenic ≥250 (GAA expansion, intronic)
+DAB1	DAB1	Spinocerebellar Ataxia 37 (SCA37)	AD	ATTTT		 	31	Complex insertion in DAB1 intron
