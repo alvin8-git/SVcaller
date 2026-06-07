@@ -417,6 +417,7 @@ def build_str_consensus(str_loci: list, strling_loci: list) -> tuple:
         return (rank, -a_max)
 
     result.sort(key=_sort_key)
+    result = [r for r in result if r["status"] != "NORMAL"]
     return result, novel_count
 
 
@@ -630,6 +631,7 @@ def parse_str_loci(str_vcf_path: str, str_ranges: dict = None) -> list:
                 adsp      = fmt_d.get("ADSP", ".")  # spanning reads
                 adfl      = fmt_d.get("ADFL", ".")  # flanking reads
                 gt        = fmt_d.get("GT", ".")
+                so        = fmt_d.get("SO", "")     # source: SPANNING/INREPEAT etc.
                 # Join with clinical ranges
                 meta = str_ranges.get(locus_id, {})
                 status = _str_status(repcn, meta)
@@ -643,6 +645,7 @@ def parse_str_loci(str_vcf_path: str, str_ranges: dict = None) -> list:
                     "spanning": adsp,
                     "flanking": adfl,
                     "gt": gt,
+                    "inrepeat": "INREPEAT" in so,
                     "disease":  meta.get("disease", ""),
                     "inheritance": meta.get("inheritance", ""),
                     "normal_max":  meta.get("normal_max", ""),
@@ -676,6 +679,10 @@ def _str_status(repcn: str, meta: dict) -> str:
         if premut_max_i and normal_max_i and normal_max_i < max_cn <= premut_max_i:
             return "PREMUTATION"
         if normal_max_i and max_cn <= normal_max_i:
+            return "NORMAL"
+        # No normal_max defined → classify as NORMAL when clearly below pathogenic threshold.
+        # Only return INTERMEDIATE when the count is genuinely above a known normal ceiling.
+        if normal_max_i is None and path_min_i and max_cn < path_min_i:
             return "NORMAL"
         return "INTERMEDIATE"
     except (ValueError, TypeError):

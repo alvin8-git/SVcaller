@@ -254,6 +254,7 @@
             <td><code>{{ row.repunit }}</code></td>
             <td>
               <strong>{{ row.repcn }}</strong>
+              {% if row.inrepeat %}<span class="badge bg-warning text-dark d-block mt-1" style="font-size:0.70rem;" title="INREPEAT: allele too large for short reads to span; estimate is unreliable — confirm with long-read sequencing">&#9888; INREPEAT</span>{% endif %}
               {% if row.allele2_est %}<small class="text-muted d-block">STRling: {{ row.allele2_est }} ru</small>{% endif %}
             </td>
             <td>{{ row.normal_max or "—" }}</td>

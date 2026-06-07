@@ -38,7 +38,7 @@ process BUILD_HTML_REPORT {
         --sample ${meta.id} \\
         --out    ${meta.id}.smn_section.html
 
-    # v13: novel STRling suppression + 32-locus EH catalog
+    # v15: NORMAL filter, INREPEAT badge, INTERMEDIATE fix
     html_report.py \\
         --sample           ${meta.id} \\
         --smn-html         ${meta.id}.smn_section.html \\
