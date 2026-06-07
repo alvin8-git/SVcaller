@@ -29,10 +29,12 @@ SVcaller is a Nextflow DSL2 pipeline for human WGS structural variant (SV), copy
 
 **Use `-profile docker` for all runs.** All quay.io biocontainer tags have been verified and fixed.
 
+**Always use `NXF_ANSI_LOG=false` for background runs.** Without it, Nextflow's ANSI renderer deadlocks all JVM threads when there's no TTY (nohup/background). After launching, verify cached/submitted task lines appear in the log within 3 minutes.
+
 ```bash
 # SV/CNV validation — HG002 only; Truvari benchmark against GIAB SV truth
 # Use hg38.canonical.fa (chr1-22+X+Y+M only) for FASTQ inputs — skips 25-min FILTER_CHROMS step
-nextflow run main.nf -profile docker \
+NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --input validation/validation_samplesheet.csv \
   --ref_fasta /data/alvin/ref/GRCh38/hg38.canonical.fa \
   --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
@@ -43,11 +45,11 @@ nextflow run main.nf -profile docker \
   --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
   --outdir /data/alvin/SVcaller/results \
   -work-dir /data/alvin/SVcaller/work \
-  -resume
+  -resume > /data/alvin/tmp/main_runN.log 2>&1 &
 
 # SMN validation — SMA trio only; no Truvari (no SV truth for clinical samples)
 # --skip_gridss saves 4-6 h; only SMN1/2 CN and CNV results matter here
-nextflow run main.nf -profile docker \
+NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --input validation/smn_validation_samplesheet.csv \
   --ref_fasta /data/alvin/ref/GRCh38/hg38.fa \
   --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
@@ -56,16 +58,16 @@ nextflow run main.nf -profile docker \
   --skip_gridss true \
   --outdir /data/alvin/SVcaller/results_smn \
   -work-dir /data/alvin/SVcaller/work \
-  -resume
+  -resume > /data/alvin/tmp/smn_runN.log 2>&1 &
 
 # PON build (already complete — only re-run if GIAB BAMs change)
-nextflow run workflows/pon_build.nf -profile docker \
+NXF_ANSI_LOG=false nohup nextflow run workflows/pon_build.nf -profile docker \
   --input validation/giab_samplesheet.csv \
   --ref_fasta /data/alvin/ref/GRCh38/hg38.fa \
   --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
   --outdir /data/alvin/SVcaller/pon \
   -work-dir /data/alvin/SVcaller/work \
-  -resume
+  -resume > /data/alvin/tmp/pon_run.log 2>&1 &
 
 # Check pipeline progress (update log path to latest run)
 tail -20 /data/alvin/tmp/melt_header_fix_run.log

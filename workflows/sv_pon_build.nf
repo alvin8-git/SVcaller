@@ -16,6 +16,35 @@ include { MANTA_CALL             } from '../modules/manta/call'
 include { SAMTOOLS_FILTER_CHROMS } from '../modules/samtools/filter_chroms'
 include { SURVIVOR_MERGE         } from '../modules/survivor/merge'
 
+process SURVIVOR_VCF_TO_BED {
+    label 'process_single'
+    publishDir "${params.outdir}", mode: 'copy'
+    container 'quay.io/biocontainers/survivor:1.0.7--hd03093a_2'
+
+    input:
+    path vcf
+
+    output:
+    path "giab_sv_pon.bed", emit: bed
+
+    script:
+    """
+    awk '!/^#/ {
+        split(\$8, info, ";")
+        svtype = ""
+        endval = \$2 + 1000
+        for (i in info) {
+            if (info[i] ~ /^SVTYPE=/) svtype = substr(info[i], 8)
+            if (info[i] ~ /^END=/)    endval = substr(info[i], 5) + 0
+        }
+        if (svtype == "TRA" || svtype == "BND") next
+        if (endval - \$2 > 10000000) endval = \$2 + 10000000
+        start = (\$2 - 500 < 0) ? 0 : \$2 - 500
+        print \$1 "\\t" start "\\t" (endval + 500)
+    }' ${vcf} | sort -k1,1 -k2,2n > giab_sv_pon.bed
+    """
+}
+
 params.input   = null
 params.outdir  = 'pon/sv_pon'
 params.min_sv_callers = 2   // min samples a site must appear in to enter the PON
@@ -54,23 +83,9 @@ workflow {
     SURVIVOR_MERGE(ch_vcf_list, 1000, params.min_sv_callers, "giab_sv_pon")
 
     // Convert SURVIVOR VCF → BED (chrom, start-500, end+500) for bedtools intersect
-    SURVIVOR_MERGE.out.vcf
-        .collectFile(storeDir: "${params.outdir}") { vcf ->
-            def bed = file("${params.outdir}/giab_sv_pon.bed")
-            def lines = []
-            vcf.eachLine { line ->
-                if (line.startsWith("#")) return
-                def fields = line.split("\t")
-                def chrom = fields[0]
-                def start = [0L, (fields[1] as long) - 500L].max()
-                def end_pos = fields[7].split(";").find { it.startsWith("END=") }
-                def end = end_pos ? ((end_pos.split("=")[1] as long) + 500L) : (start + 1000L)
-                lines << "${chrom}\t${start}\t${end}\n"
-            }
-            ["giab_sv_pon.bed", lines.join("")]
-        }
+    SURVIVOR_VCF_TO_BED(SURVIVOR_MERGE.out.vcf)
 
-    SURVIVOR_MERGE.out.vcf.view { vcf ->
-        log.info "SV PON VCF: ${vcf} — copy giab_sv_pon.bed from ${params.outdir} to use with --sv_pon"
+    SURVIVOR_VCF_TO_BED.out.bed.view { bed ->
+        log.info "SV PON BED: ${bed} — use with --sv_pon ${params.outdir}/giab_sv_pon.bed"
     }
 }

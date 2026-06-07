@@ -81,6 +81,7 @@
                 {% if r.pon_hit %}<span class="badge bg-danger" title="SV overlaps a recurrent site in the GIAB multi-sample SV PON (≥2 of HG001/HG003–HG007) — likely systematic artifact">⚠ PON hit</span>{% endif %}
                 {% if r.sd_boundary %}<span class="badge bg-warning text-dark" title="Both SV breakpoints fall within segmental duplication regions — array CGH confirmation recommended">⚠ SD boundary</span>{% endif %}
                 {% if r.enc_blacklist %}<span class="badge bg-secondary" title="Both SV breakpoints overlap the ENCODE mappability blacklist — likely alignment artifact">⚠ Blacklist</span>{% endif %}
+                {% if r.gnomad_common %}<span class="badge bg-info text-dark" title="gnomAD-SV population AF &gt; 1% — common in general population, interpret with caution">⚠ gnomAD common</span>{% endif %}
                 {% if r.pop_af %}<small class="text-muted d-block">gnomAD AF: {{ r.pop_af }}</small>{% endif %}
               </td>
             </tr>

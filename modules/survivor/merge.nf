@@ -14,6 +14,13 @@ process SURVIVOR_MERGE {
 
     script:
     """
-    SURVIVOR merge ${vcf_list} ${max_dist} ${min_callers} 0 0 0 50 ${output_name}.vcf
+    mkdir -p vcfs
+    while IFS= read -r path; do
+        [ -z "\$path" ] && continue
+        name=\$(basename "\$path" .gz)
+        zcat "\$path" > "vcfs/\${name}"
+        echo "vcfs/\${name}"
+    done < ${vcf_list} > decompressed_list.txt
+    SURVIVOR merge decompressed_list.txt ${max_dist} ${min_callers} 0 0 0 50 ${output_name}.vcf
     """
 }

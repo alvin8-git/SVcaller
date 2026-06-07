@@ -154,7 +154,7 @@ def parse_sv_pathogenic(sv_tsv_path: str) -> list:
                 if size_bp > 1_000_000 and supp_n < _LARGE_SV_SUPP_MIN:
                     continue   # large SV with single-caller support: likely artifact
 
-                # P2 — gnomAD-SV population AF filter (hard): common variants are not P/LP
+                # P2 — gnomAD-SV population AF annotation (soft): flag common variants
                 svt = row.get("SV_type", "").upper()
                 if svt in ("DUP",):
                     af_raw = row.get("B_gain_AFmax", "") or ""
@@ -170,8 +170,7 @@ def parse_sv_pathogenic(sv_tsv_path: str) -> list:
                     pop_af = float(af_raw) if af_raw and af_raw not in (".", "") else 0.0
                 except ValueError:
                     pop_af = 0.0
-                if pop_af > _GNOMAD_AF_THRESHOLD:
-                    continue   # common variant (gnomAD-SV AF > 1%): not P/LP
+                gnomad_common = pop_af > _GNOMAD_AF_THRESHOLD
 
                 # P1 — SD boundary annotation (soft flag): both breakpoints in segdup
                 sd_left  = (row.get("SegDup_left",  "") or "").strip()
@@ -204,6 +203,7 @@ def parse_sv_pathogenic(sv_tsv_path: str) -> list:
                     "sd_boundary":    both_sd,
                     "enc_blacklist":  both_enc,
                     "pon_hit":        "SV_PON" in (row.get("INFO", "") or ""),
+                    "gnomad_common":  gnomad_common,
                 })
     except (FileNotFoundError, KeyError, ValueError):
         pass

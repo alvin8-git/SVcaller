@@ -1,7 +1,7 @@
 process SVABA_CALL {
     tag "${meta.id}"
     label 'process_high'
-    container 'quay.io/biocontainers/svaba:1.1.3--h7d875b9_2'
+    container 'quay.io/biocontainers/svaba:1.2.0--h69ac913_1'
 
     input:
     tuple val(meta), path(bam), path(bai)

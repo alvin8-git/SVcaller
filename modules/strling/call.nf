@@ -1,7 +1,7 @@
 process STRLING_CALL {
     tag "${meta.id}"
     label 'process_medium'
-    container 'quay.io/biocontainers/strling:0.5.2--py39h3e45d22_2'
+    container 'quay.io/biocontainers/strling:0.5.2--hbbffb53_1'
 
     input:
     tuple val(meta), path(bam), path(bai)
@@ -13,21 +13,22 @@ process STRLING_CALL {
 
     script:
     """
-    # Index reference for STRling (produces ref.str)
+    # Index reference for STRling (produces ref.fa.str)
     strling index ${ref_fasta}
 
-    # Extract STR-spanning reads per sample
+    # Extract STR-spanning reads per sample → produces ${meta.id}.bin
     strling extract \\
         -f ${ref_fasta} \\
-        -b ${ref_fasta}.str \\
+        -g ${ref_fasta}.str \\
         ${bam} \\
-        ${meta.id}
+        ${meta.id}.bin
 
     # Call STR expansions genome-wide
     strling call \\
         -f ${ref_fasta} \\
-        ${meta.id}.txt \\
-        ${bam}
+        -o ${meta.id} \\
+        ${bam} \\
+        ${meta.id}.bin
 
     # Rename genotype output
     mv ${meta.id}-genotype.txt ${meta.id}.strling.tsv || \\
