@@ -366,10 +366,12 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
         w_str = max(500_000, clen // 500)
         for locus in str_loci:
             if locus["chrom"] == sector.name:
-                t.rect(locus["pos"], locus["pos"] + w_str, fc="#8C564B", alpha=0.9)
+                end = min(locus["pos"] + w_str, clen - 1)
+                t.rect(locus["pos"], end, fc="#8C564B", alpha=0.9)
         for locus in strling_loci:
             if locus["chrom"] == sector.name:
-                t.rect(locus["pos"], locus["pos"] + w_str, fc="#FF7F0E", alpha=0.85)
+                end = min(locus["pos"] + w_str, clen - 1)
+                t.rect(locus["pos"], end, fc="#FF7F0E", alpha=0.85)
 
     # --- Ring 5: AnnotSV gene loci (50-53) + SMN locus (chr5, gold) ---
     top5_genes = {r["gene"] for r in gene_rows[:5] if r["gene"]}
