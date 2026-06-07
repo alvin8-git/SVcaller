@@ -88,8 +88,11 @@ workflow REPORT {
         .join(ch_depth_bed, remainder: true)
         .join(ch_annotsv_tsv, remainder: true)
         .filter { it[1] != null }   // drop samples re-introduced by depth/annotsv remainders when cnv_bed absent
-        .map { meta, sv, cnv, str, depth, annotsv ->
-            [meta, sv, cnv, str ?: file("NO_STR"), depth ?: file("NO_DEPTH"), annotsv ?: file("NO_ANNOTSV")]
+        .join(ch_strling_tsv, remainder: true)
+        .filter { it[1] != null }
+        .map { meta, sv, cnv, str, depth, annotsv, strling ->
+            [meta, sv, cnv, str ?: file("NO_STR"), depth ?: file("NO_DEPTH"),
+             annotsv ?: file("NO_ANNOTSV"), strling ?: file("NO_STRLING")]
         }
     CIRCOS_PLOT(ch_circos_in, ch_cytobands)
 

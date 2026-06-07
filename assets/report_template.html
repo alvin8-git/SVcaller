@@ -98,6 +98,13 @@
     </div>
   </div>
 
+  <!-- CASCADE TESTING ALERT -->
+  {% if cascade_flag %}
+  <div class="alert alert-warning py-2 mb-3" role="alert">
+    <strong>Cascade Testing Recommended</strong> — One or more P/LP structural variants detected without known artifact flags (PON/SD). First-degree relatives may be at risk. Refer to clinical genetics for segregation analysis.
+  </div>
+  {% endif %}
+
   <!-- ALIGNMENT QC -->
   <div class="card section-card">
     <div class="card-header"><h5>Alignment QC</h5></div>
@@ -203,94 +210,89 @@
     {{ smn_html | safe }}
   </div>
 
-  <!-- STR EXPANSION LOCI -->
-  {% if str_loci %}
+  <!-- STR FINDINGS (EH catalog + STRling consensus) -->
+  {% if str_consensus %}
   <div class="card section-card">
-    <div class="card-header"><h5>Short Tandem Repeat (STR) Expansion Loci — ExpansionHunter</h5></div>
+    <div class="card-header"><h5>Short Tandem Repeat (STR) Findings</h5></div>
     <div class="card-body">
+      <p class="text-muted mb-2" style="font-size:0.78rem;">
+        <strong>EH</strong> = ExpansionHunter (known disease catalog, high sensitivity at specific loci).
+        <strong>STRling</strong> = novel genome-wide expansion candidate (allele₂ &ge;100 ru or P(exp) &ge;0.90).
+        <strong>EH+STRling</strong> = concordant between callers — highest confidence.
+        CANDIDATE loci lack disease annotation and require orthogonal confirmation (PCR / long-read sequencing).
+        Full unfiltered STRling results are in the companion TSV file.
+      </p>
       <table class="table table-sm sv-table">
         <thead>
           <tr>
-            <th>Status</th><th>Locus</th><th>Disease</th><th>Inh.</th>
-            <th>Chr:Pos</th><th>Unit</th><th>Ref CN</th><th>Observed CN</th>
-            <th>CI</th><th>Normal &le;</th><th>Path &ge;</th><th>Reads (Span/Flank)</th>
+            <th>Status</th><th>Source</th><th>Gene / Locus</th><th>Disease</th><th>Inh.</th>
+            <th>Chr:Pos</th><th>Unit</th><th>Alleles (CN)</th>
+            <th>Normal&nbsp;&le;</th><th>Path&nbsp;&ge;</th><th>Evidence</th>
           </tr>
         </thead>
         <tbody>
-        {% for row in str_loci %}
-          <tr>
+        {% for row in str_consensus %}
+          <tr{% if row.status == "EXPANDED" %} class="table-danger"{% elif row.status in ("PREMUTATION","CANDIDATE") %} class="table-warning"{% endif %}>
             <td>
               {% if row.status == "EXPANDED" %}<span class="badge-expanded">EXPANDED</span>
               {% elif row.status == "PREMUTATION" %}<span class="badge-premutation">PREMUTATION</span>
-              {% elif row.status == "NORMAL" %}<span class="badge-normal">NORMAL</span>
+              {% elif row.status == "CANDIDATE" %}<span class="badge bg-warning text-dark" style="padding:2px 5px;border-radius:4px;font-size:0.78rem;">CANDIDATE</span>
               {% elif row.status == "INTERMEDIATE" %}<span class="badge-intermediate">INTERMEDIATE</span>
+              {% elif row.status == "NORMAL" %}<span class="badge-normal">NORMAL</span>
               {% else %}<span class="badge-unknown">UNKNOWN</span>{% endif %}
             </td>
+            <td>
+              {% if row.source == "Both" %}<span class="badge bg-success" style="padding:2px 5px;border-radius:4px;font-size:0.78rem;color:white;">EH+STRling</span>
+              {% elif row.source == "STRling" %}<span class="badge bg-secondary" style="padding:2px 5px;border-radius:4px;font-size:0.78rem;color:white;">STRling</span>
+              {% else %}<span class="badge bg-primary" style="padding:2px 5px;border-radius:4px;font-size:0.78rem;color:white;">EH</span>{% endif %}
+            </td>
             <td><strong>{{ row.locus }}</strong></td>
-            <td style="font-size:0.78rem;">{{ row.disease }}</td>
-            <td>{{ row.inheritance }}</td>
-            <td>{{ row.chrom }}:{{ row.pos }}</td>
+            <td style="font-size:0.78rem;">{{ row.disease or "—" }}</td>
+            <td style="font-size:0.78rem;">{{ row.inheritance or "—" }}</td>
+            <td style="font-size:0.78rem;">{{ row.chrom }}:{{ row.pos }}</td>
             <td><code>{{ row.repunit }}</code></td>
-            <td>{{ row.ref_cn }}</td>
-            <td><strong>{{ row.repcn }}</strong></td>
-            <td style="font-size:0.78rem;">{{ row.repci }}</td>
-            <td>{{ row.normal_max }}</td>
-            <td>{{ row.path_min }}</td>
-            <td style="font-size:0.78rem;">{{ row.spanning }} / {{ row.flanking }}</td>
+            <td>
+              <strong>{{ row.repcn }}</strong>
+              {% if row.allele2_est %}<small class="text-muted d-block">STRling: {{ row.allele2_est }} ru</small>{% endif %}
+            </td>
+            <td>{{ row.normal_max or "—" }}</td>
+            <td>{{ row.path_min or "—" }}</td>
+            <td style="font-size:0.78rem;">
+              {% if row.source in ("EH","Both") %}Span: {{ row.spanning }} / Flank: {{ row.flanking }}
+                {% if row.repci %}<small class="d-block text-muted">CI: {{ row.repci }}</small>{% endif %}
+              {% endif %}
+              {% if row.strling_prob %}<small class="d-block text-muted">P(exp): {{ row.strling_prob }}</small>{% endif %}
+            </td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
       <p class="text-muted mb-0" style="font-size:0.78rem;">
-        Disease ranges sourced from STRchive/OMIM. EXPANDED = observed CN &ge; pathogenic threshold. CI = 95% confidence interval.
+        Disease thresholds sourced from STRchive / OMIM. EXPANDED = observed CN &ge; pathogenic threshold. CI = 95% confidence interval (ExpansionHunter).
       </p>
-    </div>
-  </div>
-  {% endif %}
-
-  <!-- STRLING GENOME-WIDE STR EXPANSIONS -->
-  {% if strling_loci %}
-  <div class="card section-card">
-    <div class="card-header"><h5>Genome-wide STR Expansions — STRling (novel loci)</h5></div>
-    <div class="card-body">
-      <p class="text-muted mb-2" style="font-size:0.78rem;">
-        STRling detects short tandem repeat expansions genome-wide, beyond the catalogued EH loci above.
-        Shown: loci with estimated allele &ge;50 repeat units or expansion probability &ge;0.5.
-        These are candidate findings requiring clinical interpretation and orthogonal confirmation.
-      </p>
-      <table class="table table-sm sv-table">
-        <thead><tr><th>Chr</th><th>Left</th><th>Right</th><th>Repeat Unit</th><th>Allele 1</th><th>Allele 2 (est.)</th><th>Spanning</th><th>Flanking</th><th>P(expansion)</th></tr></thead>
-        <tbody>
-        {% for r in strling_loci %}
-          <tr{% if r.prob|float >= 0.8 %} class="table-warning"{% endif %}>
-            <td>{{ r.chrom }}</td><td>{{ r.left }}</td><td>{{ r.right }}</td>
-            <td><code>{{ r.repeatunit }}</code></td>
-            <td>{{ r.allele1 }}</td>
-            <td><strong>{{ r.allele2 }}</strong></td>
-            <td>{{ r.spanning }}</td><td>{{ r.flanking }}</td>
-            <td>{{ r.prob }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
     </div>
   </div>
   {% endif %}
 
   <!-- TOP ANNOTATED SVs -->
   <div class="card section-card">
-    <div class="card-header"><h5>Top Annotated SVs (AnnotSV score; SVs &gt;10 Mb excluded as annotation artifacts)</h5></div>
+    <div class="card-header"><h5>Gene Findings for Clinical Review</h5></div>
     <div class="card-body">
+      <p class="text-muted mb-2" style="font-size:0.78rem;">
+        <span class="badge bg-dark text-white" style="font-size:0.72rem;">&#9733; OMIM</span> rows are OMIM morbid genes — prioritised for clinical review regardless of AnnotSV score.
+        Remaining rows are the top 5 by AnnotSV ranking score. SVs &gt;10 Mb excluded as annotation artifacts.
+        For the complete annotated list, refer to the companion AnnotSV TSV.
+      </p>
       <table class="table table-sm sv-table">
         <thead>
           <tr>
             <th>Class</th><th>Chr</th><th>Start</th><th>End</th><th>Type</th>
-            <th>Size</th><th>Gene</th><th>OMIM</th><th>Inheritance</th><th>gnomAD AF</th><th>Callers</th><th>Score</th>
+            <th>Size</th><th>Gene</th><th>Inheritance</th><th>gnomAD AF</th><th>Callers</th><th>Score</th>
           </tr>
         </thead>
         <tbody>
         {% for row in top_svs %}
-          <tr>
+          <tr{% if row.omim %} class="table-light"{% endif %}>
             <td>
               {% if row.acmg_class == "5" %}<span class="badge-path5">Path (5)</span>
               {% elif row.acmg_class == "4" %}<span class="badge-path4">LP (4)</span>
@@ -300,9 +302,11 @@
             </td>
             <td>{{ row.chrom }}</td><td>{{ row.start }}</td><td>{{ row.end }}</td>
             <td>{{ row.svtype }}</td><td>{{ row.size }}</td>
-            <td><span title="{{ row.gene_full }}"><strong>{{ row.gene }}</strong>{% if row.gene_full and ';' in row.gene_full %}&nbsp;<small class="text-muted">+more</small>{% endif %}</span></td>
-            <td style="font-size:0.78rem;">{{ row.omim }}</td>
-            <td style="font-size:0.78rem;">{{ row.inheritance }}</td>
+            <td>
+              {% if row.omim %}<span class="badge bg-dark text-white" style="font-size:0.72rem;margin-right:3px;">&#9733; OMIM</span>{% endif %}
+              <span title="{{ row.gene_full }}"><strong>{{ row.gene }}</strong>{% if row.gene_full and ';' in row.gene_full %}&nbsp;<small class="text-muted">+more</small>{% endif %}</span>
+            </td>
+            <td style="font-size:0.78rem;">{{ row.inheritance or "—" }}</td>
             <td style="font-size:0.78rem;">{{ row.gnomad_af if row.gnomad_af else '—' }}</td>
             <td style="font-size:0.78rem;">
               {{ row.callers }}

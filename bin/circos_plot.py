@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Generate a Circos plot from SV VCF, CNV BED, depth BED, and AnnotSV TSV using pycirclize.
 
-Ring layout (radius):
+Ring layout (radius, outer → inner):
   95-100  chromosome ideograms
-  65-95   coverage depth dot plot (log2 ratio vs median; -2=CN0, 0=CN2, +1=CN4)
-  60-65   STR expansion loci
-  55-60   AnnotSV gene loci (top 30 by ranking score) + SMN marker
-  50-55   ACMG class dots (class 3/4/5, cap 50)
-  0-50    SV links centre (50% of diameter)
+  62-92   coverage depth dot plot (log2 ratio vs median; -2=CN0, 0=CN2, +1=CN4)
+  58-61   CNV calls (DUP=red, DEL=blue blocks)
+  54-57   STR expansion loci (EH=brown squares, STRling=orange triangles)
+  50-53   AnnotSV gene loci (top 30 by ranking score) + SMN marker
+  46-49   ACMG class dots (class 3/4/5, cap 50)
+  0-46    SV links centre
 """
 import argparse, re, gzip, csv, statistics, math
 from typing import List, Tuple, Dict, Optional
@@ -157,6 +158,33 @@ def parse_annotsv_tsv(path: Optional[str],
     return gene_rows[:max_genes], acmg_rows[:max_acmg]
 
 
+def parse_strling_tsv(path: Optional[str], min_allele2: float = 100.0,
+                      min_prob: float = 0.90) -> List[dict]:
+    """Parse STRling TSV for high-confidence novel expansion loci (circos STR ring)."""
+    loci = []
+    if not path or path in ("NO_STRLING", ""):
+        return loci
+    try:
+        with open(path, newline="") as fh:
+            reader = csv.DictReader(fh, delimiter="\t")
+            for row in reader:
+                chrom = row.get("#chrom", row.get("chrom", ""))
+                if chrom not in CHROM_ORDER:
+                    continue
+                try:
+                    a2   = float(row.get("allele2_est", 0) or 0)
+                    prob = float(row.get("prob_expansion", 0) or 0)
+                    pos  = int(row.get("left", 0) or 0)
+                except (ValueError, TypeError):
+                    continue
+                if a2 < min_allele2 and prob < min_prob:
+                    continue
+                loci.append({"chrom": chrom, "pos": pos})
+    except Exception:
+        pass
+    return loci
+
+
 def parse_sv_vcf_links(path: str,
                        min_svlen_intra: int = 50_000,
                        max_links: int = 100) -> List[dict]:
@@ -249,14 +277,16 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
                 sample_id: str, out_svg: str, out_png: str,
                 str_vcf: Optional[str] = None,
                 depth_bed: Optional[str] = None,
-                annotsv_tsv: Optional[str] = None) -> None:
+                annotsv_tsv: Optional[str] = None,
+                strling_tsv: Optional[str] = None) -> None:
     from pycirclize import Circos
     import matplotlib.pyplot as plt
 
     chrom_sizes  = load_chrom_sizes(cytobands)
     gains, losses = parse_cnv_bed(cnv_bed)
     links        = parse_sv_vcf_links(sv_vcf)
-    str_loci     = parse_str_vcf(str_vcf)
+    str_loci     = parse_str_vcf(str_vcf)       # EH catalog loci
+    strling_loci = parse_strling_tsv(strling_tsv)  # high-confidence STRling novel
     depth_wins   = parse_depth_bed(depth_bed)
     gene_rows, acmg_rows = parse_annotsv_tsv(annotsv_tsv)
 
@@ -268,6 +298,8 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
             global_median = statistics.median(depths)
 
     print(f"Circos: depth windows={len(depth_wins)}, median={global_median:.1f}x, "
+          f"cnv_gains={len(gains)}, cnv_losses={len(losses)}, "
+          f"str_eh={len(str_loci)}, str_novel={len(strling_loci)}, "
           f"gene_loci={len(gene_rows)}, acmg_dots={len(acmg_rows)}")
 
     circos = Circos(chrom_sizes, space=1.5)
@@ -279,24 +311,19 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
         t.axis(fc=_chrom_colour(sector.name))
         t.text(sector.name.replace("chr", ""), size=6, color="white")
 
-    # --- Ring 2: Coverage depth dot plot (65-95) ---
+    # --- Ring 2: Coverage depth dot plot (62-92) ---
     # Y-axis = log2(window_depth / genome_median), normalised to [0,1]:
     #   0.0  → log2 = -2  (CN=0, homozygous deletion)
-    #   0.25 → log2 = -1  (CN=1, hemizygous loss)
     #   0.50 → log2 =  0  (CN=2, normal diploid)  ← dashed reference line
-    #   0.65 → log2 ≈+0.58 (CN=3, +1 copy gain)
-    #   0.75 → log2 = +1  (CN=4, +2 copy gain)
     #   1.0  → log2 = +2  (high-level amplification)
     for sector in circos.sectors:
-        t = sector.add_track((65, 95), r_pad_ratio=0.05)
+        t = sector.add_track((62, 92), r_pad_ratio=0.05)
         t.axis()
         clen = chrom_sizes.get(sector.name, 1)
-        # Dashed reference line at CN=2 (log2=0 → y=0.5)
         try:
             t.line([0, clen], [0.5, 0.5], color="#888888", lw=0.8, alpha=0.5)
         except Exception:
             pass
-        # Group windows by colour to avoid per-point colour lists
         normal_x, normal_y = [], []
         gain_x,   gain_y   = [], []
         loss_x,   loss_y   = [], []
@@ -306,36 +333,48 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
             mid = (w["start"] + w["end"]) // 2
             lr  = math.log2(max(w["depth"], 0.01) / global_median) if global_median > 0 else 0.0
             lr  = max(-2.0, min(2.0, lr))
-            y_n = (lr + 2.0) / 4.0     # [-2, +2] → [0, 1]
-            if lr > 0.3:                # CN ≥ 2.5 (gain)
+            y_n = (lr + 2.0) / 4.0
+            if lr > 0.3:
                 gain_x.append(mid);   gain_y.append(y_n)
-            elif lr < -0.5:             # CN ≤ 1.4 (loss)
+            elif lr < -0.5:
                 loss_x.append(mid);   loss_y.append(y_n)
             else:
                 normal_x.append(mid); normal_y.append(y_n)
-        # Subsample normal dots (every 10th) to keep SVG size manageable.
-        # Gain/loss dots always shown at full resolution — they are the signal.
         if normal_x:
             t.scatter(normal_x[::10], normal_y[::10], color="#AAAAAA", s=0.4, alpha=0.5)
         if gain_x:
-            t.scatter(gain_x,   gain_y,   color="#D62728", s=0.8, alpha=0.85)
+            t.scatter(gain_x, gain_y, color="#D62728", s=0.8, alpha=0.85)
         if loss_x:
-            t.scatter(loss_x,   loss_y,   color="#1F77B4", s=0.8, alpha=0.85)
+            t.scatter(loss_x, loss_y, color="#1F77B4", s=0.8, alpha=0.85)
 
-    # --- Ring 3: STR loci (60-65) ---
+    # --- Ring 3: CNV calls (58-61) — DEL=blue, DUP=red blocks ---
     for sector in circos.sectors:
-        t = sector.add_track((60, 65), r_pad_ratio=0.1)
+        t = sector.add_track((58, 61), r_pad_ratio=0.05)
+        t.axis()
+        for rec in gains:
+            if rec["chrom"] == sector.name:
+                t.rect(rec["start"], rec["end"], fc="#D62728", alpha=0.85)
+        for rec in losses:
+            if rec["chrom"] == sector.name:
+                t.rect(rec["start"], rec["end"], fc="#1F77B4", alpha=0.85)
+
+    # --- Ring 4: STR loci (54-57) — EH=brown squares, STRling novel=orange ---
+    for sector in circos.sectors:
+        t = sector.add_track((54, 57), r_pad_ratio=0.1)
         t.axis()
         clen = chrom_sizes.get(sector.name, 1)
+        w_str = max(500_000, clen // 500)
         for locus in str_loci:
             if locus["chrom"] == sector.name:
-                w = max(500_000, clen // 500)
-                t.rect(locus["pos"], locus["pos"] + w, fc="#8C564B", alpha=0.9)
+                t.rect(locus["pos"], locus["pos"] + w_str, fc="#8C564B", alpha=0.9)
+        for locus in strling_loci:
+            if locus["chrom"] == sector.name:
+                t.rect(locus["pos"], locus["pos"] + w_str, fc="#FF7F0E", alpha=0.85)
 
-    # --- Ring 4: AnnotSV gene loci (55-60) + SMN locus (chr5, gold) ---
+    # --- Ring 5: AnnotSV gene loci (50-53) + SMN locus (chr5, gold) ---
     top5_genes = {r["gene"] for r in gene_rows[:5] if r["gene"]}
     for sector in circos.sectors:
-        t = sector.add_track((55, 60), r_pad_ratio=0.1)
+        t = sector.add_track((50, 53), r_pad_ratio=0.1)
         t.axis()
         clen = chrom_sizes.get(sector.name, 1)
         if sector.name == "chr5":
@@ -352,11 +391,11 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
                 except Exception:
                     pass
 
-    # --- Ring 5: ACMG class dots (50-55) ---
+    # --- Ring 6: ACMG class dots (46-49) ---
     top3_acmg_genes = set(list({r["gene"] for r in acmg_rows
                                  if r["acmg_class"] in ("4", "5") and r["gene"]})[:3])
     for sector in circos.sectors:
-        t = sector.add_track((50, 55), r_pad_ratio=0.1)
+        t = sector.add_track((46, 49), r_pad_ratio=0.1)
         t.axis()
         clen = chrom_sizes.get(sector.name, 1)
         for row in acmg_rows:
@@ -373,7 +412,7 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
                 except Exception:
                     pass
 
-    # --- SV links (center, r<=27) ---
+    # --- SV links (center, r<=46) ---
     for link in links:
         try:
             circos.link(
@@ -397,7 +436,10 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
         _hdr("── Rings (outer → inner) ──"),
         mpatches.Patch(fc="#888888", alpha=0.8,  label="Chromosomes"),
         mpatches.Patch(fc="#AAAAAA", alpha=0.7,  label="Coverage depth (50 kb dots, log₂ ratio)"),
-        mpatches.Patch(fc="#8C564B", alpha=0.9,  label="STR expansion loci"),
+        mpatches.Patch(fc="#D62728", alpha=0.85, label="CNV: gain / DUP (red block)"),
+        mpatches.Patch(fc="#1F77B4", alpha=0.85, label="CNV: loss / DEL (blue block)"),
+        mpatches.Patch(fc="#8C564B", alpha=0.9,  label="STR: EH catalog locus (brown)"),
+        mpatches.Patch(fc="#FF7F0E", alpha=0.85, label="STR: STRling novel ≥100 ru (orange)"),
         mpatches.Patch(fc="#888888", alpha=0.5,  label="Gene loci (top 30 by AnnotSV score)"),
         mpatches.Patch(fc="#7F7F7F", alpha=0.6,  label="ACMG class dots"),
         mlines.Line2D([], [], color="#FF7F0E", lw=1.5, alpha=0.6, label="SV links (centre)"),
@@ -447,13 +489,16 @@ def main():
     parser.add_argument("--str-vcf",     default=None,  help="ExpansionHunter VCF for STR ring")
     parser.add_argument("--depth-bed",   default=None,  help="mosdepth 50kb regions.bed.gz")
     parser.add_argument("--annotsv-tsv", default=None,  help="Raw AnnotSV TSV for gene/ACMG rings")
+    parser.add_argument("--strling-tsv", default=None,  dest="strling_tsv",
+                        help="STRling genotype TSV for novel STR ring")
     args = parser.parse_args()
     out_png = args.out.replace(".svg", ".png")
     make_circos(args.sv_vcf, args.cnv_bed, args.cytobands,
                 args.sample, args.out, out_png,
                 str_vcf=args.str_vcf,
                 depth_bed=args.depth_bed,
-                annotsv_tsv=args.annotsv_tsv)
+                annotsv_tsv=args.annotsv_tsv,
+                strling_tsv=args.strling_tsv)
 
 
 if __name__ == "__main__":

@@ -210,8 +210,8 @@ def parse_sv_pathogenic(sv_tsv_path: str) -> list:
     return _dedup_pathogenic(rows)
 
 
-def parse_top_svs(sv_tsv_path: str, n: int = 20) -> list:
-    """Top N annotated SVs by AnnotSV score; skip >10 Mb spanning artifacts."""
+def parse_top_svs(sv_tsv_path: str, n_omim: int = 15, n_other: int = 5) -> list:
+    """Top annotated SVs: OMIM morbid genes pinned first, then top n_other by AnnotSV score."""
     rows = []
     try:
         with open(sv_tsv_path) as fh:
@@ -256,10 +256,12 @@ def parse_top_svs(sv_tsv_path: str, n: int = 20) -> list:
                 })
     except (FileNotFoundError, KeyError):
         pass
-    rows.sort(key=lambda x: x["_score"], reverse=True)
-    for r in rows:
+    omim_rows  = sorted([r for r in rows if r.get("omim")],      key=lambda x: x["_score"], reverse=True)
+    other_rows = sorted([r for r in rows if not r.get("omim")], key=lambda x: x["_score"], reverse=True)
+    result = omim_rows[:n_omim] + other_rows[:n_other]
+    for r in result:
         del r["_score"]
-    return rows[:n]
+    return result
 
 
 def _fmt_size(bp: int) -> str:
@@ -307,13 +309,13 @@ def parse_cnv_summary(cnv_bed_path: str) -> dict:
 # STRling genome-wide STR parsing (P6)
 # ---------------------------------------------------------------------------
 
-def parse_strling(tsv_path: str, min_allele2: float = 50.0,
-                  min_prob: float = 0.5, top_n: int = 30) -> list:
-    """Parse STRling genotype TSV; return novel expansion candidates.
+def parse_strling(tsv_path: str, min_allele2: float = 100.0,
+                  min_prob: float = 0.90, top_n: int = 50) -> list:
+    """Parse STRling genotype TSV; return high-confidence expansion candidates.
 
-    Reports loci where allele2_est >= min_allele2 OR prob_expansion >= min_prob,
-    sorted by allele2_est descending. Distinct from EH (which only calls catalogued
-    disease loci); STRling detects genome-wide expansions at novel sites.
+    Clinical threshold: allele2_est >= 100 repeat units OR prob_expansion >= 0.90.
+    Lower hits (~50 ru / 0.5 prob) are common polymorphisms — excluded here to
+    reduce noise for clinical reporting.
     """
     rows = []
     if not tsv_path or tsv_path in ("NO_STRLING", "NO_FILE", "null"):
@@ -345,6 +347,88 @@ def parse_strling(tsv_path: str, min_allele2: float = 50.0,
         pass
     rows.sort(key=lambda r: float(r["allele2"]) if r["allele2"] else 0, reverse=True)
     return rows[:top_n]
+
+
+def build_str_consensus(str_loci: list, strling_loci: list) -> list:
+    """Merge ExpansionHunter catalog loci + STRling high-confidence hits into one table.
+
+    EH loci (known disease catalog) are always shown. STRling-only novel loci are added
+    where no EH position is within 500 bp. Coordinate matches are tagged "Both" (highest
+    confidence). Sort order: EXPANDED → PREMUTATION → CANDIDATE → INTERMEDIATE → UNKNOWN
+    → NORMAL, then by allele size descending within each tier.
+    """
+    _STATUS_RANK = {"EXPANDED": 0, "PREMUTATION": 1, "CANDIDATE": 2,
+                    "INTERMEDIATE": 3, "UNKNOWN": 4, "NORMAL": 5}
+    _COORD_WINDOW = 500
+
+    result = []
+    eh_positions: dict = {}   # chrom -> [(int_pos, result_index)]
+
+    for locus in str_loci:
+        idx = len(result)
+        try:
+            pos_int = int(locus["pos"])
+        except (ValueError, TypeError):
+            pos_int = 0
+        entry = dict(locus)
+        entry["source"]       = "EH"
+        entry["allele2_est"]  = ""
+        entry["strling_prob"] = ""
+        result.append(entry)
+        chrom = locus["chrom"]
+        eh_positions.setdefault(chrom, []).append((pos_int, idx))
+
+    for sl in strling_loci:
+        chrom = sl["chrom"]
+        try:
+            sl_pos = int(sl["left"])
+        except (ValueError, TypeError):
+            sl_pos = 0
+
+        matched_idx = None
+        for (eh_pos, idx) in eh_positions.get(chrom, []):
+            if abs(eh_pos - sl_pos) <= _COORD_WINDOW:
+                matched_idx = idx
+                break
+
+        if matched_idx is not None:
+            result[matched_idx]["source"]       = "Both"
+            result[matched_idx]["allele2_est"]  = sl["allele2"]
+            result[matched_idx]["strling_prob"] = sl["prob"]
+        else:
+            result.append({
+                "locus":        f"{chrom}:{sl['left']}",
+                "chrom":        chrom,
+                "pos":          sl["left"],
+                "repunit":      sl["repeatunit"],
+                "ref_cn":       "",
+                "repcn":        f"{sl['allele1']}/{sl['allele2']}",
+                "repci":        "",
+                "spanning":     sl["spanning"],
+                "flanking":     sl["flanking"],
+                "gt":           ".",
+                "disease":      "",
+                "inheritance":  "",
+                "normal_max":   "",
+                "path_min":     "",
+                "notes":        "",
+                "status":       "CANDIDATE",
+                "source":       "STRling",
+                "allele2_est":  sl["allele2"],
+                "strling_prob": sl["prob"],
+            })
+
+    def _sort_key(r):
+        rank = _STATUS_RANK.get(r["status"], 4)
+        try:
+            nums  = [float(a) for a in r["repcn"].replace("/", " ").split() if a.replace(".", "").isdigit()]
+            a_max = max(nums) if nums else 0.0
+        except (ValueError, TypeError):
+            a_max = 0.0
+        return (rank, -a_max)
+
+    result.sort(key=_sort_key)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -688,6 +772,11 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                                  flagstat_path or "", insert_size_path or "")
     str_loci          = parse_str_loci(str_vcf_path or "", str_ranges)
     strling_loci      = parse_strling(strling_tsv_path or "")
+    str_consensus     = build_str_consensus(str_loci, strling_loci)
+    cascade_flag      = any(
+        not r.get("pon_hit") and not r.get("sd_boundary")
+        for r in sv_pathogenic
+    )
 
     html = template.render(
         sample_id=sample_id,
@@ -704,8 +793,8 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
         benchmark_bins=benchmark_bins,
         benchmark_v5q=benchmark_v5q,
         benchmark_bins_v5q=benchmark_bins_v5q,
-        str_loci=str_loci,
-        strling_loci=strling_loci,
+        str_consensus=str_consensus,
+        cascade_flag=cascade_flag,
     )
     Path(out_path).write_text(html)
     print(f"HTML report written to {out_path}")
