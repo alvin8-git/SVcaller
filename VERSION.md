@@ -52,9 +52,53 @@
 
 ---
 
-## Planned: v1.1.0
+---
+
+## v1.1.0 (in development — 2026-06-08)
+
+**Major feature release.** 6-caller ensemble, 3-tier clinical report, SV PON, XLS export.
+
+### New Callers
+- Scramble MEI caller (L1/ALU/SVA mobile element insertions)
+- MELT MEI caller (ALU/HERVK/LINE1/SVA; local build from MELTv2.2.2.tar.gz)
+- SvABA local-assembly caller (DEL/INV/BND from local read assembly)
+- STRling genome-wide STR scanner (complements ExpansionHunter's 32-locus catalog)
+- GRIDSS BND→SV converter (`bin/gridss_convert_bnd.py`): BND pairs auto-converted to typed DEL/DUP/INV before JASMINE merge
+
+### Annotation
+- SV Panel of Normals (`pon/sv_pon/giab_sv_pon.bed`, 10,576 sites from 7 GIAB samples)
+- SegDup boundary badge
+- ENCODE blacklist badge
+- gnomAD-SV AF badge (soft annotation, not hard filter)
+
+### Clinical Report
+- 3-tier SV classification: Tier 1 (ACMG SF v3.2), Tier 2 (OMIM morbid, top 10), Tier 3 (all, top 10 + XLS)
+- XLS export — 4-sheet openpyxl workbook (SV / CNV / STR / SMN), full untruncated tables
+- HTML report size reduced from ~7 MB to ~2 MB
+
+### STR Report
+- ExpansionHunter catalog expanded 1 → 32 disease loci
+- INREPEAT / INTERMEDIATE / NORMAL status badge per locus
+- Novel STRling candidates suppressed from clinical table
+
+### Performance
+- Canonical reference (`hg38.canonical.fa`) skips FILTER_CHROMS for FASTQ-derived BAMs (~25 min saved)
+
+### Containers
+| Tool | Image |
+|------|-------|
+| Python utils / report | `svcaller/utils:1.2` |
+| MELT | `svcaller/melt:2.2.2` |
+| SMNCopyNumberCaller | `svcaller/smncopynum:1.1` |
+
+### GIAB Benchmark (HG002, run16)
+| Benchmark | Precision | Recall | F1 |
+|-----------|-----------|--------|-----|
+| T2TQ100-V1.0 | 0.733 | 0.255 | 0.378 |
+| v5.0q | 0.738 | 0.259 | 0.383 |
+
+### Planned: v1.2.0
 
 - Nanopore long-read support (Sniffles2 + CuteSV, minimap2 alignment)
-- Full HTML report sections 2, 7, 8
-- Per-size-bin Truvari metrics
-- AnnotSV database auto-download script
+- CMRG benchmark — 273 clinically relevant genes
+- Improved recall: low-QUAL Manta/Delly rescue, soft GRIDSS QUAL floor

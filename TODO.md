@@ -16,9 +16,14 @@ Tracks implementation status against the design spec (`docs/superpowers/specs/20
 
 - [x] Manta (`modules/manta/call.nf`)
 - [x] DELLY (`modules/delly/call.nf`)
-- [x] GRIDSS (`modules/gridss/call.nf`)
-- [x] ExpansionHunter — STR loci (`modules/expansionhunter/call.nf`)
+- [x] GRIDSS (`modules/gridss/call.nf`) + BND→DEL/DUP/INV converter (`bin/gridss_convert_bnd.py`)
+- [x] Scramble MEI caller (`modules/scramble/call.nf`)
+- [x] MELT MEI caller (`modules/melt/call.nf`) — local container build required
+- [x] SvABA local-assembly caller (`modules/svaba/call.nf`)
+- [x] STRling genome-wide STR caller (`modules/strling/call.nf`)
+- [x] ExpansionHunter — 32 disease STR loci (`modules/expansionhunter/call.nf`)
 - [x] JASMINE merge (min_support=2) (`modules/jasmine/merge.nf`)
+- [x] SV PON annotation — GIAB 7-sample BED (`modules/annotsv/sv_pon_annotate.nf`)
 - [x] sv_tbi emitted for Truvari benchmarking
 
 ## M3 — CNV Calling
@@ -61,7 +66,7 @@ Tracks implementation status against the design spec (`docs/superpowers/specs/20
 - [x] Truvari GIAB benchmarking (HG002 SV v0.6) — wired via `--giab_truth`
 - [x] HTML report section 2: Alignment QC — mosdepth + Picard + flagstat mapped_pct
 - [x] HTML report section 7: STR expansion loci — ExpansionHunter VCF parsing
-- [x] HTML report section 8: Top annotated SVs ACMG 4/5
+- [x] HTML report section 8: 3-tier clinical SV classification (Tier 1=ACMG SF v3.2, Tier 2=OMIM morbid, Tier 3=all; top 10 in HTML + full XLS export)
 - [x] Truvari per-size-bin metrics — 4 bins wired to HTML report
 
 ---
@@ -75,15 +80,16 @@ Tracks implementation status against the design spec (`docs/superpowers/specs/20
 - [x] SV validation samplesheet — HG002 only (`validation/validation_samplesheet.csv`); Truvari runs against GIAB truth
 - [x] SMN validation samplesheet — SMA trio only (`validation/smn_validation_samplesheet.csv`); run with `--skip_gridss true`, no `--giab_truth`
 - [x] WGS intervals BED (`/data/alvin/ref/GRCh38/wgs_autosomal.bed`)
-- [x] `svcaller/utils:1.0` Docker image — built
+- [x] `svcaller/utils:1.2` Docker image — built (openpyxl 3.1.5 + report template)
+- [x] `svcaller/melt:2.2.2` Docker image — built locally from MELTv2.2.2.tar.gz
 - [x] `svcaller/smncopynum:1.1` Docker image — built
+- [x] GIAB PON sample report samplesheet (`validation/giab_reports_samplesheet.csv`) — HG001, HG003-HG007
 - [x] TMPDIR fix — containers bind-mount `/data/alvin/tmp` as `/tmp` to avoid root fs overflow
 
 ## Known Bugs / Blockers
 
-- [ ] **AnnotSV DB** — not downloaded; annotation step emits empty stub TSV without `--annotsv_db`.
+- [ ] **AnnotSV DB** — requires `--annotsv_db /data/alvin/ref/annotsv/Annotations_Human`; annotation step emits empty stub TSV without it.
 - [ ] **samtools flagstat not in MultiQC** — flagstat file mixed into `ch_multiqc_files` but MultiQC may need explicit module config to parse it.
-- [ ] **SMA BAMs** — SMAD/SMAM/SMAPB alignments done externally; awaiting BAMs to add back to samplesheet.
 
 ## Recently Fixed
 
@@ -91,6 +97,12 @@ Tracks implementation status against the design spec (`docs/superpowers/specs/20
 - [x] **SMAD/SMAM truth table swap** — labels were transposed in `validation/smn_truth_table.tsv` and `Documentation.md`; corrected from clinical records: SMAM=SMN2×5, SMAD=SMN2×1 — 2026-05-23
 - [x] **DELLY bcftools missing** — bcftools not in `quay.io/biocontainers/delly:1.2.6` container; rewrote `modules/delly/call.nf` to emit VCF directly merged with shell + bgzip + tabix — 2026-05-23
 - [x] **GRIDSS_SETUP flag** — `--setupworkingdir` was invalid; corrected to `--steps setupreference`; removed `.img`/`.gridsscache` from outputs (not produced by setupreference in GRIDSS 2.13.2) — 2026-05-23
+- [x] **GRIDSS BND→SV conversion** — GRIDSS outputs BND pairs; `bin/gridss_convert_bnd.py` converts them to typed DEL/DUP/INV before JASMINE merge; GRIDSS now contributes 3,095 SVs (14% of 21,735 merged) — 2026-06-08
+- [x] **MELT INFO header stripping** — MELT INFO fields (DIFF/LP/RP/RA/PRIOR/SR/MEINFO) dropped by JASMINE causing bcftools/Truvari fatal exit; fixed by stripping to SVTYPE/MEITYPE/SVLEN/END in `modules/melt/call.nf` + injecting MEITYPE header in `modules/jasmine/merge.nf` — 2026-06-08
+- [x] **SV_PON annotation** — `--sv_pon` param was never wired into run commands; SV_PON_ANNOTATE silently skipped → 0 PON hits on all previous runs; fixed by adding `--sv_pon pon/sv_pon/giab_sv_pon.bed` to all run commands; 609/7818 HG002 SVs now correctly flagged (7.8%) — 2026-06-08
+- [x] **3-tier clinical HTML report** — replaced flat "top SVs" table with Tier 1 (ACMG SF v3.2), Tier 2 (OMIM morbid, top 10), Tier 3 (all, top 10 + XLS download); HTML reduced from 7 MB → 2 MB — 2026-06-08
+- [x] **XLS export** — 4-sheet openpyxl workbook (SV/CNV/STR/SMN) with full untruncated tables; download button in HTML report header — 2026-06-08
+- [x] **svcaller/utils:1.2** — added openpyxl==3.1.5 and `import sys` fix to `bin/html_report.py`; rebuilt container — 2026-06-08
 
 ## Performance
 
@@ -120,6 +132,7 @@ Tracks implementation status against the design spec (`docs/superpowers/specs/20
 
 ## Next Steps (Priority Order)
 
-1. Add SMA samples back to `validation/validation_samplesheet.csv` once external BAMs arrive
-2. Download AnnotSV database: set `--annotsv_db` parameter for full annotation
-3. Verify flagstat appears correctly in HTML QC section after first HG002 run completes
+1. Improve recall (~25%) — explore low-QUAL Manta/Delly rescue or soft GRIDSS QUAL floor
+2. Complete CMRG benchmark — 273 clinically relevant genes with Truvari `--includebed`
+3. Generate GIAB PON sample reports (HG001, HG003-HG007) once giab_reports_run1 completes
+4. Run `nextflow clean -but last -f` to recover disk space from work dir after active runs complete

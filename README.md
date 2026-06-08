@@ -14,13 +14,13 @@ Accepts FASTQ or pre-aligned BAM input. Produces a per-sample HTML report with a
 
 ## Features
 
-- **Ensemble SV calling** — Manta + DELLY + GRIDSS merged with JASMINE (min 2/3 callers)
-- **STR genotyping** — ExpansionHunter with full Illumina repeat catalog
+- **Ensemble SV calling** — 6 callers (Manta + DELLY + GRIDSS + Scramble + MELT + SvABA) merged with JASMINE; GRIDSS BND pairs auto-converted to typed DEL/DUP/INV
+- **STR genotyping** — ExpansionHunter (32 disease loci) + STRling genome-wide scanning
 - **Dual CNV calling** — CNVpytor + GATK gCNV with consensus merging
 - **SMN1/SMN2 copy number** — SMNCopyNumberCaller with 2+0 haplotype detection
-- **Clinical annotation** — AnnotSV 3.4 with gnomAD-SV allele frequency filtering
-- **Genome-wide visualization** — pycirclize Circos plot (SVs, CNV gains/losses, SMN locus)
-- **Self-contained HTML report** — Bootstrap 5, embedded SVG, optional truvari GIAB benchmark
+- **Clinical annotation** — AnnotSV 3.4.6 with SV PON (GIAB 7-sample), gnomAD-SV AF, SegDup, and ENCODE blacklist badges
+- **Genome-wide visualization** — pycirclize Circos plot (SVs, CNV gains/losses, STR expansions, SMN locus)
+- **3-tier clinical HTML report** — ACMG SF v3.2 Tier 1, OMIM morbid Tier 2, Tier 3 with full XLS export; Bootstrap 5, embedded SVG, optional truvari GIAB benchmark
 - **Reproducible** — every tool pinned in a Docker container; no conda required
 
 ---
@@ -132,7 +132,11 @@ HG003,,,/data/HG003.GRCh38.bam
 | `--intervals` | null | Preprocessed intervals BED for GATK gCNV |
 | `--annotsv_db` | null | AnnotSV annotation directory |
 | `--eh_catalog` | `assets/eh_catalog.json` | ExpansionHunter variant catalog |
-| `--giab_truth` | null | GIAB SV truth VCF.gz for truvari benchmarking |
+| `--sv_pon` | null | GIAB 7-sample SV Panel of Normals BED for artifact flagging (see `pon/sv_pon/`) |
+| `--giab_truth` | null | GIAB T2TQ100-V1.0 truth VCF.gz for truvari benchmarking |
+| `--giab_truth_v5q` | null | GIAB v5.0q truth VCF.gz (second benchmark pass) |
+| `--skip_gridss` | `false` | Skip GRIDSS (saves 4–6 h; Manta+DELLY+Scramble+MELT+SvABA only) |
+| `--skip_melt` | `false` | Skip MELT MEI calling (saves ~2 h when container unavailable) |
 | `--max_cpus` | `64` | Max CPUs per process |
 | `--max_memory` | `120.GB` | Max memory per process |
 
@@ -210,7 +214,7 @@ Pass it to the main pipeline with `--pon /data/alvin/SVcaller/pon/giab_cnv_pon.h
 results/
 └── <sample_id>/
     ├── <sample_id>.report.html          # Self-contained HTML report
-    ├── <sample_id>.sv_merged.vcf.gz     # Ensemble SV calls (Manta+DELLY+GRIDSS)
+    ├── <sample_id>.sv_merged.vcf.gz     # Ensemble SV calls (6-caller: Manta+DELLY+GRIDSS+Scramble+MELT+SvABA)
     ├── <sample_id>.sv_merged.vcf.gz.tbi
     ├── <sample_id>.str.vcf.gz           # STR calls (ExpansionHunter)
     ├── <sample_id>.cnv_consensus.bed    # Consensus CNV calls
@@ -223,12 +227,15 @@ results/
 ```
 
 The HTML report includes:
-- Alignment QC (coverage, duplicate rate)
-- SV summary table by type
-- Embedded Circos plot
-- SMN1/SMN2 copy number with SMA classification
-- Top annotated SVs (ACMG pathogenicity score ≥ 0.9)
-- GIAB benchmark precision/recall/F1 (optional)
+- Alignment QC (coverage, duplication rate, insert size)
+- SV summary table by type and caller
+- Embedded Circos plot (SVs, CNV gains/losses, STR expansions, SMN locus)
+- SMN1/SMN2 copy number with SMA carrier/affected classification
+- **Tier 1** — ACMG SF v3.2 actionable SVs (≥2 callers, no PON hit)
+- **Tier 2** — OMIM morbid gene candidates, top 10 shown; full list in XLS download
+- **Tier 3** — all remaining SVs, top 10 shown; full list in XLS download
+- STR expansion loci with INREPEAT / NORMAL / INTERMEDIATE status
+- GIAB benchmark precision/recall/F1 with per-size-bin breakdown (optional)
 
 ---
 
@@ -242,15 +249,14 @@ bash validation/giab_benchmark.sh \
     results/HG002/HG002.sv_merged.vcf.gz
 ```
 
-**Current benchmark on HG002 (4 callers — Manta + Delly + GRIDSS + Scramble, run69):**
+**Current benchmark on HG002 (6 callers — Manta + Delly + GRIDSS + Scramble + MELT + SvABA, run16; GRIDSS BND→SV fix):**
 
-| Metric | Result |
-|--------|--------|
-| Precision | 0.648 |
-| Recall | 0.231 |
-| F1 | **0.341** |
+| Benchmark | Precision | Recall | F1 | TP-base | FP |
+|-----------|-----------|--------|-----|---------|-----|
+| GIAB T2TQ100-V1.0 | 0.733 | 0.255 | **0.378** | 7571 | 2604 |
+| GIAB v5.0q | 0.738 | 0.259 | **0.383** | 7286 | 2449 |
 
-Recall is limited by MEI insertions (dominated by L1/ALU not caught by Scramble at default settings). See [Design decisions](docs/explanation-design.md#scramble-mei-canonical-svlen-estimates) for context.
+Main gap is recall (~25%) — the callset covers ~9,700 of ~30,000 truth SVs. Precision is solid. Next target: low-QUAL Manta/Delly rescue or soft GRIDSS QUAL floor.
 
 ---
 
@@ -272,7 +278,7 @@ Recall is limited by MEI insertions (dominated by L1/ALU not caught by Scramble 
 
 ```bash
 # Install test dependencies
-pip install pytest pycirclize matplotlib jinja2
+pip install pytest pycirclize matplotlib jinja2 openpyxl pandas
 
 # Run all 25 unit tests
 pytest tests/ -v
@@ -288,19 +294,26 @@ All tools run in pinned Docker containers. No local tool installation required b
 
 | Module | Container |
 |--------|-----------|
-| BWA-MEM2 | `quay.io/biocontainers/bwa-mem2:2.2.1` |
-| Picard MarkDup | `quay.io/biocontainers/picard:3.2.0` |
-| mosdepth | `quay.io/biocontainers/mosdepth:0.3.8` |
-| Manta | `quay.io/biocontainers/manta:1.6.0` |
-| DELLY | `quay.io/biocontainers/delly:1.2.6` |
+| BWA-MEM2 | `quay.io/biocontainers/bwa-mem2:2.2.1--he70b90d_8` |
+| samtools | `quay.io/biocontainers/samtools:1.23.1--ha83d96e_0` |
+| Picard MarkDup | `quay.io/biocontainers/picard:3.2.0--hdfd78af_0` |
+| mosdepth | `quay.io/biocontainers/mosdepth:0.3.14--h05c3d44_0` |
+| FastQC | `quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0` |
+| Manta | `quay.io/biocontainers/manta:1.6.0--py27h9948957_6` |
+| DELLY | `quay.io/biocontainers/delly:1.2.6--hdcf5f25_4` |
 | GRIDSS | `gridss/gridss:2.13.2` |
-| ExpansionHunter | `quay.io/biocontainers/expansionhunter:5.0.0` |
-| JASMINE | `quay.io/biocontainers/jasminesv:1.1.5` |
-| CNVpytor | `quay.io/biocontainers/cnvpytor:1.3.1` |
+| Scramble | `quay.io/biocontainers/scramble:1.0.2--h031d066_1` |
+| MELT | `svcaller/melt:2.2.2` (local build — requires registration) |
+| SvABA | `quay.io/biocontainers/svaba:1.2.0--h69ac913_1` |
+| ExpansionHunter | `quay.io/biocontainers/expansionhunter:5.0.0--hc26b3af_5` |
+| STRling | `quay.io/biocontainers/strling:0.5.2--hbbffb53_1` |
+| JASMINE | `quay.io/biocontainers/jasminesv:1.1.5--hdfd78af_0` |
+| CNVpytor | `quay.io/biocontainers/cnvpytor:1.3.1--pyhdfd78af_1` |
 | GATK | `broadinstitute/gatk:4.5.0.0` |
 | SMNCopyNumberCaller | `svcaller/smncopynum:1.1` |
-| AnnotSV | `quay.io/biocontainers/annotsv:3.4.2` |
-| truvari | `quay.io/biocontainers/truvari:4.2.2` |
+| AnnotSV | `quay.io/biocontainers/annotsv:3.4.6--py313hdfd78af_0` |
+| truvari | `quay.io/biocontainers/truvari:4.3.1--pyhdfd78af_0` |
+| Python utils / report | `svcaller/utils:1.2` (local build) |
 
 ---
 
