@@ -417,9 +417,15 @@ def _fmt_size(bp: int) -> str:
     return f"{bp} bp"
 
 
-def build_known_diseases(str_loci: list, smn_tsv_path: str = "") -> list:
-    """Tier 1a: named disease diagnoses from STR (EH EXPANDED) and SMN (SMA)."""
+_CNV_FINDING_MIN_BP = 50_000  # minimum size (bp) to surface a CNV in Clinical Findings
+
+
+def build_known_diseases(str_loci: list, smn_tsv_path: str = "",
+                         cnv_bed_path: str = "") -> list:
+    """Tier 1a: named disease diagnoses from STR (EH EXPANDED), SMN (SMA), and BOTH/HIGH CNVs."""
     findings = []
+
+    # STR EXPANDED loci
     for locus in str_loci:
         if locus.get("status") != "EXPANDED":
             continue
@@ -431,13 +437,19 @@ def build_known_diseases(str_loci: list, smn_tsv_path: str = "") -> list:
             "status":   "EXPANDED",
             "severity": "affected",
         })
+
+    # SMN1/2 copy number — read TSV directly, skip comment lines
     if smn_tsv_path and smn_tsv_path not in ("NO_FILE", "null", ""):
         try:
             with open(smn_tsv_path) as fh:
-                for row in csv.DictReader(fh, delimiter="\t"):
+                lines = [l for l in fh if l.strip() and not l.startswith("#")]
+            if len(lines) >= 2:
+                header = lines[0].rstrip("\n").split("\t")
+                for data_line in lines[1:]:
+                    row = dict(zip(header, data_line.rstrip("\n").split("\t")))
                     try:
-                        smn1 = int(row.get("SMN1_CN", row.get("smn1", -1)) or -1)
-                        smn2 = int(row.get("SMN2_CN", row.get("smn2", -1)) or -1)
+                        smn1 = int(row.get("SMN1_CN", row.get("smn1", "-1")) or -1)
+                        smn2 = int(row.get("SMN2_CN", row.get("smn2", "-1")) or -1)
                     except (ValueError, TypeError):
                         continue
                     if smn1 <= 1:
@@ -451,6 +463,41 @@ def build_known_diseases(str_loci: list, smn_tsv_path: str = "") -> list:
                         })
         except (FileNotFoundError, KeyError):
             pass
+
+    # High-confidence CNVs (BOTH = both tools agree; HIGH = GATK-only quality ≥30)
+    if cnv_bed_path and cnv_bed_path not in ("NO_FILE", "null", ""):
+        try:
+            with open(cnv_bed_path) as fh:
+                for line in fh:
+                    if line.startswith("#") or not line.strip():
+                        continue
+                    parts = line.strip().split("\t")
+                    if len(parts) < 7:
+                        continue
+                    chrom, start, end = parts[0], parts[1], parts[2]
+                    svtype     = parts[4].upper() if len(parts) > 4 else ""
+                    confidence = parts[6].upper() if len(parts) > 6 else ""
+                    if confidence not in ("BOTH", "HIGH"):
+                        continue
+                    try:
+                        size_bp = abs(int(end) - int(start))
+                    except (ValueError, TypeError):
+                        continue
+                    if size_bp < _CNV_FINDING_MIN_BP:
+                        continue
+                    size_str = (f"{size_bp/1_000_000:.1f} Mb" if size_bp >= 1_000_000
+                                else f"{size_bp/1_000:.0f} kb")
+                    findings.append({
+                        "source":   "CNV",
+                        "disease":  f"Copy Number {svtype}",
+                        "gene":     f"{chrom}:{start}-{end}",
+                        "detail":   f"{svtype}, {size_str} ({confidence} confidence)",
+                        "status":   confidence,
+                        "severity": "affected" if confidence == "BOTH" else "carrier",
+                    })
+        except (FileNotFoundError, IndexError):
+            pass
+
     return findings
 
 
@@ -579,7 +626,7 @@ def parse_cnv_summary(cnv_bed_path: str) -> dict:
                     summary["dup"] += 1
                 if confidence == "BOTH":
                     summary["both"] += 1
-                elif confidence in ("HIGH", "BOTH"):
+                elif confidence == "HIGH":
                     summary["high"] += 1
                 elif confidence == "MEDIUM":
                     summary["medium"] += 1
@@ -1055,7 +1102,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     str_loci          = parse_str_loci(str_vcf_path or "", str_ranges)
     strling_loci      = parse_strling(strling_tsv_path or "")
     str_consensus, strling_novel_count = build_str_consensus(str_loci, strling_loci)
-    known_diseases    = build_known_diseases(str_loci, smn_tsv_path or "")
+    known_diseases    = build_known_diseases(str_loci, smn_tsv_path or "", cnv_bed_path or "")
     cascade_flag      = any(
         not r.get("pon_hit") and not r.get("sd_boundary")
         for r in sv_tier1 + sv_tier2
