@@ -55,45 +55,94 @@
   </div>
   {% endif %}
 
-  <!-- CLINICAL FINDINGS SUMMARY -->
+  <!-- CLINICAL FINDINGS — TIER 1 -->
   <div class="card section-card">
-    <div class="card-header bg-danger text-white"><h5>Clinical Findings Summary</h5></div>
+    <div class="card-header bg-danger text-white d-flex align-items-center justify-content-between">
+      <h5 class="mb-0">Clinical Findings</h5>
+      <a href="{{ xls_filename }}" class="btn btn-sm btn-light" download title="Download all variants (SV/CNV/STR/SMN) as Excel">
+        &#8681; Download All Variants (.xlsx)
+      </a>
+    </div>
     <div class="card-body">
-      {% if sv_pathogenic %}
-      <div class="findings-box">
-        <h6>Pathogenic / Likely Pathogenic Structural Variants (ACMG Class 4/5)</h6>
-        <table class="table table-sm sv-table mb-0">
-          <thead><tr><th>Class</th><th>Type</th><th>Chr</th><th>Start</th><th>End</th><th>Size</th><th>Gene</th><th>OMIM</th><th>Caller Support</th><th>Flags</th></tr></thead>
+
+      <!-- Tier 1a: Named disease diagnoses (STR EXPANDED + SMA) -->
+      {% if known_diseases %}
+      <div class="mb-4">
+        <h6 class="text-danger fw-bold">&#9888;&nbsp;Known Disease Diagnoses</h6>
+        <table class="table table-sm table-bordered" style="max-width:780px;">
+          <thead class="table-danger">
+            <tr><th>Disease</th><th>Gene / Locus</th><th>Finding</th><th>Status</th><th>Source</th></tr>
+          </thead>
           <tbody>
-          {% for r in sv_pathogenic %}
-            <tr{% if r.sd_boundary %} class="table-warning"{% endif %}>
-              <td>{% if r.acmg_class == "5" %}<span class="badge-path5">Class 5 Path</span>
-                  {% else %}<span class="badge-path4">Class 4 LP</span>{% endif %}</td>
-              <td>{{ r.svtype }}</td><td>{{ r.chrom }}</td>
-              <td>{{ r.start }}</td><td>{{ r.end }}</td><td>{{ r.size }}</td>
-              <td><strong>{{ r.gene }}</strong>{% if r.collapsed > 1 %}&nbsp;<small class="text-muted">({{ r.collapsed }} calls merged)</small>{% endif %}</td>
-              <td>{{ r.omim }}</td>
+          {% for d in known_diseases %}
+            <tr>
+              <td><strong>{{ d.disease }}</strong></td>
+              <td><code>{{ d.gene }}</code></td>
+              <td>{{ d.detail }}</td>
               <td>
-                {{ r.callers }}
-                {% if r.supp == "1" %}<small class="text-danger">&nbsp;(single-caller)</small>{% endif %}
+                {% if d.severity == "affected" %}<span class="badge bg-danger">{{ d.status }}</span>
+                {% elif d.severity == "carrier" %}<span class="badge bg-warning text-dark">{{ d.status }}</span>
+                {% else %}<span class="badge bg-secondary">{{ d.status }}</span>{% endif %}
               </td>
-              <td>
-                {% if r.pon_hit %}<span class="badge bg-danger" title="SV overlaps a recurrent site in the GIAB multi-sample SV PON (≥2 of HG001/HG003–HG007) — likely systematic artifact">⚠ PON hit</span>{% endif %}
-                {% if r.sd_boundary %}<span class="badge bg-warning text-dark" title="Both SV breakpoints fall within segmental duplication regions — array CGH confirmation recommended">⚠ SD boundary</span>{% endif %}
-                {% if r.enc_blacklist %}<span class="badge bg-secondary" title="Both SV breakpoints overlap the ENCODE mappability blacklist — likely alignment artifact">⚠ Blacklist</span>{% endif %}
-                {% if r.gnomad_common %}<span class="badge bg-info text-dark" title="gnomAD-SV population AF &gt; 1% — common in general population, interpret with caution">⚠ gnomAD common</span>{% endif %}
-                {% if r.pop_af %}<small class="text-muted d-block">gnomAD AF: {{ r.pop_af }}</small>{% endif %}
-              </td>
+              <td><span class="badge bg-dark text-white" style="font-size:0.72rem;">{{ d.source }}</span></td>
             </tr>
           {% endfor %}
           </tbody>
         </table>
       </div>
-      {% else %}
-      <div class="no-findings">No ACMG Class 4/5 structural variants detected.</div>
       {% endif %}
-      <p class="text-muted mb-0 mt-2" style="font-size:0.78rem;">
-        This report is for research/clinical use. All findings require validation and interpretation by a qualified geneticist.
+
+      <!-- Tier 1b: ACMG SF v3.2 actionable SV/CNV -->
+      <div class="mb-2">
+        <h6>Tier 1 &mdash; Clinically Actionable Structural Variants
+          <small class="text-muted fw-normal">(ACMG Secondary Findings v3.2 · ≥2 callers · no PON)</small>
+        </h6>
+        {% if sv_tier1 %}
+        <table class="table table-sm sv-table mb-0">
+          <thead><tr>
+            <th>ACMG Class</th><th>Type</th><th>Chr:Start&ndash;End</th><th>Size</th>
+            <th>Gene</th><th>OMIM</th><th>Inheritance</th><th>Callers&nbsp;(#)</th><th>Flags</th>
+          </tr></thead>
+          <tbody>
+          {% for r in sv_tier1 %}
+            <tr style="border-left:4px solid #dc3545;" class="{% if r.sd_boundary %}table-warning{% else %}table-danger bg-opacity-10{% endif %}">
+              <td>
+                {% if r.acmg_class == "5" %}<span class="badge-path5">Path (5)</span>
+                {% elif r.acmg_class == "4" %}<span class="badge-path4">LP (4)</span>
+                {% elif r.acmg_class == "3" %}<span class="badge-vus">VUS (3)</span>
+                {% else %}<span class="badge bg-secondary" style="font-size:0.72rem;">{{ r.acmg_class or "?" }}</span>{% endif %}
+              </td>
+              <td>{{ r.svtype }}</td>
+              <td style="font-size:0.78rem;">{{ r.chrom }}:{{ r.start }}&ndash;{{ r.end }}</td>
+              <td>{{ r.size }}</td>
+              <td>
+                <span class="badge bg-dark text-white me-1" style="font-size:0.68rem;" title="ACMG SF v3.2 actionable gene">SF</span>
+                <strong title="{{ r.gene_full }}">{{ r.acmg_genes | join(', ') if r.acmg_genes else r.gene }}</strong>
+                {% if r.acmg_genes and r.gene not in r.acmg_genes %}
+                  <small class="text-muted d-block" style="font-size:0.72rem;">also: {{ r.gene }}</small>
+                {% endif %}
+              </td>
+              <td style="font-size:0.78rem;">{{ r.omim or "—" }}</td>
+              <td style="font-size:0.78rem;">{{ r.inheritance or "—" }}</td>
+              <td style="font-size:0.78rem; white-space:nowrap;">
+                {{ r.callers }}&nbsp;<span class="badge bg-primary rounded-pill" title="{{ r.supp_n }} callers support this call">{{ r.supp_n }}</span>
+              </td>
+              <td>
+                {% if r.sd_boundary %}<span class="badge bg-warning text-dark" title="Both breakpoints in segmental duplication — array CGH confirmation recommended">⚠ SD</span>{% endif %}
+                {% if r.enc_blacklist %}<span class="badge bg-secondary">⚠ Blacklist</span>{% endif %}
+                {% if r.pop_af %}<small class="text-muted d-block">AF: {{ r.pop_af }}</small>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted mb-0" style="font-size:0.85rem;">No SVs in ACMG SF v3.2 actionable genes with ≥2-caller support.</p>
+        {% endif %}
+      </div>
+
+      <p class="text-muted mb-0 mt-3" style="font-size:0.78rem;">
+        All findings require validation and clinical interpretation by a qualified genomics specialist.
       </p>
     </div>
   </div>
@@ -101,7 +150,7 @@
   <!-- CASCADE TESTING ALERT -->
   {% if cascade_flag %}
   <div class="alert alert-warning py-2 mb-3" role="alert">
-    <strong>Cascade Testing Recommended</strong> — One or more P/LP structural variants detected without known artifact flags (PON/SD). First-degree relatives may be at risk. Refer to clinical genetics for segregation analysis.
+    <strong>Cascade Testing Recommended</strong> — One or more clinically actionable variants detected without artifact flags (PON/SD). First-degree relatives may be at risk. Refer to clinical genetics for segregation analysis.
   </div>
   {% endif %}
 
@@ -276,49 +325,123 @@
   </div>
   {% endif %}
 
-  <!-- TOP ANNOTATED SVs -->
+  <!-- TIER 2: CANDIDATE VARIANTS -->
   <div class="card section-card">
-    <div class="card-header"><h5>Gene Findings for Clinical Review</h5></div>
+    <div class="card-header d-flex align-items-center justify-content-between" style="background:#fff3cd;border-left:4px solid #ffc107;">
+      <h5 class="mb-0">Tier 2 &mdash; Candidate Variants for Review
+        {% if sv_tier2_total > sv_tier2|length %}
+          <small class="text-muted fw-normal" style="font-size:0.78rem;">&nbsp;(top {{ sv_tier2|length }} of {{ sv_tier2_total }} &mdash; <a href="{{ xls_filename }}" download>full list in XLS</a>)</small>
+        {% endif %}
+      </h5>
+      <a href="{{ xls_filename }}" class="btn btn-sm btn-outline-warning" download title="Download full variant workbook">&#8681; XLS</a>
+    </div>
     <div class="card-body">
       <p class="text-muted mb-2" style="font-size:0.78rem;">
-        <span class="badge bg-dark text-white" style="font-size:0.72rem;">&#9733; OMIM</span> rows are OMIM morbid genes — prioritised for clinical review regardless of AnnotSV score.
-        Remaining rows are the top 5 by AnnotSV ranking score. SVs &gt;10 Mb excluded as annotation artifacts.
-        For the complete annotated list, refer to the companion AnnotSV TSV.
+        OMIM morbid gene with ≥2 caller support and no PON hit; or ≥3 callers regardless of OMIM.
+        Not in ACMG SF v3.2 actionable gene list. Ranked by caller count. Full list in companion XLS.
       </p>
+      {% if sv_tier2 %}
       <table class="table table-sm sv-table">
-        <thead>
-          <tr>
-            <th>Class</th><th>Chr</th><th>Start</th><th>End</th><th>Type</th>
-            <th>Size</th><th>Gene</th><th>Inheritance</th><th>gnomAD AF</th><th>Callers</th><th>Score</th>
-          </tr>
-        </thead>
+        <thead><tr>
+          <th>ACMG Class</th><th>Type</th><th>Chr:Start&ndash;End</th><th>Size</th>
+          <th>Gene</th><th>OMIM</th><th>Inheritance</th><th>Callers&nbsp;(#)</th><th>Flags</th>
+        </tr></thead>
         <tbody>
-        {% for row in top_svs %}
-          <tr{% if row.omim %} class="table-light"{% endif %}>
+        {% for r in sv_tier2 %}
+          <tr>
             <td>
-              {% if row.acmg_class == "5" %}<span class="badge-path5">Path (5)</span>
-              {% elif row.acmg_class == "4" %}<span class="badge-path4">LP (4)</span>
-              {% elif row.acmg_class == "3" %}<span class="badge-vus">VUS (3)</span>
-              {% elif row.acmg_class in ("1","2") %}<span class="badge-benign">B/LB</span>
-              {% else %}—{% endif %}
+              {% if r.acmg_class == "5" %}<span class="badge-path5">Path (5)</span>
+              {% elif r.acmg_class == "4" %}<span class="badge-path4">LP (4)</span>
+              {% elif r.acmg_class == "3" %}<span class="badge-vus">VUS (3)</span>
+              {% elif r.acmg_class in ("1","2") %}<span class="badge-benign">B/LB</span>
+              {% else %}<span class="badge bg-secondary" style="font-size:0.72rem;">{{ r.acmg_class or "?" }}</span>{% endif %}
             </td>
-            <td>{{ row.chrom }}</td><td>{{ row.start }}</td><td>{{ row.end }}</td>
-            <td>{{ row.svtype }}</td><td>{{ row.size }}</td>
+            <td>{{ r.svtype }}</td>
+            <td style="font-size:0.78rem;">{{ r.chrom }}:{{ r.start }}&ndash;{{ r.end }}</td>
+            <td>{{ r.size }}</td>
             <td>
-              {% if row.omim %}<span class="badge bg-dark text-white" style="font-size:0.72rem;margin-right:3px;">&#9733; OMIM</span>{% endif %}
-              <span title="{{ row.gene_full }}"><strong>{{ row.gene }}</strong>{% if row.gene_full and ';' in row.gene_full %}&nbsp;<small class="text-muted">+more</small>{% endif %}</span>
+              {% if r.omim %}<span class="badge bg-dark text-white me-1" style="font-size:0.68rem;">&#9733; OMIM</span>{% endif %}
+              <span title="{{ r.gene_full }}"><strong>{{ r.gene }}</strong>{% if r.gene_full and ';' in r.gene_full %}&nbsp;<small class="text-muted">+more</small>{% endif %}</span>
             </td>
-            <td style="font-size:0.78rem;">{{ row.inheritance or "—" }}</td>
-            <td style="font-size:0.78rem;">{{ row.gnomad_af if row.gnomad_af else '—' }}</td>
-            <td style="font-size:0.78rem;">
-              {{ row.callers }}
-              {% if row.supp == "1" %}<small class="text-danger">&nbsp;(single)</small>{% endif %}
+            <td style="font-size:0.78rem;">{{ r.omim or "—" }}</td>
+            <td style="font-size:0.78rem;">{{ r.inheritance or "—" }}</td>
+            <td style="font-size:0.78rem; white-space:nowrap;">
+              {{ r.callers }}&nbsp;<span class="badge bg-primary rounded-pill" title="{{ r.supp_n }} callers">{{ r.supp_n }}</span>
             </td>
-            <td>{{ row.acmg }}</td>
+            <td>
+              {% if r.pon_hit %}<span class="badge bg-danger" title="Recurrent in GIAB SV PON">⚠ PON</span>{% endif %}
+              {% if r.sd_boundary %}<span class="badge bg-warning text-dark" title="Both breakpoints in segmental duplication">⚠ SD</span>{% endif %}
+              {% if r.gnomad_common %}<span class="badge bg-info text-dark" title="gnomAD-SV AF &gt; 1%">⚠ gnomAD</span>{% endif %}
+              {% if r.pop_af %}<small class="text-muted d-block">AF: {{ r.pop_af }}</small>{% endif %}
+            </td>
           </tr>
         {% endfor %}
         </tbody>
       </table>
+      {% else %}
+      <p class="text-muted mb-0" style="font-size:0.85rem;">No Tier 2 candidate variants identified.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- TIER 3: ALL OTHER SVs (collapsible) -->
+  <div class="card section-card">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <h5 class="mb-0">Tier 3 &mdash; All Other Structural Variants
+        {% if sv_tier3_total > sv_tier3|length %}
+          <small class="text-muted fw-normal" style="font-size:0.78rem;">&nbsp;(top {{ sv_tier3|length }} of {{ sv_tier3_total }} &mdash; <a href="{{ xls_filename }}" download>full list in XLS</a>)</small>
+        {% endif %}
+      </h5>
+      <a href="{{ xls_filename }}" class="btn btn-sm btn-outline-secondary" download title="Download full variant workbook">&#8681; Full XLS</a>
+    </div>
+    <div class="card-body">
+      <p class="text-muted mb-2" style="font-size:0.78rem;">
+        Ranked by caller support then AnnotSV score. Includes single-caller, PON hits, gnomAD-common, and low-confidence calls.
+        Complete SV / CNV / STR / SMN tables in companion <strong><a href="{{ xls_filename }}" download>.variants.xlsx</a></strong>.
+      </p>
+      {% if sv_tier3 %}
+      <details>
+        <summary style="cursor:pointer;font-weight:600;user-select:none;">
+          Show top {{ sv_tier3|length }}{% if sv_tier3_total > sv_tier3|length %} of {{ sv_tier3_total }}{% endif %} Tier 3 variant{{ 's' if sv_tier3_total != 1 else '' }} &#9660;
+        </summary>
+        <div class="mt-2" style="overflow-x:auto;">
+        <table class="table table-sm sv-table" style="font-size:0.79rem;">
+          <thead><tr>
+            <th>ACMG</th><th>Type</th><th>Chr:Start&ndash;End</th><th>Size</th>
+            <th>Gene</th><th>OMIM</th><th>Callers&nbsp;(#)</th><th>Flags</th>
+          </tr></thead>
+          <tbody>
+          {% for r in sv_tier3 %}
+            <tr>
+              <td>
+                {% if r.acmg_class == "5" %}<span class="badge-path5">5</span>
+                {% elif r.acmg_class == "4" %}<span class="badge-path4">4</span>
+                {% elif r.acmg_class == "3" %}<span class="badge-vus">3</span>
+                {% elif r.acmg_class in ("1","2") %}<span class="badge-benign">B</span>
+                {% else %}—{% endif %}
+              </td>
+              <td>{{ r.svtype }}</td>
+              <td>{{ r.chrom }}:{{ r.start }}&ndash;{{ r.end }}</td>
+              <td>{{ r.size }}</td>
+              <td title="{{ r.gene_full }}"><strong>{{ r.gene }}</strong></td>
+              <td>{% if r.omim %}<span class="badge bg-dark text-white" style="font-size:0.66rem;">OMIM</span>{% endif %}</td>
+              <td style="white-space:nowrap;">
+                {{ r.callers }}&nbsp;<span class="badge bg-secondary rounded-pill">{{ r.supp_n }}</span>
+              </td>
+              <td>
+                {% if r.pon_hit %}<span class="badge bg-danger">PON</span>{% endif %}
+                {% if r.sd_boundary %}<span class="badge bg-warning text-dark">SD</span>{% endif %}
+                {% if r.gnomad_common %}<span class="badge bg-info text-dark">gnomAD</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </details>
+      {% else %}
+      <p class="text-muted mb-0" style="font-size:0.85rem;">No additional variants.</p>
+      {% endif %}
     </div>
   </div>
 

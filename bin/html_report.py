@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build per-sample SVcaller HTML report using Jinja2. Callers: Manta+Delly+GRIDSS+Scramble+MELT+SvABA+STRling."""
-import argparse, csv, gzip, json, re
+import argparse, csv, gzip, json, re, sys
 from datetime import date
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
@@ -20,6 +20,46 @@ _SD_PAIR_POS_WINDOW = 50_000   # bp — start position proximity for SD pair det
 _SD_PAIR_SIZE_TOL   = 0.20     # fractional size difference tolerance
 
 _GNOMAD_AF_THRESHOLD = 0.01   # SVs with population AF > 1% are common variation, not P/LP
+
+# ACMG Secondary Findings v3.2 (2023) — genes where incidental findings require reporting
+ACMG_SF_V32_GENES = frozenset({
+    # Hereditary breast/ovarian cancer
+    "BRCA1", "BRCA2", "PALB2",
+    # Lynch / MMR
+    "MLH1", "MSH2", "MSH6", "PMS2", "EPCAM",
+    # Polyposis
+    "APC", "MUTYH", "SMAD4", "BMPR1A",
+    # Cancer syndromes
+    "TP53", "STK11", "PTEN", "VHL", "MEN1", "RET",
+    "RB1", "WT1", "FH", "FLCN", "TSC1", "TSC2",
+    "CDH1", "DICER1", "NF1", "NF2", "SMARCB1", "LZTR1",
+    # Paraganglioma / pheochromocytoma
+    "SDHB", "SDHC", "SDHD", "SDHAF2", "SDHA", "MAX", "TMEM127",
+    # HCM
+    "MYBPC3", "MYH7", "TNNT2", "TNNI3", "TPM1", "MYL3", "MYL2",
+    "ACTC1", "PRKAG2", "GLA", "LAMP2",
+    # DCM / cardiomyopathy
+    "LMNA", "SCN5A", "RBM20", "TNNC1",
+    # ARVC
+    "PKP2", "DSG2", "DSC2", "TMEM43", "DSP",
+    # Channelopathies (LQTS / CPVT / Brugada)
+    "KCNQ1", "KCNH2", "RYR2", "CASQ2", "TRDN",
+    # Aortopathy / connective tissue
+    "FBN1", "FBN2", "TGFBR1", "TGFBR2", "SMAD3",
+    "ACTA2", "MYH11", "MYLK", "COL3A1", "LOX",
+    # Familial hypercholesterolaemia
+    "LDLR", "APOB", "PCSK9",
+    # Malignant hyperthermia
+    "RYR1", "CACNA1S",
+    # Metabolic
+    "HFE", "ATP7B", "SERPINA1",
+    # Neurological
+    "LRRK2", "GBA",
+    # X-linked conditions
+    "OTC", "RPGR",
+    # Susceptibility / moderate-risk cancer
+    "ATM", "CHEK2", "BRIP1", "RAD51C", "RAD51D", "MSH3",
+})
 
 
 def _dedup_pathogenic(rows: list) -> list:
@@ -129,6 +169,111 @@ def parse_sv_summary(sv_tsv_path: str) -> list:
             for k, v in sorted(counts.items())]
 
 
+def _sv_row_from_annotated(row: dict):
+    """Build unified SV row dict from a full-mode AnnotSV TSV row; returns None if excluded."""
+    try:
+        size_bp = abs(int(row.get("SV_end", 0) or 0) - int(row.get("SV_start", 0) or 0))
+    except (ValueError, TypeError):
+        size_bp = 0
+    if size_bp > _MAX_ARTIFACT_SIZE:
+        return None
+    svt       = row.get("SV_type", "").upper()
+    gene_full = row.get("Gene_name", row.get("Gene", ""))
+    primary_gene = gene_full.split(";")[0].strip() if gene_full else "—"
+    all_genes    = [g.strip() for g in gene_full.split(";") if g.strip()] if gene_full else []
+    supp   = _parse_supp_vec(row.get("INFO", ""))
+    supp_n = int(supp["supp"]) if str(supp["supp"]).isdigit() else 0
+    af_col = {"DUP": "B_gain_AFmax", "DEL": "B_loss_AFmax",
+              "INS": "B_ins_AFmax",  "INV": "B_inv_AFmax"}.get(svt, "")
+    af_raw = (row.get(af_col, "") or "") if af_col else ""
+    try:
+        pop_af = float(af_raw) if af_raw and af_raw not in (".", "") else 0.0
+    except ValueError:
+        pop_af = 0.0
+    def _hit(k):
+        v = (row.get(k, "") or "").strip(); return bool(v and v != ".")
+    try:
+        acmg_score = float(row.get("AnnotSV_ranking_score", "") or 0)
+    except (ValueError, TypeError):
+        acmg_score = 0.0
+    return {
+        "svtype":        svt,
+        "chrom":         row.get("SV_chrom", ""),
+        "start":         row.get("SV_start", ""),
+        "end":           row.get("SV_end",   ""),
+        "size_bp":       size_bp,
+        "size":          "",   # filled after _fmt_size defined
+        "gene":          primary_gene,
+        "gene_full":     gene_full,
+        "all_genes":     all_genes,
+        "omim":          row.get("OMIM_morbid", "") or "",
+        "omim_candidate":row.get("OMIM_morbid_candidate", "") or "",
+        "acmg_class":    str(row.get("ACMG_class", "")).strip(),
+        "acmg_score":    acmg_score,
+        "inheritance":   row.get("OMIM_inheritance", "") or "",
+        "callers":       supp["callers"],
+        "supp_n":        supp_n,
+        "supp_vec":      supp.get("supp_vec", ""),
+        "pop_af":        f"{pop_af:.4f}" if pop_af > 0 else "",
+        "sd_boundary":   _hit("SegDup_left")  and _hit("SegDup_right"),
+        "enc_blacklist": _hit("ENCODE_blacklist_left") and _hit("ENCODE_blacklist_right"),
+        "pon_hit":       "SV_PON" in (row.get("INFO", "") or ""),
+        "gnomad_common": pop_af > _GNOMAD_AF_THRESHOLD,
+        "is_acmg_sf":    any(g in ACMG_SF_V32_GENES for g in all_genes),
+        "acmg_genes":    [g for g in all_genes if g in ACMG_SF_V32_GENES],
+        "tier":          3,
+    }
+
+
+def classify_sv_tiers(sv_tsv_path: str) -> tuple:
+    """Classify all full-mode AnnotSV rows into three clinical tiers.
+
+    Tier 1 — Clinically actionable (ACMG SF v3.2 gene):
+        Gene in ACMG_SF_V32_GENES AND supp ≥ 2 AND no PON AND not gnomAD common.
+    Tier 2 — Candidate / likely TP:
+        OMIM morbid gene AND supp ≥ 2 AND no PON; OR supp ≥ 3 regardless of OMIM.
+    Tier 3 — Remaining, ranked by caller count then AnnotSV score.
+
+    Returns (tier1, tier2, tier3, all_rows).
+    """
+    all_rows = []
+    try:
+        with open(sv_tsv_path) as fh:
+            reader = csv.DictReader(fh, delimiter="\t")
+            for row in reader:
+                if row.get("Annotation_mode", "") != "full":
+                    continue
+                r = _sv_row_from_annotated(row)
+                if r is None:
+                    continue
+                all_rows.append(r)
+    except (FileNotFoundError, KeyError):
+        pass
+
+    tier1, tier2, tier3 = [], [], []
+    for r in all_rows:
+        if (r["is_acmg_sf"] and r["supp_n"] >= 2
+                and not r["pon_hit"] and not r["gnomad_common"]):
+            r["tier"] = 1
+            tier1.append(r)
+        elif ((r["omim"] and r["supp_n"] >= 2 and not r["pon_hit"])
+              or r["supp_n"] >= 3):
+            r["tier"] = 2
+            tier2.append(r)
+        else:
+            r["tier"] = 3
+            tier3.append(r)
+
+    for r in all_rows:
+        r["size"] = _fmt_size(r["size_bp"])
+
+    tier1.sort(key=lambda r: (-(int(r["acmg_class"]) if r["acmg_class"].isdigit() else 0), r["gene"]))
+    tier2.sort(key=lambda r: (-r["supp_n"], -r["acmg_score"]))
+    tier3.sort(key=lambda r: (-r["supp_n"], -r["acmg_score"]))
+    return tier1, tier2, tier3, all_rows
+
+
+# placeholder so old call-sites don't break during transition
 def parse_sv_pathogenic(sv_tsv_path: str) -> list:
     """Return Class 4/5 SVs ≤10 Mb with caller support for the findings highlight."""
     rows = []
@@ -270,6 +415,144 @@ def _fmt_size(bp: int) -> str:
     if bp >= 1_000:
         return f"{bp/1_000:.1f} kb"
     return f"{bp} bp"
+
+
+def build_known_diseases(str_loci: list, smn_tsv_path: str = "") -> list:
+    """Tier 1a: named disease diagnoses from STR (EH EXPANDED) and SMN (SMA)."""
+    findings = []
+    for locus in str_loci:
+        if locus.get("status") != "EXPANDED":
+            continue
+        findings.append({
+            "source":   "STR",
+            "disease":  locus.get("disease") or locus.get("locus", ""),
+            "gene":     locus.get("locus", ""),
+            "detail":   f"{locus.get('repunit','')} repeat, CN: {locus.get('repcn','')}",
+            "status":   "EXPANDED",
+            "severity": "affected",
+        })
+    if smn_tsv_path and smn_tsv_path not in ("NO_FILE", "null", ""):
+        try:
+            with open(smn_tsv_path) as fh:
+                for row in csv.DictReader(fh, delimiter="\t"):
+                    try:
+                        smn1 = int(row.get("SMN1_CN", row.get("smn1", -1)) or -1)
+                        smn2 = int(row.get("SMN2_CN", row.get("smn2", -1)) or -1)
+                    except (ValueError, TypeError):
+                        continue
+                    if smn1 <= 1:
+                        findings.append({
+                            "source":   "SMN",
+                            "disease":  "Spinal Muscular Atrophy (SMA)",
+                            "gene":     "SMN1/SMN2",
+                            "detail":   f"SMN1 CN: {smn1}, SMN2 CN: {smn2}",
+                            "status":   "AFFECTED" if smn1 == 0 else "CARRIER",
+                            "severity": "affected" if smn1 == 0 else "carrier",
+                        })
+        except (FileNotFoundError, KeyError):
+            pass
+    return findings
+
+
+def export_xls(all_sv_rows: list, cnv_bed_path: str, str_loci: list,
+               smn_tsv_path: str, out_path: str) -> None:
+    """Write per-sample Excel workbook with SV / CNV / STR / SMN sheets."""
+    try:
+        import openpyxl
+        from openpyxl.styles import PatternFill, Font, Alignment
+    except ImportError:
+        print("openpyxl not available — skipping XLS export", file=sys.stderr)
+        return
+    FILLS = {
+        1: PatternFill("solid", fgColor="FFD7D7"),
+        2: PatternFill("solid", fgColor="FFF3CD"),
+        3: PatternFill("solid", fgColor="EEF2FF"),
+    }
+    BOLD = Font(bold=True)
+
+    def _hdr(ws, cols):
+        ws.append(cols)
+        for cell in ws[1]:
+            cell.font = BOLD
+            cell.alignment = Alignment(wrap_text=True)
+
+    wb = openpyxl.Workbook()
+
+    # SV sheet
+    ws_sv = wb.active
+    ws_sv.title = "SV"
+    _hdr(ws_sv, ["Tier", "Chr", "Start", "End", "Type", "Size (bp)", "Gene",
+                 "OMIM Morbid", "ACMG Class", "AnnotSV Score", "Callers",
+                 "# Callers", "Pop AF", "SD Boundary", "PON Hit",
+                 "gnomAD Common", "ACMG SF Gene"])
+    for r in sorted(all_sv_rows, key=lambda x: x["tier"]):
+        ws_sv.append([
+            f"Tier {r['tier']}", r["chrom"], r["start"], r["end"],
+            r["svtype"], r["size_bp"], r["gene"], r["omim"] or "",
+            r["acmg_class"], r["acmg_score"], r["callers"], r["supp_n"],
+            r["pop_af"] or "", "Yes" if r["sd_boundary"] else "",
+            "Yes" if r["pon_hit"] else "", "Yes" if r["gnomad_common"] else "",
+            "Yes" if r["is_acmg_sf"] else "",
+        ])
+        fill = FILLS.get(r["tier"])
+        if fill:
+            for cell in ws_sv[ws_sv.max_row]:
+                cell.fill = fill
+
+    # CNV sheet
+    ws_cnv = wb.create_sheet("CNV")
+    _hdr(ws_cnv, ["Chr", "Start", "End", "Name", "Type", "Score", "Confidence"])
+    try:
+        with open(cnv_bed_path) as fh:
+            for line in fh:
+                if line.startswith("#") or not line.strip():
+                    continue
+                ws_cnv.append(line.strip().split("\t"))
+    except FileNotFoundError:
+        pass
+
+    # STR sheet
+    ws_str = wb.create_sheet("STR")
+    _hdr(ws_str, ["Locus", "Disease", "Chr", "Pos", "Repeat Unit", "CN (EH)",
+                  "Status", "Normal Max", "Pathogenic Min",
+                  "Spanning Reads", "Flanking Reads", "INREPEAT"])
+    for locus in str_loci:
+        ws_str.append([
+            locus.get("locus", ""), locus.get("disease", ""),
+            locus.get("chrom", ""), locus.get("pos", ""),
+            locus.get("repunit", ""), locus.get("repcn", ""),
+            locus.get("status", ""), locus.get("normal_max", ""),
+            locus.get("path_min", ""), locus.get("spanning", ""),
+            locus.get("flanking", ""), "Yes" if locus.get("inrepeat") else "",
+        ])
+
+    # SMN sheet
+    ws_smn = wb.create_sheet("SMN")
+    _hdr(ws_smn, ["Sample", "SMN1_CN", "SMN2_CN", "SMN1_allele1",
+                  "SMN1_allele2", "Interpretation"])
+    if smn_tsv_path and smn_tsv_path not in ("NO_FILE", "null", ""):
+        try:
+            with open(smn_tsv_path) as fh:
+                for row in csv.DictReader(fh, delimiter="\t"):
+                    smn1 = row.get("SMN1_CN", row.get("smn1", ""))
+                    smn2 = row.get("SMN2_CN", row.get("smn2", ""))
+                    try:
+                        interp = ("SMA Affected" if int(smn1) == 0
+                                  else "SMA Carrier" if int(smn1) == 1
+                                  else "Normal")
+                    except (ValueError, TypeError):
+                        interp = ""
+                    ws_smn.append([
+                        row.get("sample", row.get("Sample", "")),
+                        smn1, smn2,
+                        row.get("SMN1_allele1", ""), row.get("SMN1_allele2", ""),
+                        interp,
+                    ])
+        except (FileNotFoundError, KeyError):
+            pass
+
+    wb.save(out_path)
+    print(f"XLS report written to {out_path}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -748,7 +1031,8 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   flagstat_path: str = None,
                   insert_size_path: str = None,
                   str_vcf_path: str = None,
-                  strling_tsv_path: str = None) -> None:
+                  strling_tsv_path: str = None,
+                  smn_tsv_path: str = None) -> None:
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("report_template.html")
 
@@ -757,8 +1041,10 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     smn_html          = Path(smn_html_path).read_text()
     circos_svg_inline = Path(circos_svg_path).read_text()
     sv_summary        = parse_sv_summary(sv_tsv_path)
-    sv_pathogenic     = parse_sv_pathogenic(sv_tsv_path)
-    top_svs           = parse_top_svs(sv_tsv_path)
+    sv_tier1, sv_tier2, sv_tier3, sv_all = classify_sv_tiers(sv_tsv_path)
+    _TIER_HTML_MAX = 10
+    sv_tier2_total = len(sv_tier2); sv_tier2 = sv_tier2[:_TIER_HTML_MAX]
+    sv_tier3_total = len(sv_tier3); sv_tier3 = sv_tier3[:_TIER_HTML_MAX]
     cnv_summary       = parse_cnv_summary(cnv_bed_path)
     benchmark          = parse_benchmark(benchmark_json)           if benchmark_json      else None
     benchmark_bins     = parse_benchmark_sizebin(sizebin_json)     if sizebin_json        else None
@@ -769,10 +1055,16 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     str_loci          = parse_str_loci(str_vcf_path or "", str_ranges)
     strling_loci      = parse_strling(strling_tsv_path or "")
     str_consensus, strling_novel_count = build_str_consensus(str_loci, strling_loci)
+    known_diseases    = build_known_diseases(str_loci, smn_tsv_path or "")
     cascade_flag      = any(
         not r.get("pon_hit") and not r.get("sd_boundary")
-        for r in sv_pathogenic
+        for r in sv_tier1 + sv_tier2
     )
+
+    # XLS export — written alongside HTML
+    xls_path     = str(out_path).replace(".report.html", ".variants.xlsx")
+    xls_filename = Path(xls_path).name
+    export_xls(sv_all, cnv_bed_path, str_loci, smn_tsv_path or "", xls_path)
 
     html = template.render(
         sample_id=sample_id,
@@ -780,8 +1072,13 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
         run_date=date.today().isoformat(),
         qc=qc,
         sv_summary=sv_summary,
-        sv_pathogenic=sv_pathogenic,
-        top_svs=top_svs,
+        sv_tier1=sv_tier1,
+        sv_tier2=sv_tier2,
+        sv_tier2_total=sv_tier2_total,
+        sv_tier3=sv_tier3,
+        sv_tier3_total=sv_tier3_total,
+        known_diseases=known_diseases,
+        xls_filename=xls_filename,
         cnv_summary=cnv_summary,
         smn_html=smn_html,
         circos_svg_inline=circos_svg_inline,
@@ -816,6 +1113,7 @@ def main():
     parser.add_argument("--insert-size",      default=None, dest="insert_size")
     parser.add_argument("--str-vcf",          default=None)
     parser.add_argument("--strling-tsv",      default=None, dest="strling_tsv")
+    parser.add_argument("--smn-tsv",          default=None, dest="smn_tsv")
     args = parser.parse_args()
     render_report(
         sample_id=args.sample,
@@ -835,6 +1133,7 @@ def main():
         insert_size_path=args.insert_size,
         str_vcf_path=args.str_vcf,
         strling_tsv_path=args.strling_tsv,
+        smn_tsv_path=args.smn_tsv,
     )
 
 

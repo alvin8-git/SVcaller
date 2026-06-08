@@ -6,8 +6,9 @@ include { MULTIQC                          } from '../modules/multiqc/report'
 process BUILD_HTML_REPORT {
     tag "${meta.id}"
     label 'process_single'
-    container 'svcaller/utils:1.1'
+    container 'svcaller/utils:1.2'
     publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.report.html"
+    publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.variants.xlsx"
 
     input:
     tuple val(meta), path(sv_tsv), path(cnv_bed), path(smn_tsv),
@@ -18,7 +19,8 @@ process BUILD_HTML_REPORT {
                      path(strling_tsv)
 
     output:
-    tuple val(meta), path("${meta.id}.report.html"), emit: html
+    tuple val(meta), path("${meta.id}.report.html"),    emit: html
+    tuple val(meta), path("${meta.id}.variants.xlsx"),  emit: xlsx
 
     script:
     def bench_arg       = benchmark_json.name      != "NO_BENCH"      ? "--benchmark     ${benchmark_json}"      : ""
@@ -38,10 +40,11 @@ process BUILD_HTML_REPORT {
         --sample ${meta.id} \\
         --out    ${meta.id}.smn_section.html
 
-    # v15: NORMAL filter, INREPEAT badge, INTERMEDIATE fix
+    # v16: 3-tier SV report, named disease diagnoses, XLS export
     html_report.py \\
         --sample           ${meta.id} \\
         --smn-html         ${meta.id}.smn_section.html \\
+        --smn-tsv          ${smn_tsv} \\
         --cnv-bed          ${cnv_bed} \\
         --sv-tsv           ${sv_tsv} \\
         --circos-svg       ${circos_svg} \\

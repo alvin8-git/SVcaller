@@ -1,0 +1,7 @@
+sample,fastq_1,fastq_2,bam
+HG001,,,/data/alvin/ref/GIAB/HG001.bwa.sortdup.bqsr.bam
+HG003,,,/data/alvin/ref/GIAB/HG003.bwa.sortdup.bqsr.bam
+HG004,,,/data/alvin/ref/GIAB/HG004.bwa.sortdup.bqsr.bam
+HG005,,,/data/alvin/ref/GIAB/HG005.bwa.sortdup.bqsr.bam
+HG006,,,/data/alvin/ref/GIAB/HG006.bwa.sortdup.bqsr.bam
+HG007,,,/data/alvin/ref/GIAB/HG007.bwa.sortdup.bqsr.bam

@@ -8,7 +8,8 @@ RUN pip install --no-cache-dir \
     jinja2==3.1.4 \
     pycirclize==1.6.0 \
     pandas==2.2.2 \
-    matplotlib==3.9.0
+    matplotlib==3.9.0 \
+    openpyxl==3.1.5
 
 COPY bin/ /usr/local/bin/
 RUN chmod +x /usr/local/bin/*.py
@@ -16,5 +17,5 @@ RUN chmod +x /usr/local/bin/*.py
 COPY assets/ /usr/local/assets/
 
 LABEL maintainer="svcaller" \
-      version="1.1" \
+      version="1.2" \
       description="SVcaller utility scripts (html_report, circos_plot, cnv_consensus, smn_report)"

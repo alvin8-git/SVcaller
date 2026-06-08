@@ -43,6 +43,7 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --giab_truth_v5q /data/alvin/ref/GIAB/HG002_GRCh38_v5.0q_stvar.vcf.gz \
   --eh_catalog assets/eh_catalog.json \
   --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
+  --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
   --outdir /data/alvin/SVcaller/results \
   -work-dir /data/alvin/SVcaller/work \
   -resume > /data/alvin/tmp/main_runN.log 2>&1 &
@@ -55,10 +56,26 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
   --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
   --eh_catalog assets/eh_catalog.json \
+  --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
   --skip_gridss true \
   --outdir /data/alvin/SVcaller/results_smn \
   -work-dir /data/alvin/SVcaller/work \
   -resume > /data/alvin/tmp/smn_runN.log 2>&1 &
+
+# GIAB PON sample reports — HG001, HG003-HG007 (HG002 done via validation run)
+# SV calling not cached from pon_build.nf — expect 8-12 h for 6 samples
+NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
+  --input validation/giab_reports_samplesheet.csv \
+  --ref_fasta /data/alvin/ref/GRCh38/hg38.canonical.fa \
+  --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
+  --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+  --eh_catalog assets/eh_catalog.json \
+  --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
+  --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
+  --skip_gridss true \
+  --outdir /data/alvin/SVcaller/results_giab \
+  -work-dir /data/alvin/SVcaller/work \
+  -resume > /data/alvin/tmp/giab_reports_runN.log 2>&1 &
 
 # PON build (already complete — only re-run if GIAB BAMs change)
 NXF_ANSI_LOG=false nohup nextflow run workflows/pon_build.nf -profile docker \
