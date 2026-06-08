@@ -68,10 +68,10 @@ def parse_smn_tsv(tsv_path: str) -> dict:
 def render_html_section(sample_id: str, tsv_path: str) -> str:
     """Return an HTML string for the SMN section of the per-sample report."""
     parsed   = parse_smn_tsv(tsv_path)
-    smn1     = parsed["smn1_cn"] or 2
-    smn2     = parsed["smn2_cn"] or 2
-    a1       = parsed["smn1_allele1"] or smn1
-    a2       = parsed["smn1_allele2"] or 0
+    smn1     = parsed["smn1_cn"] if parsed["smn1_cn"] is not None else 2
+    smn2     = parsed["smn2_cn"] if parsed["smn2_cn"] is not None else 2
+    a1       = parsed["smn1_allele1"] if parsed["smn1_allele1"] is not None else smn1
+    a2       = parsed["smn1_allele2"] if parsed["smn1_allele2"] is not None else 0
     two_zero = detect_two_plus_zero(smn1, a1, a2)
     cls_info = classify_sma(smn1, smn2)
     warn     = '<div class="alert alert-warning">&#x26A0; 2+0 haplotype detected: sample appears CN=2 but may be an SMA carrier.</div>' if two_zero else ""
