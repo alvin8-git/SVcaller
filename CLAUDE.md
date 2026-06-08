@@ -157,14 +157,15 @@ All run inside `svcaller/utils:1.1`. Each is a standalone CLI tool:
 
 Each module under `modules/<tool>/` follows: `input` tuple → `script` block → `output` tuple with named `emit`. Resource labels (`process_single`, `process_low`, `process_medium`, `process_high`, `process_gridss`) map to CPU/memory tiers in `conf/base.config`. Retry on OOM exit codes (137, 143, 104, 134, 139) is automatic.
 
-## Current F1 Baseline (2026-06-04, 5-caller: Manta+Delly+GRIDSS+Scramble+MELT)
+## Current F1 Baseline (2026-06-08, run16: 6-caller Manta+Delly+GRIDSS+Scramble+MELT+SvABA, GRIDSS BND→SV fix)
 
-| Benchmark | F1 | Precision | Recall | TP | FP |
-|---|---|---|---|---|---|
-| GIAB T2TQ100-V1.0 | 0.385 | 0.735 | 0.261 | 7255 | 2615 |
-| GIAB v5.0q | 0.486 | 0.624 | 0.398 | 2628 | 1587 |
+| Benchmark | F1 | Precision | Recall | TP-base | FP | comp cnt |
+|---|---|---|---|---|---|---|
+| GIAB T2TQ100-V1.0 | 0.378 | 0.733 | 0.255 | 7571 | 2604 | 9739 |
+| GIAB v5.0q | 0.383 | 0.738 | 0.259 | 7286 | 2449 | 9333 |
 
-Next target: P2 calibrated GRIDSS DUP/INV filter (expected +0.005–0.015 T2T).
+GRIDSS contributes 3095 SVs (14% of 21,735 merged): 2713 DEL, 246 DUP, 136 INV.
+Next target: improve recall (currently ~25%) — low-QUAL Manta/Delly rescue, or soft GRIDSS QUAL floor.
 
 ## Validation
 
