@@ -3,6 +3,7 @@ include { MANTA_RESIDUAL_REGIONS } from '../modules/manta/residual_regions'
 include { DELLY_CALL_SVTYPE      } from '../modules/delly/call'
 include { DELLY_MERGE            } from '../modules/delly/merge'
 include { GRIDSS_CALL            } from '../modules/gridss/call'
+include { GRIDSS_CONVERT_BND     } from '../modules/gridss/convert_bnd'
 include { GRIDSS_SETUP           } from '../modules/gridss/setup'
 include { GRIDSS_STUB            } from '../modules/gridss/stub'
 include { SAMTOOLS_SUBSET        } from '../modules/samtools/subset'
@@ -76,7 +77,12 @@ workflow SV_CALLING {
                 GRIDSS_SETUP.out.sa
             )
         }
-        ch_gridss_vcf = GRIDSS_CALL.out.vcf
+        // Convert BND pairs → simple DEL/DUP/INV so Jasmine can merge them correctly.
+        // Raw GRIDSS output is all BND; without conversion GRIDSS contributes 0 SVs.
+        GRIDSS_CONVERT_BND(
+            GRIDSS_CALL.out.vcf.join(GRIDSS_CALL.out.tbi)
+        )
+        ch_gridss_vcf = GRIDSS_CONVERT_BND.out.vcf
     } else {
         GRIDSS_STUB(ch_filtered_bam)
         ch_gridss_vcf = GRIDSS_STUB.out.vcf

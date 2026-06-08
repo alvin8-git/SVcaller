@@ -40,6 +40,8 @@ process JASMINE_MERGE {
             }
             \$8=(new_info=="")?".":new_info; print
         }' > ${vcfs[1].baseName}
+    # GRIDSS: converted from BND pairs to simple DEL/DUP/INV by GRIDSS_CONVERT_BND.
+    # Already QUAL-filtered and PASS; just enforce canonical chromosomes and strip to core INFO.
     zcat ${vcfs[2]} | awk '
         BEGIN{OFS="\\t"}
         /^#/{print;next}
@@ -48,7 +50,7 @@ process JASMINE_MERGE {
         {
             n=split(\$8,info,";"); new_info=""
             for(i=1;i<=n;i++){
-                if(info[i]~/^(SVTYPE|MATEID|END|SVLEN|CIPOS|CIEND|HOMLEN|HOMSEQ|INSLEN|IMPRECISE|EVENT)=/ || info[i]=="IMPRECISE")
+                if(info[i]~/^(SVTYPE|END|SVLEN|CIPOS|CIEND|HOMLEN|HOMSEQ|INSLEN)=/ || info[i]=="IMPRECISE")
                     new_info=(new_info=="")?info[i]:new_info";"info[i]
             }
             \$8=(new_info=="")?".":new_info; print
@@ -103,13 +105,14 @@ process JASMINE_MERGE {
 
     # Post-merge filters (applied in one pass):
     # 1. GRIDSS-only TRA: single-caller TRA where position 3 of SUPP_VEC is "1" (GRIDSS).
-    #    Works for 3/4/5-caller SUPP_VEC — GRIDSS is always at position 3.
-    #    These are 100K+ GRIDSS BND noise records with no support from other callers.
+    #    Belt-and-suspenders: GRIDSS_CONVERT_BND already excludes TRA; catches any residual.
     # 2. Tiered min_support for large non-INS SVs: single-caller SVs with |SVLEN| > 10 kb
     #    that are NOT INS. INS (including MELT/Scramble MEI) are exempt since MELT is
     #    highly specific and MEIs are typically < 6 kb anyway.
     # 3. FORMAT → GT only: at min_support=1, Delly-only records enter the merged VCF with
     #    Delly-specific FORMAT tags not declared in Manta's header, crashing bcftools/Truvari.
+    # Note: blanket single-caller DUP/INV filter removed — GRIDSS DUP/INV are pre-filtered
+    #       by QUAL threshold in GRIDSS_CONVERT_BND; Manta/Delly single-caller DUP/INV allowed.
     awk 'BEGIN{OFS="\\t"}
         /^##FORMAT/{if(/ID=GT,/)print; next}
         /^#CHROM/{
@@ -118,7 +121,7 @@ process JASMINE_MERGE {
         }
         /^#/{print;next}
         {
-            supp=""; svlen=0; is_tra=0; is_ins=0; is_dup_inv=0
+            supp=""; svlen=0; is_tra=0; is_ins=0
             n=split(\$8,info,";")
             for(i=1;i<=n;i++){
                 if(index(info[i],"SUPP_VEC=")==1) supp=substr(info[i],10)
@@ -126,7 +129,6 @@ process JASMINE_MERGE {
                     t=substr(info[i],8)
                     if(t=="TRA"||t=="BND") is_tra=1
                     if(t=="INS") is_ins=1
-                    if(t=="DUP"||t=="INV") is_dup_inv=1
                 }
                 if(index(info[i],"SVLEN=")==1){ svlen=substr(info[i],7)+0; if(svlen<0) svlen=-svlen }
             }
@@ -134,7 +136,6 @@ process JASMINE_MERGE {
                 ones=0; for(j=1;j<=length(supp);j++) if(substr(supp,j,1)=="1") ones++
                 if(is_tra && ones==1 && substr(supp,3,1)=="1") next
                 if(ones==1 && svlen>10000 && !is_ins) next
-                if(ones==1 && is_dup_inv) next
             }
             m=split(\$9,f,":"); gt_i=1
             for(i=1;i<=m;i++){if(f[i]=="GT"){gt_i=i;break}}
