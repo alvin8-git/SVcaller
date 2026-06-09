@@ -31,6 +31,8 @@ SVcaller is a Nextflow DSL2 pipeline for human WGS structural variant (SV), copy
 
 **Always use `NXF_ANSI_LOG=false` for background runs.** Without it, Nextflow's ANSI renderer deadlocks all JVM threads when there's no TTY (nohup/background). After launching, verify cached/submitted task lines appear in the log within 3 minutes.
 
+**Work directory convention: one `-work-dir` per sample or batch run.** Never reuse a shared `work/` across different run types — it causes session lock conflicts, prevents per-sample cleanup, and accumulates 3+ TB of unreclaimable intermediates. Use `work_<sampleId>` for single-sample runs and `work_<batchName>` for multi-sample batches. Clean a sample's work dir once its results are published: `rm -rf work_<sampleId>`.
+
 ```bash
 # SV/CNV validation — HG002 only; Truvari benchmark against GIAB SV truth
 # Use hg38.canonical.fa (chr1-22+X+Y+M only) for FASTQ inputs — skips 25-min FILTER_CHROMS step
@@ -45,7 +47,7 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
   --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
   --outdir /data/alvin/SVcaller/results \
-  -work-dir /data/alvin/SVcaller/work \
+  -work-dir /data/alvin/SVcaller/work_HG002 \
   -resume > /data/alvin/tmp/main_runN.log 2>&1 &
 
 # SMN validation — SMA trio only; no Truvari (no SV truth for clinical samples)
@@ -59,10 +61,11 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
   --skip_gridss true \
   --outdir /data/alvin/SVcaller/results_smn \
-  -work-dir /data/alvin/SVcaller/work \
+  -work-dir /data/alvin/SVcaller/work_smn \
   -resume > /data/alvin/tmp/smn_runN.log 2>&1 &
 
 # GIAB PON sample reports — HG001, HG003-HG007 (HG002 done via validation run)
+# --skip_melt: MELT adds 12 h with no SV truth benefit for these report-only samples
 # SV calling not cached from pon_build.nf — expect 8-12 h for 6 samples
 NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --input validation/giab_reports_samplesheet.csv \
@@ -73,9 +76,24 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
   --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
   --skip_gridss true \
+  --skip_melt true \
   --outdir /data/alvin/SVcaller/results_giab \
-  -work-dir /data/alvin/SVcaller/work \
+  -work-dir /data/alvin/SVcaller/work_giab_reports \
   -resume > /data/alvin/tmp/giab_reports_runN.log 2>&1 &
+
+# Clinical sample (single sample, new patient)
+# Replace SAMPLEID with the actual sample name — never reuse another sample's work dir
+NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
+  --input /path/to/SAMPLEID_samplesheet.csv \
+  --ref_fasta /data/alvin/ref/GRCh38/hg38.canonical.fa \
+  --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
+  --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+  --eh_catalog assets/eh_catalog.json \
+  --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
+  --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
+  --outdir /data/alvin/SVcaller/results_SAMPLEID \
+  -work-dir /data/alvin/SVcaller/work_SAMPLEID \
+  > /data/alvin/tmp/SAMPLEID_run1.log 2>&1 &
 
 # PON build (already complete — only re-run if GIAB BAMs change)
 NXF_ANSI_LOG=false nohup nextflow run workflows/pon_build.nf -profile docker \
@@ -83,11 +101,14 @@ NXF_ANSI_LOG=false nohup nextflow run workflows/pon_build.nf -profile docker \
   --ref_fasta /data/alvin/ref/GRCh38/hg38.fa \
   --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
   --outdir /data/alvin/SVcaller/pon \
-  -work-dir /data/alvin/SVcaller/work \
+  -work-dir /data/alvin/SVcaller/work_pon \
   -resume > /data/alvin/tmp/pon_run.log 2>&1 &
 
 # Check pipeline progress (update log path to latest run)
-tail -20 /data/alvin/tmp/melt_header_fix_run.log
+tail -20 /data/alvin/tmp/smn_runN.log
+
+# Clean up a completed sample's work dir (safe once results are published)
+rm -rf /data/alvin/SVcaller/work_SAMPLEID
 ```
 
 **PON location:** `/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5` (446 MB, built from HG001-HG007)
@@ -107,7 +128,7 @@ pytest tests/test_cnv_consensus.py
 pytest tests/test_cnv_consensus.py::test_reciprocal_overlap
 ```
 
-The Python scripts in `bin/` are tested with pytest but execute inside `svcaller/utils:1.0` Docker container during the pipeline run.
+The Python scripts in `bin/` are tested with pytest but execute inside `svcaller/utils:1.2` Docker container during the pipeline run.
 
 ## Samplesheet Format
 
