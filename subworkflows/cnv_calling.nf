@@ -5,7 +5,7 @@ include { GATK_GCNV_CALL           } from '../modules/gatk/gcnv_call'
 process CNV_CONSENSUS {
     tag "${meta.id}"
     label 'process_single'
-    container params.utils_container ?: 'svcaller/utils:1.1'
+    container params.utils_container ?: 'svcaller/utils:1.2'
     publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.cnv_consensus.bed"
 
     input:
