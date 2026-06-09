@@ -12,7 +12,8 @@ process SAMTOOLS_FILTER_CHROMS {
     script:
     """
     # Reads restricted to canonical chromosomes; mates on alt/decoy contigs are dropped.
-    # ALL @SQ lines kept in FAI order — GRIDSS/Picard require dictionary size parity with the reference.
+    # Only canonical @SQ lines emitted — Manta assembly silently produces 0 variants when the BAM header
+    # retains all 3366 hg38 alt-contig @SQ entries (526K candidates generated, 0 assembled).
     # Dropping reads with non-canonical RNEXT prevents Manta mate_tid=-1 FATAL_ERROR (clearing to "*"
     # also triggers the crash; skipping the read entirely is the only safe option).
     # Re-sort only when BAM canonical chr order differs from FAI order (saves ~3h when already matching).
@@ -38,7 +39,7 @@ process SAMTOOLS_FILTER_CHROMS {
                  for (i=1; i<=NF; i++) {
                      if (\$i ~ /^SN:/) {
                          c=\$i; sub(/^SN:/, "", c)
-                         if (c in order) sq[order[c]]=\$0
+                         if (c in order && c in can) sq[order[c]]=\$0
                      }
                  }
                  next

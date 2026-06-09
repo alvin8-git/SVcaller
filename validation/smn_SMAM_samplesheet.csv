@@ -1,0 +1,2 @@
+sample,fastq_1,fastq_2,bam
+SMAM,,,/data/alvin/SVcaller/ValidationBAM/SMA_BAM/SMAM.bwa.sortdup.bqsr.bam

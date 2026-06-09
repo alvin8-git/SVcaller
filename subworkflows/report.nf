@@ -139,7 +139,11 @@ workflow REPORT {
         .join(CIRCOS_PLOT.out.svg)
         .join(ch_coverage)
         .join(ch_metrics)
-        .join(ch_str_vcf)
+        .join(ch_str_vcf, remainder: true)
+        .filter { it[1] != null }
+        .map { meta, sv, cnv, smn, svg, cov, met, str ->
+            [meta, sv, cnv, smn, svg, cov, met, str ?: file("NO_STR")]
+        }
         .join(ch_flagstat)
         .join(ch_insert_size)
         // tuple: [meta, sv, cnv, smn, svg, cov, met, str, flagstat, ins]
