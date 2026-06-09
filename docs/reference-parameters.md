@@ -20,9 +20,13 @@ Complete reference for all CLI parameters, samplesheet columns, and output files
 | `--giab_truth` | Path | null | GIAB truth VCF.gz (enables Truvari benchmarking in the report). |
 | `--min_depth` | Integer | 30 | Minimum mean coverage (mosdepth). Pipeline halts if the sample is below this threshold. |
 | `--outdir` | Path | `results` | Output directory. Per-sample subdirectories are created automatically. |
-| `--utils_container` | String | `svcaller/utils:1.1` | Docker image for Python bin/ scripts. |
+| `--utils_container` | String | `svcaller/utils:1.2` | Docker image for Python bin/ scripts. |
 | `--skip_gridss` | Boolean | false | Skip GRIDSS (saves 4-6 h and 60 GB RAM). Manta + Delly + Scramble still run. Use for SMN validation runs or resource-constrained environments. |
+| `--skip_melt` | Boolean | false | Skip MELT MEI calling (saves ~2 h). Use when the `svcaller/melt:2.2.2` container is unavailable or when mobile element insertions are not clinically relevant. |
 | `--tiered_gridss` | Boolean | false | Run GRIDSS only on Manta residual regions (smaller input → ~2.5 h, 40 GB). Reduces sensitivity for complex rearrangements in non-Manta regions. |
+| `--sv_pon` | Path | null | GIAB 7-sample SV Panel of Normals BED. SVs matching population variants in the PON are flagged as `COMMON_SV` in the report. Use `pon/sv_pon/giab_sv_pon.bed`. |
+| `--giab_truth_v5q` | Path | null | GIAB v5.0q truth VCF.gz. Enables a second Truvari benchmark pass alongside `--giab_truth` (T2TQ100-V1.0). |
+| `--melt_refs` | Path | null | Path to MELT `me_refs/` directory. Auto-detected from the container at `/opt/melt/me_refs` if unset. Only needed when running MELT outside Docker. |
 
 ## Samplesheet Format
 
@@ -57,7 +61,9 @@ All outputs land in `{outdir}/{sample}/`:
 | `{sample}.filtered.tsv` | AnnotSV-annotated SV table after gnomAD SV frequency filter. Tab-separated, with ACMG classification and gene annotations. |
 | `{sample}.cnv_consensus.bed` | Consensus CNV calls from CNVpytor + GATK gCNV. Columns: chrom, start, end, cn, svtype, caller_support, confidence, quality, sample. |
 | `{sample}.smn.tsv` | SMN1/SMN2 copy number table from SMNCopyNumberCaller. |
-| `{sample}.circos.png` | Genome-wide Circos plot (PNG, 150 DPI). |
+| `{sample}.circos.svg` | Genome-wide Circos plot (SVG, embedded inline in the HTML report). |
+| `{sample}.circos.png` | Genome-wide Circos plot (PNG, 150 DPI, fallback if SVG rendering fails). |
+| `{sample}.variants.xlsx` | Excel workbook with four sheets: SVs, CNVs, STRs, SMN. Suitable for clinical reporting workflows. |
 
 MultiQC HTML is written to `{outdir}/multiqc_report.html`.
 

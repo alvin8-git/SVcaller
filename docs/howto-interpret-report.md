@@ -103,8 +103,8 @@ The report was generated correctly if:
 
 ## Troubleshooting
 
-**Mean coverage shows N/A**
-`samtools flagstat` output is not yet wired to the HTML report (known limitation). Coverage and duplicate rate are present; mapped-reads percentage requires a future fix.
+**Mean coverage or mapped-reads percentage shows N/A**
+Check that `{sample}.flagstat.txt` was published to the output directory. The Alignment QC section shows mean coverage (mosdepth), duplicate rate (Picard), and mapped-reads percentage (samtools flagstat). If flagstat is missing, re-run the pipeline; flagstat is produced during the PREPROCESS step alongside MarkDuplicates.
 
 **SV Summary and Top Annotated SVs sections are empty**
 AnnotSV failed or produced 0-byte output. Check `--annotsv_db` path — it must point to the parent of `Annotations_Human/`, not to `Annotations_Human/` itself.

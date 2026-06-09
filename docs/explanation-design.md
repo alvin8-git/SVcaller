@@ -52,6 +52,28 @@ Why the pipeline is built the way it is. Each section covers a non-obvious choic
 
 ---
 
+## Canonical @SQ headers in FILTER_CHROMS output BAM
+
+**The problem.** A subtle but fatal failure mode: FILTER_CHROMS kept all 3,366 `@SQ` header lines from the original hg38 BAM even though it filtered the reads down to canonical chromosomes. Manta's scanner found 526K candidate SV edges from the read alignments, but Manta's assembly phase silently produced 0 variants. The root cause: when the BAM header references chromosomes (`@SQ SN:chrUn_*`, `@SQ SN:HLA-*`, etc.) that have no corresponding reads, Manta's assembly internally crashes and emits empty output — no error, no warning, just zero calls.
+
+**The approach.** The awk `@SQ` filter in `filter_chroms.nf` was extended from `if (c in order)` to `if (c in order && c in can)`. The `can` array contains exactly the 25 canonical chromosomes (chr1-22+X+Y+M). Only matching `@SQ` lines are emitted into the output BAM header. All 3,341 non-canonical `@SQ` entries are dropped, even though their corresponding reads were already absent.
+
+**Why this was non-obvious.** The filtered BAM looked healthy: 628M reads, correct MAPQ distribution, normal insert size distribution. The Manta scanner statistics (3.7M anomalous pairs, 1.7M split reads, 526K candidate edges) confirmed valid SV evidence was present. The failure was entirely in the assembly phase, which is not separately logged. The `@SQ` count mismatch was only found by comparing `samtools view -H` output before and after filtering.
+
+**Trade-off.** None: this is a pure fix. BAMs with non-canonical @SQ lines and no corresponding reads carry no information in those headers; dropping them cannot affect variant calling.
+
+---
+
+## Per-sample work directories
+
+**The problem.** Nextflow stores intermediate files in `work/`. If multiple samples share a work directory and one sample fails, re-running with `-resume` can create session lock conflicts. More critically, a shared `work/` accumulates intermediates across all samples and run types, making targeted cleanup impossible without also deleting cache for other samples.
+
+**The approach.** Each sample run uses its own work directory: `work_<sampleId>` for single samples, `work_<batchName>` for multi-sample batches. Once a sample's results are published to `{outdir}/{sample}/`, its work directory can be deleted safely (`rm -rf work_SAMPLE`) without affecting any other sample's cache.
+
+**Trade-off.** Managing multiple work directories requires more explicit bookkeeping — you cannot `-resume` across work directories. The convention `work_<sampleId>` makes it unambiguous which work directory belongs to which sample.
+
+---
+
 ## Scramble MEI canonical SVLEN estimates
 
 **The problem.** Scramble reports mobile element insertions but does not always report the full inserted sequence length. Truvari compares SVs using a ±30% size similarity threshold. An L1 insertion truncated to 1000 bp in the sample would fail the size match against a truth-set L1 with SVLEN=6000, even if it is the same insertion.

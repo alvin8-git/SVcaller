@@ -147,43 +147,60 @@ HG003,,,/data/HG003.GRCh38.bam
 ### FASTQ input
 
 ```bash
-nextflow run main.nf \
+NXF_ANSI_LOG=false nohup nextflow run main.nf \
     -profile docker \
     --input samplesheet.csv \
-    --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
-    --pon /data/alvin/SVcaller/pon/giab_cnv_pon.hdf5 \
-    --annotsv_db /data/alvin/ref/annotsv \
-    --outdir results \
-    --max_cpus 32 \
-    --max_memory '64.GB'
+    --ref_fasta /path/to/hg38.canonical.fa \
+    --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+    --annotsv_db /path/to/annotsv/Annotations_Human \
+    --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
+    --outdir results_SAMPLEID \
+    -work-dir work_SAMPLEID \
+    > /tmp/SAMPLEID_run1.log 2>&1 &
 ```
+
+> **Note:** Use `hg38.canonical.fa` (chr1-22+X+Y+M only) for FASTQ inputs — this skips the 25-minute FILTER_CHROMS step. Use `NXF_ANSI_LOG=false` for all background runs; without it, Nextflow's ANSI renderer deadlocks the JVM when there's no TTY.
 
 ### BAM input (skip alignment)
 
 ```bash
-nextflow run main.nf \
+NXF_ANSI_LOG=false nohup nextflow run main.nf \
     -profile docker \
     --input bam_samplesheet.csv \
-    --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
-    --outdir results
+    --ref_fasta /path/to/hg38.fa \
+    --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+    --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
+    --outdir results_SAMPLEID \
+    -work-dir work_SAMPLEID \
+    > /tmp/SAMPLEID_run1.log 2>&1 &
 ```
+
+> **Note:** BAM inputs always run FILTER_CHROMS to strip non-canonical @SQ headers. See [How to run BAM inputs](docs/howto-run-bam-inputs.md) for details.
 
 ### With GIAB benchmarking
 
 ```bash
-nextflow run main.nf \
+NXF_ANSI_LOG=false nohup nextflow run main.nf \
     -profile docker \
     --input samplesheet.csv \
-    --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
-    --giab_truth /data/alvin/ref/GIAB/HG002_SV_v0.6.vcf.gz \
-    --outdir results
+    --ref_fasta /path/to/hg38.canonical.fa \
+    --giab_truth /path/to/GIAB/HG002_T2TQ100-V1.0_stvar.vcf.gz \
+    --giab_truth_v5q /path/to/GIAB/HG002_v5.0q_stvar.vcf.gz \
+    --outdir results_HG002 \
+    -work-dir work_HG002 \
+    > /tmp/HG002_run1.log 2>&1 &
 ```
 
 ### Resume a failed run
 
 ```bash
-nextflow run main.nf -profile docker --input samplesheet.csv \
-    --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta -resume
+NXF_ANSI_LOG=false nohup nextflow run main.nf \
+    -profile docker \
+    --input samplesheet.csv \
+    --ref_fasta /path/to/hg38.canonical.fa \
+    -work-dir work_SAMPLEID \
+    -resume \
+    > /tmp/SAMPLEID_run2.log 2>&1 &
 ```
 
 ---
@@ -195,16 +212,18 @@ GATK gCNV requires a Panel of Normals (PoN) built from ≥10 normal samples. Bui
 ```bash
 # 1. Edit validation/giab_samplesheet.csv with your BAM paths
 # 2. Build PoN
-nextflow run workflows/pon_build.nf \
+NXF_ANSI_LOG=false nohup nextflow run workflows/pon_build.nf \
     -profile docker \
     --input validation/giab_samplesheet.csv \
     --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
-    --outdir /data/alvin/SVcaller/pon
+    --outdir /data/alvin/SVcaller/pon \
+    -work-dir /data/alvin/SVcaller/work_pon \
+    > /data/alvin/tmp/pon_run.log 2>&1 &
 
-# PoN output: /data/alvin/SVcaller/pon/giab_cnv_pon.hdf5
+# PoN output: /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5
 ```
 
-Pass it to the main pipeline with `--pon /data/alvin/SVcaller/pon/giab_cnv_pon.hdf5`.
+Pass it to the main pipeline with `--pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5`.
 
 ---
 
@@ -214,13 +233,14 @@ Pass it to the main pipeline with `--pon /data/alvin/SVcaller/pon/giab_cnv_pon.h
 results/
 └── <sample_id>/
     ├── <sample_id>.report.html          # Self-contained HTML report
-    ├── <sample_id>.sv_merged.vcf.gz     # Ensemble SV calls (6-caller: Manta+DELLY+GRIDSS+Scramble+MELT+SvABA)
+    ├── <sample_id>.variants.xlsx        # Excel workbook (SVs / CNVs / STRs / SMN sheets)
+    ├── <sample_id>.sv_merged.vcf.gz     # Ensemble SV calls (Manta+DELLY+GRIDSS+Scramble+MELT+SvABA)
     ├── <sample_id>.sv_merged.vcf.gz.tbi
     ├── <sample_id>.str.vcf.gz           # STR calls (ExpansionHunter)
     ├── <sample_id>.cnv_consensus.bed    # Consensus CNV calls
     ├── <sample_id>.smn.tsv              # SMN1/SMN2 copy numbers
-    ├── <sample_id>.annotated.tsv        # AnnotSV-annotated SVs
-    ├── <sample_id>.circos.svg           # Genome-wide Circos plot
+    ├── <sample_id>.filtered.tsv         # AnnotSV-annotated, gnomAD-SV-filtered SVs
+    ├── <sample_id>.circos.svg           # Genome-wide Circos plot (embedded inline in HTML)
     ├── <sample_id>.circos.png
     └── <sample_id>.truvari/             # GIAB benchmark (if --giab_truth set)
         └── summary.json
@@ -265,12 +285,14 @@ Main gap is recall (~25%) — the callset covers ~9,700 of ~30,000 truth SVs. Pr
 | Document | What it covers |
 |----------|---------------|
 | [Getting started tutorial](docs/tutorial-getting-started.md) | First run from scratch to open report |
+| [How to run a clinical sample](docs/howto-run-clinical-sample.md) | End-to-end guide for a new patient sample (samplesheet → results → cleanup) |
+| [How to run BAM inputs](docs/howto-run-bam-inputs.md) | Pre-aligned BAM guidance including FILTER_CHROMS verification and parallel runs |
 | [How to run the GIAB validation](docs/howto-run-validation.md) | Benchmarking against GIAB HG002 truth set |
 | [How to build a Panel of Normals](docs/howto-build-pon.md) | GATK gCNV PON construction |
 | [How to interpret the HTML report](docs/howto-interpret-report.md) | Clinical interpretation of all report sections and Circos rings |
 | [Parameter reference](docs/reference-parameters.md) | All CLI flags, samplesheet format, output files, resource labels |
 | [Architecture reference](docs/reference-architecture.md) | Module-by-module technical description with I/O and design notes |
-| [Design decisions](docs/explanation-design.md) | Why the pipeline is built the way it is (channel patterns, sentinel files, PON choices) |
+| [Design decisions](docs/explanation-design.md) | Why the pipeline is built the way it is (channel patterns, sentinel files, PON choices, FILTER_CHROMS @SQ fix) |
 
 ---
 

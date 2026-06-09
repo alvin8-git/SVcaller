@@ -34,7 +34,7 @@ M2, M3, and M4 run in parallel on the preprocessed BAM channel. M5 and M6/M7 run
 | `PICARD_INSERT_SIZE` | `modules/picard/insert_size.nf` | Picard | Final BAM | Insert size metrics |
 | `SAMTOOLS_FLAGSTAT` | `modules/samtools/flagstat.nf` | samtools | Final BAM | Flagstat TXT |
 
-**FILTER_CHROMS** is skipped for FASTQ samples aligned to `hg38.canonical.fa`. BAM inputs always run FILTER_CHROMS.
+**FILTER_CHROMS** is skipped for FASTQ samples aligned to `hg38.canonical.fa`. BAM inputs always run FILTER_CHROMS. The filter removes both reads and `@SQ` header lines for non-canonical chromosomes — keeping non-canonical `@SQ` entries even without corresponding reads causes Manta to silently produce 0 assembly output (scanner generates candidates, assembly phase crashes internally with no error message).
 
 **MOSDEPTH** uses `--by 50000` to produce 50 kb window coverage used in the Circos depth ring. It also checks mean depth against `--min_depth` and halts the pipeline if coverage is insufficient.
 
@@ -52,22 +52,27 @@ M2, M3, and M4 run in parallel on the preprocessed BAM channel. M5 and M6/M7 run
 | Delly | `modules/delly/call.nf` + `merge.nf` | DEL, DUP, INV, TRA, INS | quay.io/biocontainers/delly:1.2.6 |
 | GRIDSS | `modules/gridss/call.nf` | BND (precise breakpoints) | gridss/gridss:2.13.2 |
 | Scramble | `modules/scramble/call.nf` | MEI (ALU, L1, SVA insertions) | quay.io/biocontainers/scramble:1.0.2 |
+| MELT | `modules/melt/call.nf` | MEI (ALU, HERVK, LINE1, SVA) | svcaller/melt:2.2.2 (local build) |
 
 **Delly** outputs BCF binary even with `.vcf` extension. `DELLY_MERGE` uses `bcftools concat | bcftools sort` (inside the GATK container which includes bcftools 1.13) to convert and sort.
 
-**GRIDSS** can be skipped with `--skip_gridss true` or run in tiered mode (`--tiered_gridss true`) where it only processes Manta residual regions (smaller input, faster runtime).
+**GRIDSS** can be skipped with `--skip_gridss true` or run in tiered mode (`--tiered_gridss true`) where it only processes Manta residual regions (smaller input, faster runtime). GRIDSS BND pairs are converted to DEL/DUP/INV calls by `bin/gridss_convert_bnd.py` before Jasmine merge.
 
 **Scramble** calls mobile element insertions (MEI). Each MEI type gets a canonical SVLEN assigned at the Jasmine merge step: ALU=300 bp, L1=6000 bp, SVA=1500 bp.
+
+**MELT** (Mobile Element Locator Tool) calls four ME types: ALU, HERVK, LINE1, SVA. Runs alphabetically (~2 h at 30×). Requires `svcaller/melt:2.2.2` built locally from `MELTv2.2.2.tar.gz` (MELT.jar requires registration; not in bioconda/biocontainers). Skip with `--skip_melt true`. MELT INFO headers (DIFF/LP/RP/RA/PRIOR/SR/MEINFO etc.) are stripped to SVTYPE/MEITYPE/SVLEN/END before Jasmine to prevent header mismatch crashes.
+
+**ExpansionHunter** runs in parallel on the BAM to call short tandem repeat (STR) expansions. Uses `assets/eh_catalog.json`. Output: `ch_str_vcf`.
 
 ### Merge: Jasmine
 
 `JASMINE_MERGE` (modules/jasmine/merge.nf) takes all caller VCFs and produces a single merged VCF with:
-- `SUPP_VEC` field: bitmask indicating which callers support each call (e.g., `1110` = Manta+Delly+GRIDSS)
+- `SUPP_VEC` field: bitmask indicating which callers support each call (e.g., `1110` = Manta+Delly+GRIDSS, `10000` = MELT only)
 - `SUPP`: count of supporting callers
 
 Jasmine output is not sorted. The module sorts it with `sort -k1,1 -k2,2n` before `bgzip | tabix`.
 
-**All four callers must succeed** for Jasmine to run (inner join). If any caller fails, the sample fails. This is intentional: partial merges produce misleading SUPP_VEC values.
+**Manta, Delly, and GRIDSS must all succeed** for Jasmine to run (inner join). Scramble and MELT are optional — they are added to `vcf_list.txt` only if they produced calls. If a mandatory caller fails, the sample fails.
 
 **Outputs emitted:** `ch_sv_vcf`, `ch_sv_tbi`.
 
@@ -136,10 +141,10 @@ Tool: SMNCopyNumberCaller. Runs from the full pre-filtered BAM (before canonical
 
 | Process | Container | Input | Output |
 |---------|-----------|-------|--------|
-| `CIRCOS_PLOT` | svcaller/utils:1.0 | sv_vcf, cnv_bed, str_vcf, depth_bed, annotsv_tsv, cytobands | SVG + PNG |
+| `CIRCOS_PLOT` | svcaller/utils:1.2 | sv_vcf, cnv_bed, str_vcf, depth_bed, annotsv_tsv, cytobands | SVG + PNG |
 | `TRUVARI_BENCH` | quay.io/.../truvari | sv_vcf, truth_vcf, truth_bed | summary.json + sizebin.json |
 | `MULTIQC` | quay.io/.../multiqc | QC files from M1 | HTML report |
-| `BUILD_HTML_REPORT` | svcaller/utils:1.1 | All above + coverage, metrics, smn_tsv | .report.html |
+| `BUILD_HTML_REPORT` | svcaller/utils:1.2 | All above + coverage, metrics, smn_tsv | .report.html + .variants.xlsx |
 
 ### Circos Plot Ring Layout (outer → inner)
 
@@ -160,7 +165,7 @@ The `REPORT` workflow joins 9 mandatory channels with `join()` (inner join) and 
 
 ## Python Scripts (`bin/`)
 
-Scripts run inside `svcaller/utils:1.1`. The `export PATH=${projectDir}/bin:$PATH` override in process scripts ensures the host's `bin/` takes precedence over container-baked versions.
+Scripts run inside `svcaller/utils:1.2`. The `export PATH=${projectDir}/bin:$PATH` override in process scripts ensures the host's `bin/` takes precedence over container-baked versions.
 
 | Script | CLI entrypoint | Key logic |
 |--------|---------------|-----------|
