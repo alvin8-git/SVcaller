@@ -273,7 +273,7 @@ def _marker_width(chrom_len: int) -> int:
     return max(500_000, chrom_len // 300)
 
 
-def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
+def make_circos(sv_vcf: str, cnv_bed: Optional[str], cytobands: str,
                 sample_id: str, out_svg: str, out_png: str,
                 str_vcf: Optional[str] = None,
                 depth_bed: Optional[str] = None,
@@ -283,7 +283,7 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
     import matplotlib.pyplot as plt
 
     chrom_sizes  = load_chrom_sizes(cytobands)
-    gains, losses = parse_cnv_bed(cnv_bed)
+    gains, losses = parse_cnv_bed(cnv_bed) if cnv_bed and cnv_bed != "NO_FILE" else ([], [])
     links        = parse_sv_vcf_links(sv_vcf)
     str_loci     = parse_str_vcf(str_vcf)       # EH catalog loci
     strling_loci = parse_strling_tsv(strling_tsv)  # high-confidence STRling novel
@@ -484,7 +484,7 @@ def make_circos(sv_vcf: str, cnv_bed: str, cytobands: str,
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sv-vcf",      required=True)
-    parser.add_argument("--cnv-bed",     required=True)
+    parser.add_argument("--cnv-bed",     default=None,  help="CNV consensus BED (optional)")
     parser.add_argument("--cytobands",   required=True)
     parser.add_argument("--sample",      required=True)
     parser.add_argument("--out",         required=True, help="Output SVG path")

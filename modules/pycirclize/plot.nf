@@ -13,6 +13,7 @@ process CIRCOS_PLOT {
     tuple val(meta), path("${meta.id}.circos.png"), emit: png
 
     script:
+    def cnv_arg      = cnv_bed.name     != "NO_FILE"     ? "--cnv-bed     ${cnv_bed}"     : ""
     def str_arg      = str_vcf.name     != "NO_STR"      ? "--str-vcf     ${str_vcf}"     : ""
     def depth_arg    = depth_bed.name   != "NO_DEPTH"    ? "--depth-bed   ${depth_bed}"   : ""
     def annotsv_arg  = annotsv_tsv.name != "NO_ANNOTSV"  ? "--annotsv-tsv ${annotsv_tsv}" : ""
@@ -22,9 +23,9 @@ process CIRCOS_PLOT {
     export PATH=${projectDir}/bin:\$PATH
     circos_plot.py \\
         --sv-vcf    ${sv_vcf} \\
-        --cnv-bed   ${cnv_bed} \\
         --cytobands ${cytobands} \\
         --sample    ${meta.id} \\
+        ${cnv_arg} \\
         ${str_arg} \\
         ${depth_arg} \\
         ${annotsv_arg} \\

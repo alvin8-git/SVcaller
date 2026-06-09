@@ -86,12 +86,14 @@ workflow REPORT {
 
     main:
     ch_circos_in = ch_sv_vcf
-        .join(ch_cnv_bed)
+        .join(ch_cnv_bed, remainder: true)
+        .filter { it[1] != null }   // drop cnv_bed-only remainders (sv_vcf absent)
+        .map { meta, sv, cnv -> [meta, sv, cnv ?: file("NO_FILE")] }
         .join(ch_str_vcf, remainder: true)
         .filter { it[1] != null }   // drop tuples fired before sv_vcf is ready (str_vcf caches before Jasmine)
         .join(ch_depth_bed, remainder: true)
         .join(ch_annotsv_tsv, remainder: true)
-        .filter { it[1] != null }   // drop samples re-introduced by depth/annotsv remainders when cnv_bed absent
+        .filter { it[1] != null }
         .join(ch_strling_tsv, remainder: true)
         .filter { it[1] != null }
         .map { meta, sv, cnv, str, depth, annotsv, strling ->
@@ -127,10 +129,12 @@ workflow REPORT {
         ch_sizebin_v5q = TRUVARI_BENCH_V5Q.out.sizebin
     }
 
-    // Mandatory channels joined first (inner join). Optional channels last (remainder: true).
+    // ch_cnv_bed is optional — samples without CNV data still get a report (NO_FILE sentinel).
     // filter { it[1] != null } drops spurious right-side remainders from timing races.
     ch_report_in = ch_sv_tsv
-        .join(ch_cnv_bed)
+        .join(ch_cnv_bed, remainder: true)
+        .filter { it[1] != null }   // drop cnv_bed-only remainders
+        .map { meta, sv, cnv -> [meta, sv, cnv ?: file("NO_FILE")] }
         .join(ch_smn_tsv)
         .join(CIRCOS_PLOT.out.svg)
         .join(ch_coverage)
