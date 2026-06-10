@@ -13,6 +13,7 @@ process SAMTOOLS_SORT {
     script:
     """
     samtools sort -@ ${task.cpus} -m 2G \\
+        -T ${meta.id}.sort_tmp \\
         -o ${meta.id}.sorted.bam ${bam}
 
     samtools index -@ ${task.cpus} ${meta.id}.sorted.bam
