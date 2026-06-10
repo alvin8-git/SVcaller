@@ -1066,6 +1066,33 @@ def parse_benchmark_sizebin(json_path: str) -> list:
 # Render
 # ---------------------------------------------------------------------------
 
+def _inline_bootstrap_css() -> str:
+    """Return Bootstrap 5.3.0 CSS as a string for self-contained offline HTML.
+
+    Reads from assets/bootstrap.min.css if pre-bundled (e.g. in Docker image),
+    otherwise fetches from CDN at render time with a 15s timeout.
+    Falls back to empty string — report still renders with custom CSS.
+    """
+    bundled = TEMPLATE_DIR / "bootstrap.min.css"
+    if bundled.exists():
+        return bundled.read_text()
+    try:
+        import urllib.request
+        with urllib.request.urlopen(
+            "https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css",
+            timeout=15,
+        ) as resp:
+            css = resp.read().decode("utf-8")
+        try:
+            bundled.write_text(css)
+        except OSError:
+            pass
+        return css
+    except Exception as exc:
+        print(f"WARNING: could not inline Bootstrap CSS ({exc}); report uses CDN fallback", file=sys.stderr)
+        return ""
+
+
 def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   sv_tsv_path: str, circos_svg_path: str, out_path: str,
                   pipeline_version: str = "1.0.0",
@@ -1085,6 +1112,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
 
     str_ranges = _load_str_ranges()
 
+    bootstrap_css     = _inline_bootstrap_css()
     smn_html          = Path(smn_html_path).read_text()
     circos_svg_inline = Path(circos_svg_path).read_text()
     sv_summary        = parse_sv_summary(sv_tsv_path)
@@ -1114,6 +1142,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     export_xls(sv_all, cnv_bed_path, str_loci, smn_tsv_path or "", xls_path)
 
     html = template.render(
+        bootstrap_css=bootstrap_css,
         sample_id=sample_id,
         pipeline_version=pipeline_version,
         run_date=date.today().isoformat(),
