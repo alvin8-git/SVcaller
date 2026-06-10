@@ -52,9 +52,10 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
 
 # SMN validation — SMA trio only; no Truvari (no SV truth for clinical samples)
 # --skip_gridss saves 4-6 h; only SMN1/2 CN and CNV results matter here
+# Must use hg38.canonical.fa: FILTER_CHROMS strips alt contigs from BAM; if ref still has them Manta fails
 NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --input validation/smn_validation_samplesheet.csv \
-  --ref_fasta /data/alvin/ref/GRCh38/hg38.fa \
+  --ref_fasta /data/alvin/ref/GRCh38/hg38.canonical.fa \
   --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
   --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
   --eh_catalog assets/eh_catalog.json \

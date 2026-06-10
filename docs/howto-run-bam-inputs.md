@@ -14,9 +14,11 @@ Use this guide when your sample is a BAM file rather than paired FASTQs. Common 
 | Aspect | FASTQ input | BAM input |
 |--------|------------|-----------|
 | FILTER_CHROMS | Skipped (use `hg38.canonical.fa`) | Always runs (~25 min) |
-| Reference FASTA | `hg38.canonical.fa` recommended | `hg38.fa` (full) or canonical — both work |
+| Reference FASTA | `hg38.canonical.fa` recommended | `hg38.canonical.fa` required (see note below) |
 | Alignment step | BWA-MEM2 + SAMTOOLS_SORT | Skipped |
 | @SQ header risk | None (canonical ref produces canonical headers) | Present — must be corrected by FILTER_CHROMS |
+
+> **Note:** `hg38.canonical.fa` is required for BAM inputs, not optional. FILTER_CHROMS strips alt contigs from the BAM's reads and `@SQ` headers, leaving only chr1-22+X+Y+M. If the reference still contains alt contigs (as `hg38.fa` does), Manta fails with "BAM/CRAM file is missing a chromosome found in the reference fasta file." Using the canonical reference ensures both the BAM and the reference agree on exactly 25 chromosomes.
 
 ## Why BAM inputs always run FILTER_CHROMS
 
@@ -38,7 +40,7 @@ for SAMPLE in SMAM SMAD SMAPB; do
   NXF_ANSI_LOG=false nohup nextflow run /data/alvin/SVcaller/main.nf \
     -profile docker \
     --input       /data/alvin/SVcaller/validation/smn_${SAMPLE}_samplesheet.csv \
-    --ref_fasta   /data/alvin/ref/GRCh38/hg38.fa \
+    --ref_fasta   /data/alvin/ref/GRCh38/hg38.canonical.fa \
     --intervals   /data/alvin/ref/GRCh38/wgs_autosomal.bed \
     --pon         /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
     --eh_catalog  /data/alvin/SVcaller/assets/eh_catalog.json \
