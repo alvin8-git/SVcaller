@@ -65,6 +65,10 @@ process SVABA_CALL {
             | bgzip > ${meta.id}.svaba.vcf.gz
         tabix -p vcf ${meta.id}.svaba.vcf.gz || true
     fi
+    rm -f ${meta.id}.svaba.sv.vcf ${meta.id}.svaba.indel.vcf \
+          ${meta.id}.svaba.bps.txt.gz ${meta.id}.svaba.discordant.txt.gz \
+          ${meta.id}.svaba.contigs.bam ${meta.id}.svaba.alignments.txt.gz \
+          ${meta.id}.svaba.log 2>/dev/null || true
     """
 }
 

@@ -114,5 +114,6 @@ process MELT_CALL {
             }
             print
         }' | sort -k1,1 -k2,2n | gzip > ${meta.id}.melt.vcf.gz
+    rm -rf melt_tmp
     """
 }

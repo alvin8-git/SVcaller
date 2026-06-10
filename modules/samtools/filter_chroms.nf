@@ -1,6 +1,9 @@
 process SAMTOOLS_FILTER_CHROMS {
     tag "${meta.id}"
     label 'process_medium'
+    // Cache filtered BAM across sessions — avoids re-writing 130 GB on every new run.
+    // Stored in outdir/.cache/filter_chroms; survives nextflow clean; delete manually when input BAM changes.
+    storeDir "${params.outdir}/.cache/filter_chroms"
 
     input:
     tuple val(meta), path(bam), path(bai)
