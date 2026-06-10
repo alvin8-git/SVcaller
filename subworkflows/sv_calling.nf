@@ -17,6 +17,7 @@ include { SVABA_CALL             } from '../modules/svaba/call'
 include { SVABA_STUB             } from '../modules/svaba/call'
 include { STRLING_CALL           } from '../modules/strling/call'
 include { SAMTOOLS_FILTER_CHROMS } from '../modules/samtools/filter_chroms'
+include { VALIDATE_REF_BAM      } from '../modules/samtools/validate_ref_bam'
 
 workflow SV_CALLING {
     take:
@@ -37,8 +38,13 @@ workflow SV_CALLING {
     ch_filtered_bam = SAMTOOLS_FILTER_CHROMS.out.bam
         .mix(ch_bam_branched.canonical)
 
+    // Pre-flight: verify BAM and reference chromosomes are consistent before any caller runs.
+    // Catches hg38.fa-vs-canonical-BAM mismatch at second 0 instead of hour 4 (Manta crash).
+    VALIDATE_REF_BAM(ch_filtered_bam, ch_fai)
+    ch_validated_bam = VALIDATE_REF_BAM.out.bam
+
     // DELLY: fan out 5 SV types in parallel; collect groupTuple(size:5) → merge
-    ch_delly_input = ch_filtered_bam.combine(Channel.from(['DEL', 'INS', 'INV', 'DUP', 'BND']))
+    ch_delly_input = ch_validated_bam.combine(Channel.from(['DEL', 'INS', 'INV', 'DUP', 'BND']))
     DELLY_CALL_SVTYPE(ch_delly_input, ch_fasta, ch_fai)
     DELLY_MERGE(DELLY_CALL_SVTYPE.out.vcf.groupTuple(size: 5))
 
@@ -46,14 +52,14 @@ workflow SV_CALLING {
 
     // P6: STRling genome-wide STR expansion detection (parallel with EH)
     if (!params.skip_strling) {
-        STRLING_CALL(ch_filtered_bam, ch_fasta, ch_fai)
+        STRLING_CALL(ch_validated_bam, ch_fasta, ch_fai)
         ch_strling_tsv = STRLING_CALL.out.tsv
     } else {
         ch_strling_tsv = Channel.empty()
     }
 
     // Manta always runs first; its output feeds tiered GRIDSS when enabled
-    MANTA_CALL(ch_filtered_bam, ch_fasta, ch_fai)
+    MANTA_CALL(ch_validated_bam, ch_fasta, ch_fai)
 
     if (!params.skip_gridss) {
         GRIDSS_SETUP(ch_fasta, ch_fai)
@@ -61,7 +67,7 @@ workflow SV_CALLING {
         if (params.tiered_gridss) {
             MANTA_RESIDUAL_REGIONS(MANTA_CALL.out.vcf, ch_fai)
             SAMTOOLS_SUBSET(
-                ch_filtered_bam.join(MANTA_RESIDUAL_REGIONS.out.bed)
+                ch_validated_bam.join(MANTA_RESIDUAL_REGIONS.out.bed)
             )
             GRIDSS_CALL(
                 SAMTOOLS_SUBSET.out.bam, ch_fasta, ch_fai,
@@ -71,7 +77,7 @@ workflow SV_CALLING {
             )
         } else {
             GRIDSS_CALL(
-                ch_filtered_bam, ch_fasta, ch_fai,
+                ch_validated_bam, ch_fasta, ch_fai,
                 GRIDSS_SETUP.out.amb, GRIDSS_SETUP.out.ann,
                 GRIDSS_SETUP.out.bwt, GRIDSS_SETUP.out.pac,
                 GRIDSS_SETUP.out.sa
@@ -84,33 +90,33 @@ workflow SV_CALLING {
         )
         ch_gridss_vcf = GRIDSS_CONVERT_BND.out.vcf
     } else {
-        GRIDSS_STUB(ch_filtered_bam)
+        GRIDSS_STUB(ch_validated_bam)
         ch_gridss_vcf = GRIDSS_STUB.out.vcf
     }
 
     if (!params.skip_scramble) {
-        SCRAMBLE_CALL(ch_filtered_bam, ch_fasta, ch_fai)
+        SCRAMBLE_CALL(ch_validated_bam, ch_fasta, ch_fai)
         ch_scramble_vcf = SCRAMBLE_CALL.out.vcf
     } else {
-        SCRAMBLE_STUB(ch_filtered_bam)
+        SCRAMBLE_STUB(ch_validated_bam)
         ch_scramble_vcf = SCRAMBLE_STUB.out.vcf
     }
 
     if (!params.skip_melt) {
-        MELT_CALL(ch_filtered_bam, ch_fasta, ch_fai)
+        MELT_CALL(ch_validated_bam, ch_fasta, ch_fai)
         ch_melt_vcf = MELT_CALL.out.vcf
     } else {
-        MELT_STUB(ch_filtered_bam)
+        MELT_STUB(ch_validated_bam)
         ch_melt_vcf = MELT_STUB.out.vcf
     }
 
     // P7: SvABA local-assembly caller; 6th position in SUPP_VEC
     // SUPP_VEC positions: Manta[0] Delly[1] GRIDSS[2] Scramble[3] MELT[4] SvABA[5]
     if (!params.skip_svaba) {
-        SVABA_CALL(ch_filtered_bam, ch_fasta, ch_fai)
+        SVABA_CALL(ch_validated_bam, ch_fasta, ch_fai)
         ch_svaba_vcf = SVABA_CALL.out.vcf
     } else {
-        SVABA_STUB(ch_filtered_bam)
+        SVABA_STUB(ch_validated_bam)
         ch_svaba_vcf = SVABA_STUB.out.vcf
     }
 
