@@ -37,8 +37,11 @@ Each sample must have its own work directory to prevent session lock conflicts.
 # validation/smn_SMAPB_samplesheet.csv
 
 for SAMPLE in SMAM SMAD SMAPB; do
+  WORK_DIR=/data/alvin/SVcaller/work_smn/${SAMPLE}
+  mkdir -p "${WORK_DIR}/.nxf_cache"
   NXF_ANSI_LOG=false nohup nextflow run /data/alvin/SVcaller/main.nf \
     -profile docker \
+    -cache        "${WORK_DIR}/.nxf_cache" \
     --input       /data/alvin/SVcaller/validation/smn_${SAMPLE}_samplesheet.csv \
     --ref_fasta   /data/alvin/ref/GRCh38/hg38.canonical.fa \
     --intervals   /data/alvin/ref/GRCh38/wgs_autosomal.bed \
@@ -47,7 +50,8 @@ for SAMPLE in SMAM SMAD SMAPB; do
     --sv_pon      /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
     --skip_gridss true \
     --outdir      /data/alvin/SVcaller/results_smn \
-    -work-dir     /data/alvin/SVcaller/work_smn/${SAMPLE} \
+    -work-dir     "$WORK_DIR" \
+    -resume \
     > /data/alvin/tmp/smn_${SAMPLE}_run1.log 2>&1 &
   echo "${SAMPLE} PID: $!"
 done
