@@ -1,6 +1,7 @@
 process GATK_PREPROCESS_INTERVALS {
     label 'process_single'
     container 'broadinstitute/gatk:4.5.0.0'
+    storeDir   "${params.outdir}/cache/gatk_preprocess"
     publishDir "${params.outdir}/pon", mode: 'copy', pattern: "*.interval_list"
 
     input:
