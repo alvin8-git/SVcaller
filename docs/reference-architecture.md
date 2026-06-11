@@ -161,7 +161,7 @@ Remodeled into a "genome fingerprint" — links-first, balanced rings (the plot 
 | CNV blocks | 81–86 | CNV consensus calls **≥1 Mb** (DUP=red, DEL=blue); smaller calls are in the heatmap + xlsx |
 | STR loci | 74–79 | ExpansionHunter (brown) + STRling novel (orange), full-height barcode ticks |
 | Clinical SV | 67–72 | Top 30 SVs by AnnotSV score, **coloured by ACMG class** (5=red, 4=orange, 3=grey, else by SV type); gold = SMN locus. Merges the former gene-loci + ACMG rings |
-| SV links | 0–65 | BND/TRA all; DEL/DUP/INV ≥50 kb; multi-caller (SUPP_VEC≥2); cap 150 with up to 110 interchromosomal, which are drawn thicker/opaque as the sample signature. Point features use a ~2 Mb min-width floor so they aren't sub-pixel |
+| SV links | 0–65 | DEL/DUP/INV ≥50 kb and BND/TRA, **all requiring multi-caller support (SUPP_VEC≥2)** — same consensus as the callset/xlsx, so the plot never shows SVs the pipeline filtered out. Cap 150, up to 110 interchromosomal, drawn thicker/opaque as the sample signature (sparse for normal genomes; a real web only for samples with consensus-supported rearrangements). Point features use a ~2 Mb min-width floor. Note: GIAB truth is INS/DEL only, so interchromosomal recall is unmeasured by GIAB |
 
 ### Channel Join Pattern
 
