@@ -152,14 +152,16 @@ Tool: SMNCopyNumberCaller. Runs from the full pre-filtered BAM (before canonical
 
 ### Circos Plot Ring Layout (outer → inner)
 
+Remodeled into a "genome fingerprint" — links-first, balanced rings (the plot is a gestalt overview; exact coordinates/CN/confidence live in the report sections + `.xlsx`):
+
 | Ring | Radius | Content |
 |------|--------|---------|
 | Chromosomes | 95–100 | Ideograms chr1–22+X+Y |
-| Coverage depth | 65–95 | Log₂ ratio vs. median (50 kb windows); red=gain, blue=loss, grey=normal |
-| STR loci | 60–65 | ExpansionHunter repeat loci (brown) |
-| Gene loci | 55–60 | Top 30 SVs by AnnotSV ranking score; gold = SMN locus |
-| ACMG class dots | 50–55 | Class 5 (red), class 4 (orange), class 3 (grey) |
-| SV links | 0–50 | BND/TRA all; DEL/DUP/INV ≥50 kb; multi-caller (SUPP_VEC≥2); capped at 100 |
+| Copy-ratio heatmap | 88–95 | Log₂ depth ratio in **1 Mb bins** (re-binned from mosdepth 50 kb), diverging RdBu_r (blue=loss, white=neutral, red=gain); ±1 ≈ CN1..CN4. Uniform genome reads near-white; CNVs pop as colour blocks |
+| CNV blocks | 81–86 | CNV consensus calls **≥1 Mb** (DUP=red, DEL=blue); smaller calls are in the heatmap + xlsx |
+| STR loci | 74–79 | ExpansionHunter (brown) + STRling novel (orange), full-height barcode ticks |
+| Clinical SV | 67–72 | Top 30 SVs by AnnotSV score, **coloured by ACMG class** (5=red, 4=orange, 3=grey, else by SV type); gold = SMN locus. Merges the former gene-loci + ACMG rings |
+| SV links | 0–65 | BND/TRA all; DEL/DUP/INV ≥50 kb; multi-caller (SUPP_VEC≥2); cap 150 with up to 110 interchromosomal, which are drawn thicker/opaque as the sample signature. Point features use a ~2 Mb min-width floor so they aren't sub-pixel |
 
 ### Channel Join Pattern
 
