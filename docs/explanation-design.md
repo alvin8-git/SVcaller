@@ -64,6 +64,16 @@ Why the pipeline is built the way it is. Each section covers a non-obvious choic
 
 ---
 
+## Pre-flight reference/BAM validation (`VALIDATE_REF_BAM`)
+
+**The problem.** The `@SQ`-mismatch failure above (and similar reference/BAM inconsistencies) surfaces *late* — Manta is the first caller to crash, ~4 hours into a run, and it crashes silently with zero output. An operator discovers the bad input only after burning a half-day of compute, then has to diagnose a non-erroring failure.
+
+**The approach.** `VALIDATE_REF_BAM` (`modules/samtools/validate_ref_bam.nf`) runs as a pre-flight gate at the very start of M2, before any caller. It compares the chromosome set of the input BAM against the reference FASTA and fails fast — in seconds, with a clear error — if the reference carries contigs the BAM lacks, hinting to use `hg38.canonical.fa` rather than `hg38.fa` for BAM inputs.
+
+**Trade-off.** A few extra seconds at the front of every run, and the check is a superset relationship (it does not catch every conceivable mismatch). In exchange, the most common and most expensive misconfiguration is caught at second zero instead of hour four. For a clinical pipeline where a silent 4-hour failure is the worst outcome, this is strongly positive.
+
+---
+
 ## Per-sample work directories
 
 **The problem.** Nextflow stores intermediate files in `work/`. If multiple samples share a work directory and one sample fails, re-running with `-resume` can create session lock conflicts. More critically, a shared `work/` accumulates intermediates across all samples and run types, making targeted cleanup impossible without also deleting cache for other samples.
@@ -91,6 +101,16 @@ Why the pipeline is built the way it is. Each section covers a non-obvious choic
 **The approach.** Normal-coverage windows (log₂ ratio within [-0.5, +0.3]) are subsampled at 1-in-10 before rendering. Gain and loss windows (the clinical signal) are always rendered at full density.
 
 **Trade-off.** Fine-scale coverage variation in diploid regions is less visible. For CNV detection the relevant signal is the outlier windows, which are unaffected. The SVG drops from 6.8 MB to ~1 MB; the HTML report from ~7 MB to ~2 MB.
+
+---
+
+## Inlined Bootstrap CSS for air-gapped reports
+
+**The problem.** The clinical HTML report styled itself by linking the Bootstrap CSS from a CDN. Clinical and diagnostic networks are frequently air-gapped — no outbound internet. On those machines the `<link>` silently fails and the report renders as unstyled HTML: tables lose their grid, the layout collapses, and a document meant for clinicians looks broken.
+
+**The approach.** `bin/html_report.py` inlines Bootstrap directly into a `<style>` block in the generated HTML. It resolves the CSS in priority order: the bundled `assets/bootstrap.min.css` baked into the `svcaller/utils` container first, a CDN fetch as a fallback for connected build environments, and an empty string as a last resort so the report still assembles. The result is a single self-contained `.report.html` with no external dependencies.
+
+**Trade-off.** Each report carries ~25 KB of inlined CSS instead of sharing one cached CDN file across reports, and the bundled Bootstrap is pinned to one version rather than tracking the CDN. For single-file clinical artifacts that must render identically on a disconnected workstation years later, self-containment outweighs the duplication.
 
 ---
 

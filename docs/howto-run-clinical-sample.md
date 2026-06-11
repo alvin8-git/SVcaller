@@ -96,13 +96,23 @@ Open `SAMPLEID.report.html` in a browser to review the clinical findings.
 
 ## Step 5: Clean up
 
-Once results are confirmed complete, delete the work directory to free disk space:
+A 30× WGS run leaves large intermediates in the work directory. Once results are confirmed complete, reclaim that space. Three options, in order of preference:
+
+**Option A — `nf-cleanup.sh` (recommended).** Verifies the sample's outputs exist under `--outdir`, then removes the work dir and prunes orphaned `.nextflow/cache` sessions (skipping any still locked):
+
+```bash
+bash /data/alvin/SVcaller/bin/nf-cleanup.sh SAMPLEID
+```
+
+**Option B — `--auto_cleanup` at launch.** Add `--auto_cleanup true` to the Step 2 command to delete the work dir automatically on **successful** completion. Only use this for one-shot runs — it removes the `-resume` cache, so a failed or re-run sample starts from scratch.
+
+**Option C — manual.** Safe because all results live in `results_SAMPLEID/`, which is untouched:
 
 ```bash
 rm -rf /data/alvin/SVcaller/work_SAMPLEID
 ```
 
-This is safe — all results are in `results_SAMPLEID/` which is unaffected.
+Do **not** delete the `storeDir` caches under `results_SAMPLEID/cache/` and `results_SAMPLEID/.cache/` if you plan to run more samples against the same reference — they let later runs skip the GRIDSS reference setup, interval binning, and chrom filtering.
 
 ## Troubleshooting
 
@@ -113,7 +123,7 @@ The sample has <30× mean coverage. Lower the threshold with `--min_depth 20` (r
 Check that the BAM was filtered correctly: `samtools view -H SAMPLEID.filtered.bam | grep "^@SQ" | wc -l` should return exactly 25. If it returns 3366+, the BAM was aligned to a non-canonical reference and the `@SQ` headers contain alt-contig entries. Re-run FILTER_CHROMS manually or check the reference used.
 
 **GRIDSS OOM (exit 137)**
-GRIDSS requires 60 GB RAM. If the run is memory-constrained, use `--skip_gridss true` and rely on Manta+Delly+Scramble+MELT for SV calling.
+`GRIDSS_CALL` auto-retries up to 3 times, climbing 32 → 64 → 96 GB. If it still OOMs (or the machine can't supply 96 GB), use `--skip_gridss true` and rely on Manta+Delly+Scramble+MELT for SV calling. On a small machine, also lower the global cap, e.g. `--max_memory 32.GB`, so no process requests more RAM than exists.
 
 **AnnotSV sections empty in report**
 The `--annotsv_db` path must point to the parent directory of `Annotations_Human/`, not to `Annotations_Human/` itself. AnnotSV appends the folder name internally.

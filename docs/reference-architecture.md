@@ -42,7 +42,11 @@ M2, M3, and M4 run in parallel on the preprocessed BAM channel. M5 and M6/M7 run
 
 ## M2: SV Calling (`subworkflows/sv_calling.nf`)
 
-**Purpose:** Call structural variants using three complementary callers and merge into a single VCF.
+**Purpose:** Call structural variants using complementary callers and merge into a single VCF.
+
+### Pre-flight: `VALIDATE_REF_BAM`
+
+Before any caller runs, `VALIDATE_REF_BAM` (`modules/samtools/validate_ref_bam.nf`) checks that the BAM's chromosome set is a superset of the reference FASTA's. If the reference carries contigs absent from the BAM, it fails fast with a hint to use `hg38.canonical.fa` (not `hg38.fa`) for BAM inputs. This catches the mismatch at second-zero instead of letting Manta crash silently ~4 hours into the run.
 
 ### SV Callers
 
@@ -56,7 +60,7 @@ M2, M3, and M4 run in parallel on the preprocessed BAM channel. M5 and M6/M7 run
 
 **Delly** outputs BCF binary even with `.vcf` extension. `DELLY_MERGE` uses `bcftools concat | bcftools sort` (inside the GATK container which includes bcftools 1.13) to convert and sort.
 
-**GRIDSS** can be skipped with `--skip_gridss true` or run in tiered mode (`--tiered_gridss true`) where it only processes Manta residual regions (smaller input, faster runtime). GRIDSS BND pairs are converted to DEL/DUP/INV calls by `bin/gridss_convert_bnd.py` before Jasmine merge.
+**GRIDSS** can be skipped with `--skip_gridss true` or run in tiered mode (`--tiered_gridss true`) where it only processes Manta residual regions (smaller input, faster runtime). GRIDSS BND pairs are converted to DEL/DUP/INV calls by `bin/gridss_convert_bnd.py` before Jasmine merge. `GRIDSS_CALL` carries `maxRetries = 3` (4 attempts: 32 → 64 → 96 GB) because it is the caller most prone to silent OOM. `GRIDSS_SETUP` writes its reference setup to a `storeDir` cache (see [storeDir caches](#storedir-caches)) so it runs once per reference, not once per sample.
 
 **Scramble** calls mobile element insertions (MEI). Each MEI type gets a canonical SVLEN assigned at the Jasmine merge step: ALU=300 bp, L1=6000 bp, SVA=1500 bp.
 
@@ -179,10 +183,23 @@ Scripts run inside `svcaller/utils:1.2`. The `export PATH=${projectDir}/bin:$PAT
 
 | File | Purpose |
 |------|---------|
-| `conf/base.config` | Resource labels (CPU/memory per tier), OOM retry logic |
+| `conf/base.config` | Resource tiers (CPU/memory per label), per-name overrides, OOM retry logic. `GRIDSS_CALL` `maxRetries = 3`; `SVABA_CALL` CPUs fixed at 16. |
 | `conf/docker.config` | Docker run options (`--user`, `--volume`) |
-| `conf/local.config` | Local executor settings (max forks, scratch directory) |
-| `nextflow.config` | Parameter defaults, profile definitions, manifest |
+| `conf/local.config` | Conda-based execution profile (no Docker) — points processes at the `svcaller` conda env and prepends `bin/` to PATH |
+| `conf/test.config` | Minimal smoke-test resources |
+| `nextflow.config` | Parameter defaults, profile definitions, manifest, `env { TMPDIR }`, the `auto_cleanup` `workflow.onComplete` hook, and `--max_cpus`/`--max_memory`/`--max_time` caps |
+
+## storeDir caches
+
+Three processes persist outputs to a `storeDir` so they survive `nextflow clean` and are reused across runs and samples against the same reference. The caches are keyed on their inputs (reference + intervals); deleting them only forces recomputation.
+
+| Process | storeDir path | Cached artifact |
+|---------|---------------|-----------------|
+| `SAMTOOLS_FILTER_CHROMS` | `${outdir}/.cache/filter_chroms` | Chrom-filtered BAM (BAM inputs) |
+| `GRIDSS_SETUP` | `${outdir}/cache/gridss_ref` | GRIDSS reference setup |
+| `GATK_PREPROCESS_INTERVALS` | `${outdir}/cache/gatk_preprocess` | Binned `interval_list` |
+
+See [Storage & Cache Management](reference-parameters.md#storage--cache-management) for cleanup workflow and `--auto_cleanup`.
 
 ## Related
 

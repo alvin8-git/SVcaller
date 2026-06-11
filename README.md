@@ -127,7 +127,7 @@ HG003,,,/data/HG003.GRCh38.bam
 | `--input` | required | Path to samplesheet CSV |
 | `--ref_fasta` | required | GRCh38 reference FASTA |
 | `--outdir` | `results` | Output directory |
-| `--min_depth` | `30` | Minimum mean coverage (fails pipeline if below) |
+| `--min_depth` | `25` | Minimum mean coverage (fails pipeline if below) |
 | `--pon` | null | GATK gCNV Panel of Normals HDF5 (see [PoN Build](#panel-of-normals)) |
 | `--intervals` | null | Preprocessed intervals BED for GATK gCNV |
 | `--annotsv_db` | null | AnnotSV annotation directory |
@@ -137,8 +137,10 @@ HG003,,,/data/HG003.GRCh38.bam
 | `--giab_truth_v5q` | null | GIAB v5.0q truth VCF.gz (second benchmark pass) |
 | `--skip_gridss` | `false` | Skip GRIDSS (saves 4–6 h; Manta+DELLY+Scramble+MELT+SvABA only) |
 | `--skip_melt` | `false` | Skip MELT MEI calling (saves ~2 h when container unavailable) |
-| `--max_cpus` | `64` | Max CPUs per process |
-| `--max_memory` | `120.GB` | Max memory per process |
+| `--auto_cleanup` | `false` | Delete the `-work-dir` automatically on successful completion (removes the `-resume` cache) |
+| `--max_cpus` | `64` | Max CPUs any process may request (caps `task.attempt` scaling) |
+| `--max_memory` | `120.GB` | Max memory any process may request |
+| `--max_time` | `240.h` | Max wall-clock time any process may request |
 
 ---
 
@@ -202,6 +204,27 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf \
     -resume \
     > /tmp/SAMPLEID_run2.log 2>&1 &
 ```
+
+---
+
+## Storage, Cleanup & Environment
+
+A 30× WGS run can leave several hundred GB of intermediates in its work directory. Three hardening rules keep disk usage bounded:
+
+1. **One `-work-dir` per sample/batch** — `work_<sampleId>` for single samples, `work_<batchName>` for batches. Never share a `work/` across runs: it causes Nextflow session-lock conflicts and blocks targeted cleanup.
+2. **Clean up after results are published** — run `bash bin/nf-cleanup.sh <sampleId>`. It verifies outputs exist under `--outdir`, removes the work dir, and prunes orphaned `.nextflow/cache` sessions. Or pass `--auto_cleanup true` to delete the work dir automatically on success (this drops the `-resume` cache, so use it only for one-shot runs).
+3. **Keep the `storeDir` caches** — `${outdir}/cache/` and `${outdir}/.cache/` persist GRIDSS reference setup, GATK interval binning, and chrom-filtered BAMs across runs against the same reference. They survive `nextflow clean`; don't delete them between samples.
+
+**Environment variables** for background and multi-user runs:
+
+| Variable | Purpose |
+|----------|---------|
+| `NXF_ANSI_LOG=false` | **Required** for nohup/background runs — without it Nextflow's ANSI renderer deadlocks the JVM when there is no TTY. |
+| `TMPDIR` | Redirect temp files off a small root partition (pipeline sets `/data/alvin/tmp` in `nextflow.config`; override per site). |
+| `NXF_HOME` | Per-user Nextflow home on shared machines — avoids plugin-cache contention. |
+| `NXF_SINGULARITY_CACHEDIR` | Per-user image cache for Singularity/Apptainer — stops concurrent runs colliding while pulling the same image. |
+
+For per-process resource tiers, the `local` (conda) vs `docker` profiles, and the full storage/cache reference, see [Parameter reference](docs/reference-parameters.md#storage--cache-management).
 
 ---
 

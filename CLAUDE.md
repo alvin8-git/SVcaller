@@ -194,7 +194,9 @@ All run inside `svcaller/utils:1.1`. Each is a standalone CLI tool:
 
 ## Module Conventions
 
-Each module under `modules/<tool>/` follows: `input` tuple → `script` block → `output` tuple with named `emit`. Resource labels (`process_single`, `process_low`, `process_medium`, `process_high`, `process_gridss`) map to CPU/memory tiers in `conf/base.config`. Retry on OOM exit codes (137, 143, 104, 134, 139) is automatic.
+Each module under `modules/<tool>/` follows: `input` tuple → `script` block → `output` tuple with named `emit`. Resource labels (`process_single`, `process_low`, `process_medium`, `process_high`, `process_gridss`) map to CPU/memory tiers in `conf/base.config` (single 1c/6G, low 4c/12G, medium 8c/36G, high 16c/32G, gridss 16c/32G — memory scales ×`task.attempt` on retry, clamped by `--max_*`). Retry on OOM exit codes (137, 143, 104, 134, 139) is automatic. `GRIDSS_CALL` has `maxRetries=3` (32→64→96 GB); `SVABA_CALL` pins CPUs at 16 (memory-bound).
+
+**storeDir caches** (survive `nextflow clean`, reused across samples against the same reference — do not delete between runs): `SAMTOOLS_FILTER_CHROMS` → `${outdir}/.cache/filter_chroms`, `GRIDSS_SETUP` → `${outdir}/cache/gridss_ref`, `GATK_PREPROCESS_INTERVALS` → `${outdir}/cache/gatk_preprocess`. **Pre-flight:** `VALIDATE_REF_BAM` (start of M2) fails fast if the reference has contigs the BAM lacks — catches the canonical-vs-full hg38 mismatch in seconds instead of a silent Manta crash ~4 h in.
 
 ## Current F1 Baseline (2026-06-08, run16: 6-caller Manta+Delly+GRIDSS+Scramble+MELT+SvABA, GRIDSS BND→SV fix)
 
@@ -232,9 +234,11 @@ validation/giab_samplesheet.csv
 | `--giab_truth_v5q` | null | GIAB v5.0q truth VCF.gz (enables Truvari v5q benchmark) |
 | `--skip_melt` | false | Skip MELT MEI calling (saves ~2h; use when MELT container unavailable) |
 | `--melt_refs` | null | Path to MELT me_refs dir (auto-detected from container if unset) |
-| `--min_depth` | 30 | Mosdepth coverage threshold |
+| `--min_depth` | 25 | Mosdepth coverage threshold |
 | `--outdir` | results | Output directory |
-| `--utils_container` | `svcaller/utils:1.1` | Container for Python bin/ scripts |
+| `--auto_cleanup` | false | Delete `-work-dir` on successful completion (drops `-resume` cache; one-shot runs only). Otherwise run `bash bin/nf-cleanup.sh <sampleId>` post-run. |
+| `--max_cpus` / `--max_memory` / `--max_time` | 64 / 120.GB / 240.h | Per-process resource caps. Lower on small machines (e.g. `--max_memory 32.GB`) to avoid over-subscription. |
+| `--utils_container` | `svcaller/utils:1.2` | Container for Python bin/ scripts |
 
 # context-mode — MANDATORY routing rules
 
