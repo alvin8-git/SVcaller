@@ -38,7 +38,10 @@ workflow CNV_CALLING {
 
     // Preprocess intervals to bin-length 1000 interval_list (must match PON build)
     GATK_PREPROCESS_INTERVALS(ch_fasta, ch_fai, ch_dict, ch_intervals)
-    GATK_GCNV_CALL(ch_bam, ch_fasta, ch_fai, ch_dict, ch_pon, GATK_PREPROCESS_INTERVALS.out.preprocessed)
+    // .first() makes the single interval_list a reusable value channel; without it the
+    // per-sample ch_bam pairs against a 1-element queue and GATK_GCNV_CALL silently runs
+    // for only the first sample (ch_pon is now a value channel for the same reason).
+    GATK_GCNV_CALL(ch_bam, ch_fasta, ch_fai, ch_dict, ch_pon, GATK_PREPROCESS_INTERVALS.out.preprocessed.first())
 
     // Join the awk-converted GATK TSV (columns CONTIG/START/END/CALL_COPY_NUMBER/QUALITY),
     // NOT the raw .seg — cnv_consensus.py reads CALL_COPY_NUMBER, absent from the .seg.

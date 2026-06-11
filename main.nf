@@ -31,13 +31,13 @@ workflow {
                                       checkIfExists: false))
     ch_bwt_index = Channel.value(file(params.ref_fasta).parent)
     ch_pon       = params.pon
-                    ? Channel.fromPath(params.pon, checkIfExists: true)
+                    ? Channel.value(file(params.pon, checkIfExists: true))
                     : Channel.value(file("NO_PON"))
     ch_intervals = params.intervals
-                    ? Channel.fromPath(params.intervals, checkIfExists: true)
+                    ? Channel.value(file(params.intervals, checkIfExists: true))
                     : Channel.value(file("NO_INTERVALS"))
     ch_annotsv   = params.annotsv_db
-                    ? Channel.fromPath(params.annotsv_db, checkIfExists: true)
+                    ? Channel.value(file(params.annotsv_db, checkIfExists: true))
                     : Channel.value(file("NO_ANNOTSV"))
     ch_cytobands = Channel.fromPath("${projectDir}/assets/GRCh38_cytobands.txt",
                                      checkIfExists: false)
