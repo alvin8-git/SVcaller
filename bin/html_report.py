@@ -225,6 +225,63 @@ def _sv_row_from_annotated(row: dict):
     }
 
 
+def parse_sv_from_vcf(vcf_path: str) -> list:
+    """Fallback SV rows from the merged (Jasmine) VCF when no AnnotSV annotation exists.
+
+    Produces the same row dict shape as `_sv_row_from_annotated`, with annotation-derived
+    fields left blank. Used so the SV sheet/HTML are never empty when SVs were called but
+    `--annotsv_db` was not supplied (e.g. SMN-only runs) — the merged VCF still holds the calls.
+    """
+    rows = []
+    opener = gzip.open if vcf_path.endswith(".gz") else open
+    try:
+        with opener(vcf_path, "rt") as fh:
+            for line in fh:
+                if line.startswith("#") or not line.strip():
+                    continue
+                f = line.rstrip("\n").split("\t")
+                if len(f) < 8:
+                    continue
+                chrom, pos, _info = f[0], f[1], f[7]
+                info_d = {}
+                for kv in _info.split(";"):
+                    if "=" in kv:
+                        k, v = kv.split("=", 1); info_d[k] = v
+                try:
+                    start = int(pos)
+                except ValueError:
+                    continue
+                try:
+                    end = int(info_d.get("END", "") or start)
+                except ValueError:
+                    end = start
+                svlen_raw = info_d.get("SVLEN", "")
+                try:
+                    size_bp = abs(int(svlen_raw)) if svlen_raw not in ("", ".") else abs(end - start)
+                except (ValueError, TypeError):
+                    size_bp = abs(end - start)
+                if size_bp > _MAX_ARTIFACT_SIZE:
+                    continue
+                supp   = _parse_supp_vec(_info)
+                supp_n = int(supp["supp"]) if str(supp["supp"]).isdigit() else 0
+                rows.append({
+                    "svtype": (info_d.get("SVTYPE", "") or "").upper(),
+                    "chrom": chrom, "start": str(start), "end": str(end),
+                    "size_bp": size_bp, "size": _fmt_size(size_bp),
+                    "gene": "—", "gene_full": "", "all_genes": [],
+                    "omim": "", "omim_candidate": "",
+                    "acmg_class": "", "acmg_score": 0.0, "inheritance": "",
+                    "callers": supp["callers"], "supp_n": supp_n,
+                    "supp_vec": supp.get("supp_vec", ""),
+                    "pop_af": "", "sd_boundary": False, "enc_blacklist": False,
+                    "pon_hit": "SV_PON" in _info, "gnomad_common": False,
+                    "is_acmg_sf": False, "acmg_genes": [], "tier": 3,
+                })
+    except FileNotFoundError:
+        pass
+    return rows
+
+
 def classify_sv_tiers(sv_tsv_path: str) -> tuple:
     """Classify all full-mode AnnotSV rows into three clinical tiers.
 
@@ -1106,7 +1163,8 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   insert_size_path: str = None,
                   str_vcf_path: str = None,
                   strling_tsv_path: str = None,
-                  smn_tsv_path: str = None) -> None:
+                  smn_tsv_path: str = None,
+                  sv_vcf_path: str = None) -> None:
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("report_template.html")
 
@@ -1117,6 +1175,24 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     circos_svg_inline = Path(circos_svg_path).read_text()
     sv_summary        = parse_sv_summary(sv_tsv_path)
     sv_tier1, sv_tier2, sv_tier3, sv_all = classify_sv_tiers(sv_tsv_path)
+
+    # Fallback: AnnotSV TSV is empty (e.g. run without --annotsv_db) but SVs were
+    # called. Populate from the merged VCF so the SV sheet/HTML are never blank while
+    # thousands of calls exist. Rows are unannotated (no gene/ACMG), all Tier 3.
+    sv_unannotated = False
+    if (not sv_all and sv_vcf_path
+            and Path(sv_vcf_path).name not in ("NO_FILE", "NO_SV", "")
+            and Path(sv_vcf_path).exists()):
+        sv_all = parse_sv_from_vcf(sv_vcf_path)
+        if sv_all:
+            sv_unannotated = True
+            from collections import Counter
+            sv_all.sort(key=lambda r: (-r["supp_n"], -r["size_bp"]))
+            sv_tier3 = sv_all
+            counts = Counter(r["svtype"] for r in sv_all if r["svtype"])
+            sv_summary = [{"svtype": k, "total": v, "high": 0}
+                          for k, v in sorted(counts.items())]
+
     _TIER_HTML_MAX = 10
     sv_tier2_total = len(sv_tier2); sv_tier2 = sv_tier2[:_TIER_HTML_MAX]
     sv_tier3_total = len(sv_tier3); sv_tier3 = sv_tier3[:_TIER_HTML_MAX]
@@ -1165,6 +1241,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
         str_consensus=str_consensus,
         strling_novel_count=strling_novel_count,
         cascade_flag=cascade_flag,
+        sv_unannotated=sv_unannotated,
     )
     Path(out_path).write_text(html)
     print(f"HTML report written to {out_path}")
@@ -1190,6 +1267,9 @@ def main():
     parser.add_argument("--str-vcf",          default=None)
     parser.add_argument("--strling-tsv",      default=None, dest="strling_tsv")
     parser.add_argument("--smn-tsv",          default=None, dest="smn_tsv")
+    parser.add_argument("--sv-vcf",           default=None, dest="sv_vcf",
+                        help="Merged SV VCF; fallback source for the SV sheet when the "
+                             "AnnotSV TSV is empty (run without --annotsv_db).")
     args = parser.parse_args()
     render_report(
         sample_id=args.sample,
@@ -1210,6 +1290,7 @@ def main():
         str_vcf_path=args.str_vcf,
         strling_tsv_path=args.strling_tsv,
         smn_tsv_path=args.smn_tsv,
+        sv_vcf_path=args.sv_vcf,
     )
 
 

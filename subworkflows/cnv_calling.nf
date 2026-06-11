@@ -40,8 +40,10 @@ workflow CNV_CALLING {
     GATK_PREPROCESS_INTERVALS(ch_fasta, ch_fai, ch_dict, ch_intervals)
     GATK_GCNV_CALL(ch_bam, ch_fasta, ch_fai, ch_dict, ch_pon, GATK_PREPROCESS_INTERVALS.out.preprocessed)
 
+    // Join the awk-converted GATK TSV (columns CONTIG/START/END/CALL_COPY_NUMBER/QUALITY),
+    // NOT the raw .seg — cnv_consensus.py reads CALL_COPY_NUMBER, absent from the .seg.
     ch_for_consensus = CNVPYTOR_CALL.out.tsv
-        .join(GATK_GCNV_CALL.out.seg.map { meta, seg -> [meta, seg] })
+        .join(GATK_GCNV_CALL.out.tsv.map { meta, tsv -> [meta, tsv] })
 
     CNV_CONSENSUS(ch_for_consensus)
 

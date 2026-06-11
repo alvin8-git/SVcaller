@@ -201,6 +201,13 @@
   <div class="card section-card">
     <div class="card-header"><h5>Structural Variant Summary</h5></div>
     <div class="card-body">
+      {% if sv_unannotated %}
+      <div class="alert alert-warning py-2" role="alert" style="font-size:0.85rem;">
+        <strong>Annotation unavailable</strong> (run without <code>--annotsv_db</code>).
+        SVs below are shown unannotated from the merged callset &mdash; gene, OMIM, and
+        ACMG columns are blank by configuration, not because no variants were found.
+      </div>
+      {% endif %}
       <table class="table table-sm sv-table" style="max-width:600px;">
         <thead>
           <tr><th>SV Type</th><th>Total Calls</th><th>Pathogenic / LP (Class 4/5)</th><th>Notes</th></tr>

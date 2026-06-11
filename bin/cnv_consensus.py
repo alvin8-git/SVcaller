@@ -51,12 +51,19 @@ def load_cnvpytor(path: str) -> List[CNVSegment]:
 
 
 def load_gatk(path: str) -> List[CNVSegment]:
+    """Load GATK segments from the converted TSV (CONTIG/START/END/CALL_COPY_NUMBER/QUALITY).
+
+    Fails loud, not silent: if every data row fails to parse (e.g. the raw .seg was
+    passed instead of the converted .tsv, so CALL_COPY_NUMBER is absent), warn to
+    stderr rather than returning an empty list that looks like a true negative.
+    """
     segs = []
+    n_data = 0
+    n_parse_fail = 0
     with open(path) as fh:
         reader = csv.DictReader(fh, delimiter="\t")
         for row in reader:
-            if row.get("CALL", "") == "0":
-                continue
+            n_data += 1
             try:
                 chrom = row["CONTIG"]
                 start = int(row["START"])
@@ -64,18 +71,34 @@ def load_gatk(path: str) -> List[CNVSegment]:
                 cn    = int(row["CALL_COPY_NUMBER"])
                 qual  = float(row.get("QUALITY", 0))
             except (KeyError, ValueError):
+                n_parse_fail += 1
+                continue
+            if cn == 2:          # diploid / neutral call — not a CNV
                 continue
             svtype = "DEL" if cn < 2 else "DUP"
             segs.append(CNVSegment(chrom, start, end, cn, svtype, "GATK_gCNV", qual))
+    if n_data > 0 and n_parse_fail == n_data:
+        sys.stderr.write(
+            f"WARNING: cnv_consensus parsed 0/{n_data} GATK rows from {path} "
+            "(missing CALL_COPY_NUMBER column — was the raw .seg passed instead of "
+            "the converted .tsv?). CNV consensus will be empty.\n")
     return segs
 
 
 def merge(cnvpytor: List[CNVSegment], gatk: List[CNVSegment],
-          min_reciprocal: float = 0.5, gatk_qual_threshold: float = 30.0) -> List[dict]:
+          min_reciprocal: float = 0.5, gatk_qual_threshold: float = 30.0,
+          cnvpytor_only_min_bp: int = 1_000_000) -> List[dict]:
+    """Three confidence tiers:
+      BOTH/HIGH        — CNVpytor + GATK agree (reciprocal overlap >= min_reciprocal)
+      GATK_only/MEDIUM — GATK call passing the quality threshold, no CNVpytor match
+      CNVpytor_only/LOW — large (>= cnvpytor_only_min_bp) CNVpytor call, no GATK match.
+                          Size-gated so sub-clinical read-depth noise doesn't flood the report.
+    """
     results = []
     matched_gatk = set()
+    matched_cnvpytor = set()
 
-    for a in cnvpytor:
+    for j, a in enumerate(cnvpytor):
         best_match = None
         best_overlap = 0.0
         for i, b in enumerate(gatk):
@@ -88,11 +111,12 @@ def merge(cnvpytor: List[CNVSegment], gatk: List[CNVSegment],
         if best_match:
             idx, b = best_match
             matched_gatk.add(idx)
+            matched_cnvpytor.add(j)
             results.append({
                 "chrom": a.chrom, "start": a.start, "end": a.end,
                 "cn": b.cn, "svtype": a.svtype,
                 "caller_support": "BOTH", "confidence": "HIGH",
-                "quality": b.quality or "."
+                "quality": b.quality if b.quality is not None else "."
             })
 
     for i, b in enumerate(gatk):
@@ -105,6 +129,18 @@ def merge(cnvpytor: List[CNVSegment], gatk: List[CNVSegment],
                 "caller_support": "GATK_only", "confidence": "MEDIUM",
                 "quality": b.quality
             })
+
+    for j, a in enumerate(cnvpytor):
+        if j in matched_cnvpytor:
+            continue
+        if (a.end - a.start) < cnvpytor_only_min_bp:
+            continue
+        results.append({
+            "chrom": a.chrom, "start": a.start, "end": a.end,
+            "cn": a.cn, "svtype": a.svtype,
+            "caller_support": "CNVpytor_only", "confidence": "LOW",
+            "quality": a.quality if a.quality is not None else "."
+        })
 
     results.sort(key=lambda r: (r["chrom"], r["start"]))
     return results
@@ -124,6 +160,11 @@ def main():
 
     with open(args.out, "w") as fh:
         fh.write("#chrom\tstart\tend\tcn\tsvtype\tcaller_support\tconfidence\tquality\tsample\n")
+        if not consensus:
+            # Self-documenting empty result: a clinician/auditor can tell an empty
+            # sheet apart from a parse failure. Comment line — not a data row.
+            fh.write(f"# 0 consensus CNV segments "
+                     f"(CNVpytor input={len(cnvpytor_segs)}, GATK input={len(gatk_segs)})\n")
         for r in consensus:
             fh.write(f"{r['chrom']}\t{r['start']}\t{r['end']}\t{r['cn']}\t"
                      f"{r['svtype']}\t{r['caller_support']}\t{r['confidence']}\t"

@@ -209,8 +209,16 @@ def parse_sv_vcf_links(path: str,
             if supp_m and supp_m.group(1).count("1") < 2:
                 continue
             svlen_m = re.search(r"SVLEN=(-?\d+)", info)
-            svlen = abs(int(svlen_m.group(1))) if svlen_m else 0
             end_m = re.search(r"END=(\d+)", info)
+            # Prefer SVLEN; fall back to END-POS for intrachromosomal SVs that carry
+            # END but no SVLEN (some callers omit SVLEN for INV/DEL/DUP). Without this
+            # fallback such SVs size to 0 and are dropped by the min_svlen_intra gate.
+            if svlen_m:
+                svlen = abs(int(svlen_m.group(1)))
+            elif end_m:
+                svlen = abs(int(end_m.group(1)) - pos1)
+            else:
+                svlen = 0
 
             if svtype in ("BND", "TRA"):
                 alt = parts[4]

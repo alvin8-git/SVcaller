@@ -13,6 +13,7 @@ process GATK_GCNV_CALL {
 
     output:
     tuple val(meta), path("${meta.id}.gatk_cnv.seg"),     emit: seg
+    tuple val(meta), path("${meta.id}.gatk_cnv.tsv"),     emit: tsv
     tuple val(meta), path("${meta.id}.gatk_cnv.vcf.gz"),  emit: vcf
     tuple val(meta), path("${meta.id}.gatk_cnv.vcf.gz.tbi"), emit: tbi
     path "versions.yml",                                   emit: versions
@@ -47,10 +48,12 @@ process GATK_GCNV_CALL {
         --input ${meta.id}.cr.seg \\
         --output ${meta.id}.gatk_cnv.seg
 
-    # Convert to simple TSV for cnv_consensus.py
+    # Convert to simple TSV for cnv_consensus.py.
+    # CallCopyRatioSegments columns: CONTIG START END NUM_POINTS_COPY_RATIO MEAN_LOG2_COPY_RATIO CALL
+    # The categorical call (+/-/0) is column 6, NOT column 5 (which is MEAN_LOG2_COPY_RATIO).
     grep -v "^@" ${meta.id}.gatk_cnv.seg \\
         | awk 'NR==1{print "CONTIG\tSTART\tEND\tCALL_COPY_NUMBER\tQUALITY"; next}
-               {cn=(\$5=="+")?3:(\$5=="-")?1:2; print \$1"\t"\$2"\t"\$3"\t"cn"\t50"}' \\
+               {cn=(\$6=="+")?3:(\$6=="-")?1:2; print \$1"\t"\$2"\t"\$3"\t"cn"\t50"}' \\
         > ${meta.id}.gatk_cnv.tsv
 
     # Produce compressed stub VCF for reporting

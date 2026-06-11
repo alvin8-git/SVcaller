@@ -16,7 +16,7 @@ process BUILD_HTML_REPORT {
                      path(coverage_summary), path(picard_metrics), path(str_vcf),
                      path(flagstat_txt), path(insert_size_metrics),
                      path(benchmark_json_v5q), path(sizebin_json_v5q),
-                     path(strling_tsv)
+                     path(strling_tsv), path(sv_vcf)
 
     output:
     tuple val(meta), path("${meta.id}.report.html"),    emit: html
@@ -47,6 +47,7 @@ process BUILD_HTML_REPORT {
         --smn-tsv          ${smn_tsv} \\
         --cnv-bed          ${cnv_bed} \\
         --sv-tsv           ${sv_tsv} \\
+        --sv-vcf           ${sv_vcf} \\
         --circos-svg       ${circos_svg} \\
         --out              ${meta.id}.report.html \\
         --pipeline-version ${workflow.manifest.version} \\
@@ -89,8 +90,9 @@ workflow REPORT {
         .join(ch_cnv_bed, remainder: true)
         .filter { it[1] != null }   // drop cnv_bed-only remainders (sv_vcf absent)
         .map { meta, sv, cnv -> [meta, sv, cnv ?: file("NO_FILE")] }
-        .join(ch_str_vcf, remainder: true)
-        .filter { it[1] != null }   // drop tuples fired before sv_vcf is ready (str_vcf caches before Jasmine)
+        // Exact (inner) join on meta — deterministic. remainder:true raced Jasmine
+        // (str_vcf caches first) and non-deterministically dropped STR to NO_STR.
+        .join(ch_str_vcf)
         .join(ch_depth_bed, remainder: true)
         .join(ch_annotsv_tsv, remainder: true)
         .filter { it[1] != null }
@@ -139,11 +141,10 @@ workflow REPORT {
         .join(CIRCOS_PLOT.out.svg)
         .join(ch_coverage)
         .join(ch_metrics)
-        .join(ch_str_vcf, remainder: true)
-        .filter { it[1] != null }
-        .map { meta, sv, cnv, smn, svg, cov, met, str ->
-            [meta, sv, cnv, smn, svg, cov, met, str ?: file("NO_STR")]
-        }
+        // Exact (inner) join on meta — NOT remainder:true. ExpansionHunter always runs,
+        // so every sample has an STR VCF; remainder:true raced Jasmine and non-
+        // deterministically dropped the STR VCF to NO_STR for some samples.
+        .join(ch_str_vcf)
         .join(ch_flagstat)
         .join(ch_insert_size)
         // tuple: [meta, sv, cnv, smn, svg, cov, met, str, flagstat, ins]
@@ -178,9 +179,12 @@ workflow REPORT {
             [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins,
              bench_v5q, sizebin_v5q, strling ?: file("NO_STRLING")]
         }
+        // Append the merged SV VCF (mandatory, keyed on meta) — fallback source for the
+        // SV sheet when AnnotSV produced an empty TSV. Exact join: every sample has one.
+        .join(ch_sv_vcf)
         // final: [meta, sv_tsv, cnv_bed, smn_tsv, circos_svg, benchmark_json, sizebin_json,
         //         coverage_summary, picard_metrics, str_vcf, flagstat_txt, insert_size_metrics,
-        //         benchmark_json_v5q, sizebin_json_v5q, strling_tsv]
+        //         benchmark_json_v5q, sizebin_json_v5q, strling_tsv, sv_vcf]
 
     BUILD_HTML_REPORT(ch_report_in)
 
