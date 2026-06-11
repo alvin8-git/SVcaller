@@ -13,8 +13,12 @@ process MOSDEPTH {
 
     script:
     """
+    # --no-per-base: skip the ~4.5 GB/sample per-base.bed.gz. It is never declared as
+    # an output nor read downstream (only summary.txt + regions.bed.gz are used), so
+    # generating it only wastes disk and time (per-base is mosdepth's slowest stage).
     mosdepth \\
         --threads ${task.cpus} \\
+        --no-per-base \\
         --quantize 0:5:30:500: \\
         --by 50000 \\
         ${meta.id} \\
