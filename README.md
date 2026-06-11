@@ -10,9 +10,9 @@
 
 Accepts FASTQ or pre-aligned BAM input. Produces a per-sample HTML report with an embedded Circos plot, annotated SV/CNV tables, SMN1/SMN2 classification, and optional GIAB benchmark metrics.
 
-![SVcaller per-sample HTML report (HG002 GIAB benchmark)](docs/img/report_overview.png)
+![SVcaller per-sample HTML report (SMAPB reference sample)](docs/img/report_overview.png)
 
-*Self-contained per-sample report (HG002 public GIAB benchmark shown): alignment QC, genome-wide Circos plot, tiered SV / CNV / STR tables, and SMN1/SMN2 classification. Bootstrap CSS is inlined for air-gapped clinical distribution.*
+*Self-contained per-sample report (SMAPB, an anonymised standardized reference sample): alignment QC, genome-wide Circos plot, structural-variant and copy-number summaries, and SMN1/SMN2 classification (here a homozygous SMN1 deletion consistent with SMA). Bootstrap CSS is inlined for air-gapped clinical distribution.*
 
 ---
 
