@@ -32,9 +32,9 @@ You need three things on disk before running:
 
 | File | Path | Notes |
 |------|------|-------|
-| GRCh38 canonical FASTA | `/data/alvin/ref/GRCh38/hg38.canonical.fa` | chr1-22+X+Y+M only; BWA-MEM2 index at same prefix |
-| Autosomal intervals BED | `/data/alvin/ref/GRCh38/wgs_autosomal.bed` | Used by GATK CNV |
-| GATK gCNV PON | `/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5` | Built from 7 GIAB normals |
+| GRCh38 canonical FASTA | `/path/to/ref/GRCh38/hg38.canonical.fa` | chr1-22+X+Y+M only; BWA-MEM2 index at same prefix |
+| Autosomal intervals BED | `/path/to/ref/GRCh38/wgs_autosomal.bed` | Used by GATK CNV |
+| GATK gCNV PON | `/path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5` | Built from 7 GIAB normals |
 
 **If these already exist, skip to Step 3.** If not, see [How to build a Panel of Normals](howto-build-pon.md) for the PON, and download the GRCh38 reference from NCBI/Ensembl.
 
@@ -45,7 +45,7 @@ Create a CSV pointing to your BAM (or FASTQ pair):
 ```bash
 cat > my_samplesheet.csv << 'EOF'
 sample,fastq_1,fastq_2,bam
-HG002,,,/data/alvin/ref/GIAB/HG002.bwa.sortdup.bqsr.bam
+HG002,,,/path/to/ref/GIAB/HG002.bwa.sortdup.bqsr.bam
 EOF
 ```
 
@@ -58,19 +58,19 @@ For a first run, skip GRIDSS (saves 5-6 h and 60 GB RAM). You still get Manta, D
 ```bash
 nextflow run main.nf -profile docker \
   --input my_samplesheet.csv \
-  --ref_fasta /data/alvin/ref/GRCh38/hg38.canonical.fa \
-  --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
-  --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+  --ref_fasta /path/to/ref/GRCh38/hg38.canonical.fa \
+  --intervals /path/to/ref/GRCh38/wgs_autosomal.bed \
+  --pon /path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
   --eh_catalog assets/eh_catalog.json \
-  --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
+  --annotsv_db /path/to/ref/annotsv/Annotations_Human \
   --outdir results \
   -work-dir work \
   --skip_gridss true \
   -resume \
-  > /data/alvin/tmp/run.log 2>&1 &
+  > /path/to/tmp/run.log 2>&1 &
 
 # Watch progress:
-tail -f /data/alvin/tmp/run.log
+tail -f /path/to/tmp/run.log
 ```
 
 You should see Nextflow start printing process status lines:

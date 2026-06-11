@@ -10,6 +10,10 @@
 
 Accepts FASTQ or pre-aligned BAM input. Produces a per-sample HTML report with an embedded Circos plot, annotated SV/CNV tables, SMN1/SMN2 classification, and optional GIAB benchmark metrics.
 
+![SVcaller per-sample HTML report (HG002 GIAB benchmark)](docs/img/report_overview.png)
+
+*Self-contained per-sample report (HG002 public GIAB benchmark shown): alignment QC, genome-wide Circos plot, tiered SV / CNV / STR tables, and SMN1/SMN2 classification. Bootstrap CSS is inlined for air-gapped clinical distribution.*
+
 ---
 
 ## Features
@@ -95,7 +99,7 @@ bash validation/download_refs.sh
 nextflow run main.nf \
     -profile docker \
     --input /path/to/samplesheet.csv \
-    --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
+    --ref_fasta /path/to/ref/GRCh38/GRCh38.fasta \
     --outdir results
 ```
 
@@ -153,9 +157,9 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf \
     -profile docker \
     --input samplesheet.csv \
     --ref_fasta /path/to/hg38.canonical.fa \
-    --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+    --pon /path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
     --annotsv_db /path/to/annotsv/Annotations_Human \
-    --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
+    --sv_pon /path/to/SVcaller/pon/sv_pon/giab_sv_pon.bed \
     --outdir results_SAMPLEID \
     -work-dir work_SAMPLEID \
     > /tmp/SAMPLEID_run1.log 2>&1 &
@@ -170,8 +174,8 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf \
     -profile docker \
     --input bam_samplesheet.csv \
     --ref_fasta /path/to/hg38.fa \
-    --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
-    --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
+    --pon /path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+    --sv_pon /path/to/SVcaller/pon/sv_pon/giab_sv_pon.bed \
     --outdir results_SAMPLEID \
     -work-dir work_SAMPLEID \
     > /tmp/SAMPLEID_run1.log 2>&1 &
@@ -212,17 +216,33 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf \
 A 30× WGS run can leave several hundred GB of intermediates in its work directory. Three hardening rules keep disk usage bounded:
 
 1. **One `-work-dir` per sample/batch** — `work_<sampleId>` for single samples, `work_<batchName>` for batches. Never share a `work/` across runs: it causes Nextflow session-lock conflicts and blocks targeted cleanup.
-2. **Clean up after results are published** — run `bash bin/nf-cleanup.sh <sampleId>`. It verifies outputs exist under `--outdir`, removes the work dir, and prunes orphaned `.nextflow/cache` sessions. Or pass `--auto_cleanup true` to delete the work dir automatically on success (this drops the `-resume` cache, so use it only for one-shot runs).
+2. **Clean up after results are published** — `bash bin/nf-cleanup.sh <sampleId>` verifies outputs exist under `--outdir`, removes that sample's work dir, and prunes orphaned `.nextflow/cache` sessions. After several runs have shared one work dir, `bash bin/nf-cleanup.sh --reclaim` reclaims every superseded run's intermediates in one command (dry-run by default; add `--force` to delete) while keeping the latest successful run for `-resume`; it refuses to run while a pipeline is active. `--auto_cleanup true` deletes the work dir automatically on success (drops the `-resume` cache; one-shot runs only).
 3. **Keep the `storeDir` caches** — `${outdir}/cache/` and `${outdir}/.cache/` persist GRIDSS reference setup, GATK interval binning, and chrom-filtered BAMs across runs against the same reference. They survive `nextflow clean`; don't delete them between samples.
+4. **Mosdepth writes regions only** — `--no-per-base` is set, so the ~4.5 GB/sample per-base BED is never generated (the report consumes the 50 kb regions windows). Saves disk and mosdepth runtime.
 
 **Environment variables** for background and multi-user runs:
 
 | Variable | Purpose |
 |----------|---------|
 | `NXF_ANSI_LOG=false` | **Required** for nohup/background runs — without it Nextflow's ANSI renderer deadlocks the JVM when there is no TTY. |
-| `TMPDIR` | Redirect temp files off a small root partition (pipeline sets `/data/alvin/tmp` in `nextflow.config`; override per site). |
+| `TMPDIR` | Redirect temp files off a small root partition (pipeline sets `/path/to/tmp` in `nextflow.config`; override per site). |
 | `NXF_HOME` | Per-user Nextflow home on shared machines — avoids plugin-cache contention. |
 | `NXF_SINGULARITY_CACHEDIR` | Per-user image cache for Singularity/Apptainer — stops concurrent runs colliding while pulling the same image. |
+
+### Resource bounds & optimization
+
+Per-process CPU/memory/time are capped by `--max_cpus` (64), `--max_memory` (120.GB), `--max_time` (240.h). Lower them on small machines (e.g. `--max_cpus 8 --max_memory 32.GB`) so no process over-subscribes. Tiers and per-caller overrides live in `conf/base.config`.
+
+Scatter-gather is applied only where it is safe for SV/CNV calling:
+
+| Stage | Parallelization |
+|-------|-----------------|
+| DELLY | internal per-chromosome scatter-gather (built in) |
+| GATK CollectReadCounts / CNVpytor | per-bin / per-chromosome — shardable |
+| ExpansionHunter | per-locus |
+| Manta / GRIDSS / SvABA | **not chunked** — breakend assembly needs whole-genome context; per-chromosome splitting drops inter-chromosomal events. Bound cost with `--tiered_gridss` or `--skip_gridss` instead. |
+
+`scratch` (node-local staging) is **off by default**. On a single-node local executor it doubles I/O on the ~130 GB filtered BAM for no benefit; enable it only on a shared-filesystem cluster via a site config (`-c site.config` setting `process.scratch = true`).
 
 For per-process resource tiers, the `local` (conda) vs `docker` profiles, and the full storage/cache reference, see [Parameter reference](docs/reference-parameters.md#storage--cache-management).
 
@@ -238,15 +258,15 @@ GATK gCNV requires a Panel of Normals (PoN) built from ≥10 normal samples. Bui
 NXF_ANSI_LOG=false nohup nextflow run workflows/pon_build.nf \
     -profile docker \
     --input validation/giab_samplesheet.csv \
-    --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
-    --outdir /data/alvin/SVcaller/pon \
-    -work-dir /data/alvin/SVcaller/work_pon \
-    > /data/alvin/tmp/pon_run.log 2>&1 &
+    --ref_fasta /path/to/ref/GRCh38/GRCh38.fasta \
+    --outdir /path/to/SVcaller/pon \
+    -work-dir /path/to/SVcaller/work_pon \
+    > /path/to/tmp/pon_run.log 2>&1 &
 
-# PoN output: /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5
+# PoN output: /path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5
 ```
 
-Pass it to the main pipeline with `--pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5`.
+Pass it to the main pipeline with `--pon /path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5`.
 
 ---
 

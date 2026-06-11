@@ -6,12 +6,12 @@ Run the full SV/CNV pipeline on HG002 and benchmark against the GIAB truth set t
 
 - Docker running on the host
 - Nextflow installed (`nextflow -version` should show ≥23.x)
-- GIAB truth files downloaded to `/data/alvin/ref/GIAB/`:
+- GIAB truth files downloaded to `/path/to/ref/GIAB/`:
   - `HG002.bwa.sortdup.bqsr.bam` and `.bai`
   - `GRCh38_HG002-T2TQ100-V1.0_stvar.vcf.gz` and `.tbi`
-- PON built at `/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5`
-- AnnotSV database at `/data/alvin/ref/annotsv/Annotations_Human/`
-- Canonical reference FASTA at `/data/alvin/ref/GRCh38/hg38.canonical.fa`
+- PON built at `/path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5`
+- AnnotSV database at `/path/to/ref/annotsv/Annotations_Human/`
+- Canonical reference FASTA at `/path/to/ref/GRCh38/hg38.canonical.fa`
 
 ## Steps
 
@@ -19,7 +19,7 @@ Run the full SV/CNV pipeline on HG002 and benchmark against the GIAB truth set t
 
    ```
    sample,fastq_1,fastq_2,bam
-   HG002,,,/data/alvin/ref/GIAB/HG002.bwa.sortdup.bqsr.bam
+   HG002,,,/path/to/ref/GIAB/HG002.bwa.sortdup.bqsr.bam
    ```
 
    File is at `validation/validation_samplesheet.csv`.
@@ -29,19 +29,19 @@ Run the full SV/CNV pipeline on HG002 and benchmark against the GIAB truth set t
    ```bash
    nextflow run main.nf -profile docker \
      --input validation/validation_samplesheet.csv \
-     --ref_fasta /data/alvin/ref/GRCh38/hg38.canonical.fa \
-     --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
-     --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
-     --giab_truth /data/alvin/ref/GIAB/GRCh38_HG002-T2TQ100-V1.0_stvar.vcf.gz \
+     --ref_fasta /path/to/ref/GRCh38/hg38.canonical.fa \
+     --intervals /path/to/ref/GRCh38/wgs_autosomal.bed \
+     --pon /path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+     --giab_truth /path/to/ref/GIAB/GRCh38_HG002-T2TQ100-V1.0_stvar.vcf.gz \
      --eh_catalog assets/eh_catalog.json \
-     --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
+     --annotsv_db /path/to/ref/annotsv/Annotations_Human \
      --outdir results \
      -work-dir work \
      -resume \
-     > /data/alvin/tmp/run.log 2>&1
+     > /path/to/tmp/run.log 2>&1
    ```
 
-   Monitor progress in another terminal: `tail -f /data/alvin/tmp/run.log`
+   Monitor progress in another terminal: `tail -f /path/to/tmp/run.log`
 
 3. Wait for completion. Typical runtimes:
    - M1 Preprocessing (incl. FILTER_CHROMS for BAM input): ~25-35 min

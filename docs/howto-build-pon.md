@@ -11,7 +11,7 @@ Build a GATK gCNV Panel of Normals (PON) from a set of normal WGS samples. The P
 - At least 8 GB RAM per sample (GATK CollectReadCounts is memory-intensive)
 
 **The built PON for GIAB samples is already at:**
-`/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5` (446 MB, built from HG001-HG007)
+`/path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5` (446 MB, built from HG001-HG007)
 
 Only re-build if you are validating against a different cohort or adding more normals.
 
@@ -33,12 +33,12 @@ Only re-build if you are validating against a different cohort or adding more no
    ```bash
    nextflow run workflows/pon_build.nf -profile docker \
      --input validation/my_pon_samplesheet.csv \
-     --ref_fasta /data/alvin/ref/GRCh38/hg38.fa \
-     --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
-     --outdir /data/alvin/SVcaller/pon_new \
-     -work-dir /data/alvin/SVcaller/work \
+     --ref_fasta /path/to/ref/GRCh38/hg38.fa \
+     --intervals /path/to/ref/GRCh38/wgs_autosomal.bed \
+     --outdir /path/to/SVcaller/pon_new \
+     -work-dir /path/to/SVcaller/work \
      -resume \
-     > /data/alvin/tmp/pon_build.log 2>&1
+     > /path/to/tmp/pon_build.log 2>&1
    ```
 
 3. Wait for completion. Runtime is roughly 30-60 min per sample for CollectReadCounts, plus a final PON creation step. A 7-sample PON takes ~4-5 h.
@@ -46,7 +46,7 @@ Only re-build if you are validating against a different cohort or adding more no
 ## Verification
 
 ```bash
-ls -lh /data/alvin/SVcaller/pon_new/pon/
+ls -lh /path/to/SVcaller/pon_new/pon/
 # Should show giab_cnv_pon.hdf5 (typically 200-600 MB depending on sample count)
 ```
 
@@ -55,7 +55,7 @@ Use the new PON in the main pipeline:
 ```bash
 nextflow run main.nf -profile docker \
   --input validation/validation_samplesheet.csv \
-  --pon /data/alvin/SVcaller/pon_new/pon/giab_cnv_pon.hdf5 \
+  --pon /path/to/SVcaller/pon_new/pon/giab_cnv_pon.hdf5 \
   ...
 ```
 

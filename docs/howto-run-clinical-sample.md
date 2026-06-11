@@ -5,9 +5,9 @@ Step-by-step guide for running a new patient sample through the SVcaller pipelin
 ## Prerequisites
 
 - Pre-aligned BAM file with a `.bai` index at the same path, **or** paired FASTQ files (R1/R2, gzipped)
-- Reference FASTA at `/data/alvin/ref/GRCh38/hg38.canonical.fa` (canonical chromosomes, chr1-22+X+Y+M)
-- PON at `/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5`
-- AnnotSV database at `/data/alvin/ref/annotsv/Annotations_Human`
+- Reference FASTA at `/path/to/ref/GRCh38/hg38.canonical.fa` (canonical chromosomes, chr1-22+X+Y+M)
+- PON at `/path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5`
+- AnnotSV database at `/path/to/ref/annotsv/Annotations_Human`
 - At least 500 GB free disk space for a 30× WGS sample
 
 ## Step 1: Create the samplesheet
@@ -31,18 +31,18 @@ Save as `/path/to/SAMPLEID_samplesheet.csv`.
 ## Step 2: Launch the pipeline
 
 ```bash
-NXF_ANSI_LOG=false nohup nextflow run /data/alvin/SVcaller/main.nf \
+NXF_ANSI_LOG=false nohup nextflow run /path/to/SVcaller/main.nf \
   -profile docker \
   --input       /path/to/SAMPLEID_samplesheet.csv \
-  --ref_fasta   /data/alvin/ref/GRCh38/hg38.canonical.fa \
-  --intervals   /data/alvin/ref/GRCh38/wgs_autosomal.bed \
-  --pon         /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
-  --eh_catalog  /data/alvin/SVcaller/assets/eh_catalog.json \
-  --annotsv_db  /data/alvin/ref/annotsv/Annotations_Human \
-  --sv_pon      /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
-  --outdir      /data/alvin/SVcaller/results_SAMPLEID \
-  -work-dir     /data/alvin/SVcaller/work_SAMPLEID \
-  > /data/alvin/tmp/SAMPLEID_run1.log 2>&1 &
+  --ref_fasta   /path/to/ref/GRCh38/hg38.canonical.fa \
+  --intervals   /path/to/ref/GRCh38/wgs_autosomal.bed \
+  --pon         /path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+  --eh_catalog  /path/to/SVcaller/assets/eh_catalog.json \
+  --annotsv_db  /path/to/ref/annotsv/Annotations_Human \
+  --sv_pon      /path/to/SVcaller/pon/sv_pon/giab_sv_pon.bed \
+  --outdir      /path/to/SVcaller/results_SAMPLEID \
+  -work-dir     /path/to/SVcaller/work_SAMPLEID \
+  > /path/to/tmp/SAMPLEID_run1.log 2>&1 &
 echo "PID: $!"
 ```
 
@@ -55,7 +55,7 @@ Key points:
 ## Step 3: Monitor progress
 
 ```bash
-tail -f /data/alvin/tmp/SAMPLEID_run1.log
+tail -f /path/to/tmp/SAMPLEID_run1.log
 ```
 
 Expected timeline for a 30× WGS sample with BAM input:
@@ -80,7 +80,7 @@ Use `--skip_gridss true` to reduce runtime to ~3-4 h (reduces SV sensitivity).
 After the pipeline completes, check:
 
 ```bash
-ls /data/alvin/SVcaller/results_SAMPLEID/SAMPLEID/
+ls /path/to/SVcaller/results_SAMPLEID/SAMPLEID/
 ```
 
 Expected files:
@@ -101,7 +101,7 @@ A 30× WGS run leaves large intermediates in the work directory. Once results ar
 **Option A — `nf-cleanup.sh` (recommended).** Verifies the sample's outputs exist under `--outdir`, then removes the work dir and prunes orphaned `.nextflow/cache` sessions (skipping any still locked):
 
 ```bash
-bash /data/alvin/SVcaller/bin/nf-cleanup.sh SAMPLEID
+bash /path/to/SVcaller/bin/nf-cleanup.sh SAMPLEID
 ```
 
 **Option B — `--auto_cleanup` at launch.** Add `--auto_cleanup true` to the Step 2 command to delete the work dir automatically on **successful** completion. Only use this for one-shot runs — it removes the `-resume` cache, so a failed or re-run sample starts from scratch.
@@ -109,7 +109,7 @@ bash /data/alvin/SVcaller/bin/nf-cleanup.sh SAMPLEID
 **Option C — manual.** Safe because all results live in `results_SAMPLEID/`, which is untouched:
 
 ```bash
-rm -rf /data/alvin/SVcaller/work_SAMPLEID
+rm -rf /path/to/SVcaller/work_SAMPLEID
 ```
 
 Do **not** delete the `storeDir` caches under `results_SAMPLEID/cache/` and `results_SAMPLEID/.cache/` if you plan to run more samples against the same reference — they let later runs skip the GRIDSS reference setup, interval binning, and chrom filtering.

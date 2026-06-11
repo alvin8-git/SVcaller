@@ -37,22 +37,22 @@ Each sample must have its own work directory to prevent session lock conflicts.
 # validation/smn_SMAPB_samplesheet.csv
 
 for SAMPLE in SMAM SMAD SMAPB; do
-  WORK_DIR=/data/alvin/SVcaller/work_smn/${SAMPLE}
+  WORK_DIR=/path/to/SVcaller/work_smn/${SAMPLE}
   mkdir -p "${WORK_DIR}/.nxf_cache"
-  NXF_ANSI_LOG=false nohup nextflow run /data/alvin/SVcaller/main.nf \
+  NXF_ANSI_LOG=false nohup nextflow run /path/to/SVcaller/main.nf \
     -profile docker \
     -cache        "${WORK_DIR}/.nxf_cache" \
-    --input       /data/alvin/SVcaller/validation/smn_${SAMPLE}_samplesheet.csv \
-    --ref_fasta   /data/alvin/ref/GRCh38/hg38.canonical.fa \
-    --intervals   /data/alvin/ref/GRCh38/wgs_autosomal.bed \
-    --pon         /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
-    --eh_catalog  /data/alvin/SVcaller/assets/eh_catalog.json \
-    --sv_pon      /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
+    --input       /path/to/SVcaller/validation/smn_${SAMPLE}_samplesheet.csv \
+    --ref_fasta   /path/to/ref/GRCh38/hg38.canonical.fa \
+    --intervals   /path/to/ref/GRCh38/wgs_autosomal.bed \
+    --pon         /path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+    --eh_catalog  /path/to/SVcaller/assets/eh_catalog.json \
+    --sv_pon      /path/to/SVcaller/pon/sv_pon/giab_sv_pon.bed \
     --skip_gridss true \
-    --outdir      /data/alvin/SVcaller/results_smn \
+    --outdir      /path/to/SVcaller/results_smn \
     -work-dir     "$WORK_DIR" \
     -resume \
-    > /data/alvin/tmp/smn_${SAMPLE}_run1.log 2>&1 &
+    > /path/to/tmp/smn_${SAMPLE}_run1.log 2>&1 &
   echo "${SAMPLE} PID: $!"
 done
 ```

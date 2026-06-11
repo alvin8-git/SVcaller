@@ -33,88 +33,95 @@ SVcaller is a Nextflow DSL2 pipeline for human WGS structural variant (SV), copy
 
 **Work directory convention: one `-work-dir` per sample or batch run.** Never reuse a shared `work/` across different run types — it causes session lock conflicts, prevents per-sample cleanup, and accumulates 3+ TB of unreclaimable intermediates. Use `work_<sampleId>` for single-sample runs and `work_<batchName>` for multi-sample batches. Clean a sample's work dir once its results are published: `rm -rf work_<sampleId>`.
 
+**Path variables — set once per environment.** The commands below use `${REF}`, `${PROJ}`, `${TMP}` so they stay portable and copy-paste runnable:
+```bash
+export REF=/path/to/ref          # reference-data root: GRCh38, GIAB, AnnotSV
+export PROJ="$(pwd)"             # this checkout (absolute path)
+export TMP=/path/to/tmp          # scratch + logs; keep off the small root partition
+```
+
 ```bash
 # SV/CNV validation — HG002 only; Truvari benchmark against GIAB SV truth
 # Use hg38.canonical.fa (chr1-22+X+Y+M only) for FASTQ inputs — skips 25-min FILTER_CHROMS step
 NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --input validation/validation_samplesheet.csv \
-  --ref_fasta /data/alvin/ref/GRCh38/hg38.canonical.fa \
-  --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
-  --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
-  --giab_truth /data/alvin/ref/GIAB/GRCh38_HG002-T2TQ100-V1.0_stvar.vcf.gz \
-  --giab_truth_v5q /data/alvin/ref/GIAB/HG002_GRCh38_v5.0q_stvar.vcf.gz \
+  --ref_fasta ${REF}/GRCh38/hg38.canonical.fa \
+  --intervals ${REF}/GRCh38/wgs_autosomal.bed \
+  --pon ${PROJ}/pon/pon/giab_cnv_pon.hdf5 \
+  --giab_truth ${REF}/GIAB/GRCh38_HG002-T2TQ100-V1.0_stvar.vcf.gz \
+  --giab_truth_v5q ${REF}/GIAB/HG002_GRCh38_v5.0q_stvar.vcf.gz \
   --eh_catalog assets/eh_catalog.json \
-  --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
-  --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
-  --outdir /data/alvin/SVcaller/results \
-  -work-dir /data/alvin/SVcaller/work_HG002 \
-  -resume > /data/alvin/tmp/main_runN.log 2>&1 &
+  --annotsv_db ${REF}/annotsv/Annotations_Human \
+  --sv_pon ${PROJ}/pon/sv_pon/giab_sv_pon.bed \
+  --outdir ${PROJ}/results \
+  -work-dir ${PROJ}/work_HG002 \
+  -resume > ${TMP}/main_runN.log 2>&1 &
 
 # SMN validation — SMA trio only; no Truvari (no SV truth for clinical samples)
 # --skip_gridss saves 4-6 h; only SMN1/2 CN and CNV results matter here
 # Must use hg38.canonical.fa: FILTER_CHROMS strips alt contigs from BAM; if ref still has them Manta fails
 NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --input validation/smn_validation_samplesheet.csv \
-  --ref_fasta /data/alvin/ref/GRCh38/hg38.canonical.fa \
-  --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
-  --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+  --ref_fasta ${REF}/GRCh38/hg38.canonical.fa \
+  --intervals ${REF}/GRCh38/wgs_autosomal.bed \
+  --pon ${PROJ}/pon/pon/giab_cnv_pon.hdf5 \
   --eh_catalog assets/eh_catalog.json \
-  --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
+  --sv_pon ${PROJ}/pon/sv_pon/giab_sv_pon.bed \
   --skip_gridss true \
-  --outdir /data/alvin/SVcaller/results_smn \
-  -work-dir /data/alvin/SVcaller/work_smn \
-  -resume > /data/alvin/tmp/smn_runN.log 2>&1 &
+  --outdir ${PROJ}/results_smn \
+  -work-dir ${PROJ}/work_smn \
+  -resume > ${TMP}/smn_runN.log 2>&1 &
 
 # GIAB PON sample reports — HG001, HG003-HG007 (HG002 done via validation run)
 # --skip_melt: MELT adds 12 h with no SV truth benefit for these report-only samples
 # SV calling not cached from pon_build.nf — expect 8-12 h for 6 samples
 NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --input validation/giab_reports_samplesheet.csv \
-  --ref_fasta /data/alvin/ref/GRCh38/hg38.canonical.fa \
-  --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
-  --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+  --ref_fasta ${REF}/GRCh38/hg38.canonical.fa \
+  --intervals ${REF}/GRCh38/wgs_autosomal.bed \
+  --pon ${PROJ}/pon/pon/giab_cnv_pon.hdf5 \
   --eh_catalog assets/eh_catalog.json \
-  --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
-  --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
+  --annotsv_db ${REF}/annotsv/Annotations_Human \
+  --sv_pon ${PROJ}/pon/sv_pon/giab_sv_pon.bed \
   --skip_gridss true \
   --skip_melt true \
-  --outdir /data/alvin/SVcaller/results_giab \
-  -work-dir /data/alvin/SVcaller/work_giab_reports \
-  -resume > /data/alvin/tmp/giab_reports_runN.log 2>&1 &
+  --outdir ${PROJ}/results_giab \
+  -work-dir ${PROJ}/work_giab_reports \
+  -resume > ${TMP}/giab_reports_runN.log 2>&1 &
 
 # Clinical sample (single sample, new patient)
 # Replace SAMPLEID with the actual sample name — never reuse another sample's work dir
 NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --input /path/to/SAMPLEID_samplesheet.csv \
-  --ref_fasta /data/alvin/ref/GRCh38/hg38.canonical.fa \
-  --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
-  --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+  --ref_fasta ${REF}/GRCh38/hg38.canonical.fa \
+  --intervals ${REF}/GRCh38/wgs_autosomal.bed \
+  --pon ${PROJ}/pon/pon/giab_cnv_pon.hdf5 \
   --eh_catalog assets/eh_catalog.json \
-  --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
-  --sv_pon /data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed \
-  --outdir /data/alvin/SVcaller/results_SAMPLEID \
-  -work-dir /data/alvin/SVcaller/work_SAMPLEID \
-  > /data/alvin/tmp/SAMPLEID_run1.log 2>&1 &
+  --annotsv_db ${REF}/annotsv/Annotations_Human \
+  --sv_pon ${PROJ}/pon/sv_pon/giab_sv_pon.bed \
+  --outdir ${PROJ}/results_SAMPLEID \
+  -work-dir ${PROJ}/work_SAMPLEID \
+  > ${TMP}/SAMPLEID_run1.log 2>&1 &
 
 # PON build (already complete — only re-run if GIAB BAMs change)
 NXF_ANSI_LOG=false nohup nextflow run workflows/pon_build.nf -profile docker \
   --input validation/giab_samplesheet.csv \
-  --ref_fasta /data/alvin/ref/GRCh38/hg38.fa \
-  --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
-  --outdir /data/alvin/SVcaller/pon \
-  -work-dir /data/alvin/SVcaller/work_pon \
-  -resume > /data/alvin/tmp/pon_run.log 2>&1 &
+  --ref_fasta ${REF}/GRCh38/hg38.fa \
+  --intervals ${REF}/GRCh38/wgs_autosomal.bed \
+  --outdir ${PROJ}/pon \
+  -work-dir ${PROJ}/work_pon \
+  -resume > ${TMP}/pon_run.log 2>&1 &
 
 # Check pipeline progress (update log path to latest run)
-tail -20 /data/alvin/tmp/smn_runN.log
+tail -20 ${TMP}/smn_runN.log
 
 # Clean up a completed sample's work dir (safe once results are published)
-rm -rf /data/alvin/SVcaller/work_SAMPLEID
+rm -rf ${PROJ}/work_SAMPLEID
 ```
 
-**PON location:** `/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5` (446 MB, built from HG001-HG007)
+**PON location:** `${PROJ}/pon/pon/giab_cnv_pon.hdf5` (446 MB, built from HG001-HG007)
 
-**Canonical reference:** `/data/alvin/ref/GRCh38/hg38.canonical.fa` (chr1-22+X+Y+M, 1.49 GB). Use for FASTQ inputs so aligned BAMs contain only canonical chromosomes. The pipeline automatically skips FILTER_CHROMS for FASTQ-derived BAMs (saves ~25 min/sample). BWA-MEM2 index at same path prefix. BAM inputs always run FILTER_CHROMS regardless of reference used.
+**Canonical reference:** `${REF}/GRCh38/hg38.canonical.fa` (chr1-22+X+Y+M, 1.49 GB). Use for FASTQ inputs so aligned BAMs contain only canonical chromosomes. The pipeline automatically skips FILTER_CHROMS for FASTQ-derived BAMs (saves ~25 min/sample). BWA-MEM2 index at same path prefix. BAM inputs always run FILTER_CHROMS regardless of reference used.
 
 ## Python Tests
 
@@ -198,6 +205,8 @@ Each module under `modules/<tool>/` follows: `input` tuple → `script` block �
 
 **storeDir caches** (survive `nextflow clean`, reused across samples against the same reference — do not delete between runs): `SAMTOOLS_FILTER_CHROMS` → `${outdir}/.cache/filter_chroms`, `GRIDSS_SETUP` → `${outdir}/cache/gridss_ref`, `GATK_PREPROCESS_INTERVALS` → `${outdir}/cache/gatk_preprocess`. **Pre-flight:** `VALIDATE_REF_BAM` (start of M2) fails fast if the reference has contigs the BAM lacks — catches the canonical-vs-full hg38 mismatch in seconds instead of a silent Manta crash ~4 h in.
 
+**Storage/optimization:** MOSDEPTH runs `--no-per-base` (skips the unused ~4.5 GB/sample per-base BED; only `regions.bed.gz` is consumed). Reclaim orphaned work dirs from failed/superseded runs with `bash bin/nf-cleanup.sh --reclaim` (dry-run; `--force` to delete) — keeps the latest successful run for `-resume`, refuses while a run is active. Scatter-gather is safe only for depth/per-locus tools (Delly already internal; GATK counts/CNVpytor/EH shardable); Manta/GRIDSS/SvABA need whole-genome context — do not chunk. Do NOT `docker rmi`/`prune -a` the locally-built `svcaller/{melt:2.2.2,utils,smncopynum}` images (not re-pullable; `prune -f` dangling-only is safe).
+
 ## Current F1 Baseline (2026-06-08, run16: 6-caller Manta+Delly+GRIDSS+Scramble+MELT+SvABA, GRIDSS BND→SV fix)
 
 | Benchmark | F1 | Precision | Recall | TP-base | FP | comp cnt |
@@ -211,7 +220,7 @@ Next target: improve recall (currently ~25%) — low-QUAL Manta/Delly rescue, or
 ## Validation
 
 ```bash
-# Download GIAB truth files to /data/alvin/ref/GIAB/
+# Download GIAB truth files to ${REF}/GIAB/
 bash validation/download_refs.sh
 
 # Standalone Truvari benchmark (runs Docker internally)
@@ -229,7 +238,7 @@ validation/giab_samplesheet.csv
 | `--ref_fasta` | required | GRCh38 FASTA (index .fai and .0123 inferred from path) |
 | `--pon` | null | GATK gCNV Panel of Normals HDF5 |
 | `--intervals` | null | Target capture BED |
-| `--annotsv_db` | null | AnnotSV database directory — use `/data/alvin/ref/annotsv/Annotations_Human` |
+| `--annotsv_db` | null | AnnotSV database directory — use `${REF}/annotsv/Annotations_Human` |
 | `--giab_truth` | null | GIAB T2TQ100-V1.0 truth VCF.gz (enables Truvari T2T benchmark) |
 | `--giab_truth_v5q` | null | GIAB v5.0q truth VCF.gz (enables Truvari v5q benchmark) |
 | `--skip_melt` | false | Skip MELT MEI calling (saves ~2h; use when MELT container unavailable) |

@@ -15,7 +15,7 @@ Complete reference for all CLI parameters, samplesheet columns, and output files
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `--pon` | Path | null | GATK gCNV Panel of Normals HDF5. Required for CNV calling via GATK. Without it, only CNVpytor runs. |
-| `--intervals` | Path | null | Target capture BED (WES) or autosomal BED (WGS). Required for GATK CNV. Use `/data/alvin/ref/GRCh38/wgs_autosomal.bed` for WGS. |
+| `--intervals` | Path | null | Target capture BED (WES) or autosomal BED (WGS). Required for GATK CNV. Use `/path/to/ref/GRCh38/wgs_autosomal.bed` for WGS. |
 | `--annotsv_db` | Path | null | AnnotSV annotations directory. Point to the parent of `Annotations_Human/`. Without it, ANNOTSV emits an empty stub TSV and annotation sections in the report are blank. |
 | `--giab_truth` | Path | null | GIAB truth VCF.gz (enables Truvari benchmarking in the report). |
 | `--min_depth` | Integer | 25 | Minimum mean coverage (mosdepth). Pipeline halts if the sample is below this threshold. |
@@ -112,7 +112,7 @@ For multi-user compute and to keep temp/container state off small root partition
 | Variable | Purpose |
 |----------|---------|
 | `NXF_ANSI_LOG=false` | **Required for background/nohup runs.** Without it Nextflow's ANSI renderer deadlocks all JVM threads when there is no TTY. |
-| `TMPDIR` | Redirect temp files off the (small) root partition. The pipeline already sets `TMPDIR=/data/alvin/tmp` in `nextflow.config`; override it for your site. |
+| `TMPDIR` | Redirect temp files off the (small) root partition. The pipeline already sets `TMPDIR=/path/to/tmp` in `nextflow.config`; override it for your site. |
 | `NXF_HOME` | Per-user Nextflow home (plugins, assets). Set a distinct path per user on shared machines to avoid plugin-cache contention. |
 | `NXF_SINGULARITY_CACHEDIR` | Per-user image cache for Singularity/Apptainer deployments. Set distinct paths per user so concurrent runs don't collide while building/pulling the same image. |
 | `-cache <dir>` (CLI flag) | Give each concurrent sample run its own `.nextflow/cache` to prevent session-lock conflicts when running several samples in parallel from the same checkout. |
