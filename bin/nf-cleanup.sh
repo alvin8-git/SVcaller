@@ -1,17 +1,85 @@
 #!/usr/bin/env bash
-# Post-run cleanup: remove work dir and orphaned Nextflow cache sessions.
-# Run after confirming results have been published to --outdir.
+# Post-run cleanup. Two modes:
 #
-# Usage: bash bin/nf-cleanup.sh <sample_id>
-#   e.g. bash bin/nf-cleanup.sh SMAM
-#        bash bin/nf-cleanup.sh HG002
+#   bash bin/nf-cleanup.sh <sample_id>
+#       Remove work_<sample_id> after confirming results are published, and
+#       prune orphaned .nextflow/cache sessions.  (per-sample full delete)
 #
-# Safety: checks results exist before deleting work dir.
+#   bash bin/nf-cleanup.sh --reclaim [--force]
+#       Reclaim disk from orphaned work dirs left by failed/superseded runs that
+#       share a -work-dir (e.g. crashed attempts), keeping only the latest
+#       SUCCESSFUL run so -resume still works. Dry-run by default — pass --force
+#       to actually delete. Refuses to run while a pipeline is still active.
+#
+# Safety: per-sample mode checks results exist first; reclaim mode is dry-run
+# unless --force, and aborts if any Nextflow session is currently locked.
 
 set -euo pipefail
 
-SAMPLE="${1:?Usage: nf-cleanup.sh <sample_id>}"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Return 0 if any Nextflow cache session is currently held (a run is active).
+nf_session_active() {
+  local cache="${REPO_DIR}/.nextflow/cache" db lock
+  [ -d "${cache}" ] || return 1
+  for db in "${cache}"/*/db; do
+    lock="${db}/LOCK"
+    [ -f "${lock}" ] || continue
+    if lsof "${lock}" >/dev/null 2>&1; then return 0; fi
+  done
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# Mode: --reclaim  (surgical orphan reclamation via `nextflow clean`)
+# ---------------------------------------------------------------------------
+if [ "${1:-}" = "--reclaim" ]; then
+  FORCE=0
+  [ "${2:-}" = "--force" ] && FORCE=1
+
+  command -v nextflow >/dev/null 2>&1 || { echo "ERROR: nextflow not on PATH." >&2; exit 1; }
+  cd "${REPO_DIR}"
+
+  if nf_session_active; then
+    echo "ERROR: a Nextflow run is still active (cache LOCK held)." >&2
+    echo "       Wait for it to finish — cleaning now could delete live task dirs." >&2
+    exit 1
+  fi
+
+  # Latest SUCCESSFUL run name = the run name immediately before the first 'OK'
+  # status field on the most recent OK line of `nextflow log` (anchoring on the
+  # status token is robust to the multi-token timestamp/duration columns).
+  KEEP="$(nextflow log 2>/dev/null \
+    | awk 'NR>1{for(i=1;i<=NF;i++){if($i=="OK"){print $(i-1); break} else if($i=="ERR") break}}' \
+    | tail -1)"
+
+  if [ -z "${KEEP}" ]; then
+    echo "ERROR: no successful run found in 'nextflow log'. Nothing reclaimed." >&2
+    exit 1
+  fi
+
+  echo "Latest successful run to KEEP: ${KEEP}"
+  echo "WARNING: 'nextflow clean -but ${KEEP}' removes the work dirs of ALL OTHER"
+  echo "         runs in this repo's history (any sample). Review the list below."
+  echo ""
+
+  if [ "${FORCE}" -eq 1 ]; then
+    echo "Deleting (forced):"
+    nextflow clean -but "${KEEP}" -f
+    echo "Done. Reclaimed orphaned work dirs; kept run '${KEEP}' for -resume."
+  else
+    echo "[dry-run] would remove (pass --force to delete):"
+    nextflow clean -but "${KEEP}" -n
+    echo ""
+    echo "Re-run with --force to delete:  bash bin/nf-cleanup.sh --reclaim --force"
+  fi
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Mode: per-sample full delete
+# ---------------------------------------------------------------------------
+SAMPLE="${1:?Usage: nf-cleanup.sh <sample_id> | --reclaim [--force]}"
 WORK_DIR="${REPO_DIR}/work_${SAMPLE}"
 
 # 1. Verify results published before deleting work dir
