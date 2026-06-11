@@ -13,7 +13,7 @@ process VALIDATE_REF_BAM {
 
     script:
     """
-    bam_chroms=\$(samtools view -H ${bam} | awk '/^@SQ/{gsub("SN:","",$2); print \$2}' | sort)
+    bam_chroms=\$(samtools view -H ${bam} | awk '/^@SQ/{gsub("SN:","",\$2); print \$2}' | sort)
     ref_chroms=\$(cut -f1 ${fai} | sort)
     missing=\$(comm -23 <(echo "\$ref_chroms") <(echo "\$bam_chroms"))
     if [ -n "\$missing" ]; then

@@ -49,3 +49,21 @@ workflow {
         ch_cytobands, ch_catalog,
     )
 }
+
+// Event handlers must live in the main script, not nextflow.config — in the
+// config `workflow` is a ConfigObject and `onComplete` is rejected at parse time.
+workflow.onComplete {
+    if (workflow.success && params.auto_cleanup) {
+        def workDir = new File(workflow.workDir.toString())
+        if (workDir.exists()) {
+            log.info "auto_cleanup: removing work dir ${workDir}"
+            workDir.deleteDir()
+        }
+    }
+    if (workflow.success) {
+        log.info "Pipeline complete. Results: ${params.outdir}"
+        if (!params.auto_cleanup) {
+            log.info "Tip: run 'bash bin/nf-cleanup.sh <sampleId>' to remove intermediates."
+        }
+    }
+}
