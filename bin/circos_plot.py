@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """Generate a Circos plot from SV VCF, CNV BED, depth BED, and AnnotSV TSV using pycirclize.
 
-Ring layout (radius, outer → inner):
-  95-100  chromosome ideograms
-  62-92   coverage depth dot plot (log2 ratio vs median; -2=CN0, 0=CN2, +1=CN4)
-  58-61   CNV calls (DUP=red, DEL=blue blocks)
-  54-57   STR expansion loci (EH=brown squares, STRling=orange triangles)
-  50-53   AnnotSV gene loci (top 30 by ranking score) + SMN marker
-  46-49   ACMG class dots (class 3/4/5, cap 50)
-  0-46    SV links centre
+Ring layout (radius, outer → inner) — "genome fingerprint", links-first:
+  96-100  chromosome ideograms
+  88-95   copy-ratio HEATMAP (1 Mb bins, diverging blue→white→red = loss→neutral→gain)
+  81-86   CNV consensus blocks (DUP=red, DEL=blue), min-width ticks
+  74-79   STR loci barcode (EH=brown, STRling novel=orange), full-height ticks
+  67-72   clinical SV ring: top SVs, coloured by ACMG class (5=red,4=orange,3=grey),
+          SMN locus gold; gene/ACMG merged into one ring (was two)
+  0-65    SV links centre — large canvas; interchromosomal BND/TRA emphasised
+
+The plot is a gestalt overview, not a positional record: exact coordinates,
+copy number, and confidence live in the HTML report sections and the .xlsx.
+Coverage is 1 Mb-binned (re-binned from mosdepth 50 kb) for a readable fingerprint.
 """
 import argparse, re, gzip, csv, statistics, math
 from typing import List, Tuple, Dict, Optional
@@ -144,6 +148,7 @@ def parse_annotsv_tsv(path: Optional[str],
                 gene_rows.append({
                     "chrom": chrom, "start": start, "end": end,
                     "gene": gene, "svtype": svtype, "score": score,
+                    "acmg_class": acmg_class,
                 })
                 if acmg_class in ("3", "4", "5"):
                     acmg_rows.append({
@@ -187,7 +192,7 @@ def parse_strling_tsv(path: Optional[str], min_allele2: float = 100.0,
 
 def parse_sv_vcf_links(path: str,
                        min_svlen_intra: int = 50_000,
-                       max_links: int = 100) -> List[dict]:
+                       max_links: int = 150) -> List[dict]:
     """Return filtered SV links for clinical Circos display."""
     all_links = []
     opener = gzip.open if str(path).endswith(".gz") else open
@@ -243,12 +248,15 @@ def parse_sv_vcf_links(path: str,
                 "colour": sv_colour(svtype),
             })
 
+    # Interchromosomal BND/TRA are the sample's visual signature — give them the
+    # lion's share of the cap (up to 110), fill the remainder with the largest
+    # intrachromosomal links. Cross-genome links are always drawn richly.
     bnd   = [l for l in all_links if l["svtype"] in ("BND", "TRA")]
     intra = sorted([l for l in all_links if l["svtype"] not in ("BND", "TRA")],
                    key=lambda x: x["svlen"], reverse=True)
-    max_bnd = min(len(bnd), max_links // 2)
+    max_bnd = min(len(bnd), 110)
     links = bnd[:max_bnd] + intra[:max_links - max_bnd]
-    print(f"Circos: {len(links)} SV links selected for display")
+    print(f"Circos: {len(links)} SV links selected ({max_bnd} interchromosomal)")
     return links
 
 
@@ -278,7 +286,31 @@ def _chrom_colour(chrom: str) -> str:
 
 
 def _marker_width(chrom_len: int) -> int:
-    return max(500_000, chrom_len // 300)
+    # Visible tick floor: a point feature spans at least this many bp so it is not
+    # sub-pixel on a 250 Mb chromosome. ~2 Mb floor, or chrom/300 for big chroms.
+    return max(2_000_000, chrom_len // 300)
+
+
+def _rebin_log2(depth_wins: List[dict], chrom: str, global_median: float,
+                bin_bp: int = 1_000_000) -> List[Tuple[int, int, float]]:
+    """Aggregate 50 kb depth windows into bin_bp (default 1 Mb) bins.
+
+    Returns [(start, end, log2_ratio)] using the median depth per bin. Coarser bins
+    turn the coverage haze into a readable copy-ratio fingerprint (uniform genome =
+    flat band; CNV = a coloured block that pops out).
+    """
+    from collections import defaultdict
+    bins = defaultdict(list)
+    for w in depth_wins:
+        if w["chrom"] != chrom or w["depth"] <= 0:
+            continue
+        bins[w["start"] // bin_bp].append(w["depth"])
+    out = []
+    for b in sorted(bins):
+        med = statistics.median(bins[b])
+        lr = math.log2(max(med, 0.01) / global_median) if global_median > 0 else 0.0
+        out.append((b * bin_bp, (b + 1) * bin_bp, lr))
+    return out
 
 
 def make_circos(sv_vcf: str, cnv_bed: Optional[str], cytobands: str,
@@ -319,116 +351,113 @@ def make_circos(sv_vcf: str, cnv_bed: Optional[str], cytobands: str,
         t.axis(fc=_chrom_colour(sector.name))
         t.text(sector.name.replace("chr", ""), size=6, color="white")
 
-    # --- Ring 2: Coverage depth dot plot (62-92) ---
-    # Y-axis = log2(window_depth / genome_median), normalised to [0,1]:
-    #   0.0  → log2 = -2  (CN=0, homozygous deletion)
-    #   0.50 → log2 =  0  (CN=2, normal diploid)  ← dashed reference line
-    #   1.0  → log2 = +2  (high-level amplification)
+    # --- Ring 2: copy-ratio HEATMAP (88-95) ---
+    # 1 Mb bins (re-binned from mosdepth 50 kb), diverging colormap:
+    #   blue = loss (log2 < 0), white = neutral (log2 ≈ 0), red = gain (log2 > 0).
+    # vmin/vmax = ±1.0 log2 ≈ CN1..CN4, the clinically meaningful copy-ratio band.
+    # A uniform genome reads as a flat near-white band; a CNV is a coloured block.
+    import matplotlib.colors as _mcolors
+    _cmap = plt.get_cmap("RdBu_r")
+    _norm = _mcolors.TwoSlopeNorm(vmin=-1.0, vcenter=0.0, vmax=1.0)
     for sector in circos.sectors:
-        t = sector.add_track((62, 92), r_pad_ratio=0.05)
-        t.axis()
+        t = sector.add_track((88, 95))
+        t.axis(fc="#F7F7F7", ec="#CCCCCC", lw=0.3)
         clen = chrom_sizes.get(sector.name, 1)
-        try:
-            t.line([0, clen], [0.5, 0.5], color="#888888", lw=0.8, alpha=0.5)
-        except Exception:
-            pass
-        normal_x, normal_y = [], []
-        gain_x,   gain_y   = [], []
-        loss_x,   loss_y   = [], []
-        for w in depth_wins:
-            if w["chrom"] != sector.name:
+        for (s, e, lr) in _rebin_log2(depth_wins, sector.name, global_median):
+            e = min(e, clen - 1)
+            if e <= s:
                 continue
-            mid = (w["start"] + w["end"]) // 2
-            lr  = math.log2(max(w["depth"], 0.01) / global_median) if global_median > 0 else 0.0
-            lr  = max(-2.0, min(2.0, lr))
-            y_n = (lr + 2.0) / 4.0
-            if lr > 0.3:
-                gain_x.append(mid);   gain_y.append(y_n)
-            elif lr < -0.5:
-                loss_x.append(mid);   loss_y.append(y_n)
-            else:
-                normal_x.append(mid); normal_y.append(y_n)
-        if normal_x:
-            t.scatter(normal_x[::10], normal_y[::10], color="#AAAAAA", s=0.4, alpha=0.5)
-        if gain_x:
-            t.scatter(gain_x, gain_y, color="#D62728", s=0.8, alpha=0.85)
-        if loss_x:
-            t.scatter(loss_x, loss_y, color="#1F77B4", s=0.8, alpha=0.85)
+            lr_c = max(-1.0, min(1.0, lr))
+            try:
+                t.rect(s, e, fc=_mcolors.to_hex(_cmap(_norm(lr_c))), ec="none", alpha=0.95)
+            except Exception:
+                continue
 
-    # --- Ring 3: CNV calls (58-61) — DEL=blue, DUP=red blocks ---
+    # --- Ring 3: CNV consensus blocks (81-86) — DUP=red, DEL=blue ---
+    # Only substantial CNVs (>= 1 Mb) are drawn as discrete blocks; the heatmap ring
+    # above already carries fine-scale copy-ratio, and every call (incl. small ones)
+    # is in the CNV report + .xlsx. Keeps the fingerprint clean instead of a speckle.
+    _CNV_MIN_BP = 1_000_000
     for sector in circos.sectors:
-        t = sector.add_track((58, 61), r_pad_ratio=0.05)
-        t.axis()
-        for rec in gains:
-            if rec["chrom"] == sector.name:
-                t.rect(rec["start"], rec["end"], fc="#D62728", alpha=0.85)
-        for rec in losses:
-            if rec["chrom"] == sector.name:
-                t.rect(rec["start"], rec["end"], fc="#1F77B4", alpha=0.85)
+        t = sector.add_track((81, 86), r_pad_ratio=0.05)
+        t.axis(fc="#FCFCFC", ec="#CCCCCC", lw=0.3)
+        clen  = chrom_sizes.get(sector.name, 1)
+        floor = _marker_width(clen)
+        for rec, col in ([(r, "#D62728") for r in gains]
+                         + [(r, "#1F77B4") for r in losses]):
+            if rec["chrom"] != sector.name:
+                continue
+            if (rec["end"] - rec["start"]) < _CNV_MIN_BP:
+                continue
+            s = rec["start"]
+            e = min(max(rec["end"], s + floor), clen - 1)
+            if e <= s:
+                continue
+            t.rect(s, e, fc=col, ec="none", alpha=0.9)
 
-    # --- Ring 4: STR loci (54-57) — EH=brown squares, STRling novel=orange ---
+    # --- Ring 4: STR loci barcode (74-79) — EH=brown, STRling novel=orange ---
     for sector in circos.sectors:
-        t = sector.add_track((54, 57), r_pad_ratio=0.1)
-        t.axis()
-        clen = chrom_sizes.get(sector.name, 1)
-        w_str = max(500_000, clen // 500)
+        t = sector.add_track((74, 79), r_pad_ratio=0.1)
+        t.axis(fc="#FCFCFC", ec="#CCCCCC", lw=0.3)
+        clen  = chrom_sizes.get(sector.name, 1)
+        w_str = _marker_width(clen)
         for locus in str_loci:
             if locus["chrom"] == sector.name:
                 end = min(locus["pos"] + w_str, clen - 1)
-                t.rect(locus["pos"], end, fc="#8C564B", alpha=0.9)
+                t.rect(locus["pos"], end, fc="#8C564B", ec="none", alpha=0.95)
         for locus in strling_loci:
             if locus["chrom"] == sector.name:
                 end = min(locus["pos"] + w_str, clen - 1)
-                t.rect(locus["pos"], end, fc="#FF7F0E", alpha=0.85)
+                t.rect(locus["pos"], end, fc="#FF7F0E", ec="none", alpha=0.9)
 
-    # --- Ring 5: AnnotSV gene loci (50-53) + SMN locus (chr5, gold) ---
-    top5_genes = {r["gene"] for r in gene_rows[:5] if r["gene"]}
+    # --- Ring 5: clinical SV ring (67-72) — gene + ACMG merged ---
+    # One ring (was two): each top SV is a min-width tick at its locus, coloured by
+    # ACMG class (5=red, 4=orange, 3=grey) when classified, else by SV type. SMN gold.
+    # acmg_rows is unused now — class is carried on gene_rows. Labels: top-5 by score
+    # plus every class 4/5 gene (so pathogenic SVs are always named on the plot).
+    label_genes = {r["gene"] for r in gene_rows[:5] if r["gene"]}
+    label_genes |= {r["gene"] for r in gene_rows
+                    if r.get("acmg_class") in ("4", "5") and r["gene"]}
     for sector in circos.sectors:
-        t = sector.add_track((50, 53), r_pad_ratio=0.1)
-        t.axis()
+        t = sector.add_track((67, 72), r_pad_ratio=0.1)
+        t.axis(fc="#FCFCFC", ec="#CCCCCC", lw=0.3)
         clen = chrom_sizes.get(sector.name, 1)
+        w = _marker_width(clen)
         if sector.name == "chr5":
-            t.rect(70_924_941, 70_953_015, fc="#FFBF00", alpha=0.9)
+            t.rect(70_924_941, min(max(70_953_015, 70_924_941 + w), clen - 1),
+                   fc="#FFBF00", ec="none", alpha=0.95)   # SMN1 locus
         for row in gene_rows:
             if row["chrom"] != sector.name:
                 continue
             mid = (row["start"] + row["end"]) // 2
-            w = _marker_width(clen)
-            t.rect(mid, mid + w, fc=sv_colour(row["svtype"]), alpha=0.8)
-            if row["gene"] in top5_genes:
+            end = min(mid + w, clen - 1)
+            cls = row.get("acmg_class", "")
+            if cls in ("3", "4", "5"):
+                fc    = ACMG_COLOURS.get(cls, "#7F7F7F")
+                alpha = 0.95 if cls in ("4", "5") else 0.6
+            else:
+                fc, alpha = sv_colour(row["svtype"]), 0.7
+            if end > mid:
+                t.rect(mid, end, fc=fc, ec="none", alpha=alpha)
+            if row["gene"] in label_genes:
                 try:
                     t.text(row["gene"], mid, size=5, color="black")
                 except Exception:
                     pass
 
-    # --- Ring 6: ACMG class dots (46-49) ---
-    top3_acmg_genes = set(list({r["gene"] for r in acmg_rows
-                                 if r["acmg_class"] in ("4", "5") and r["gene"]})[:3])
-    for sector in circos.sectors:
-        t = sector.add_track((46, 49), r_pad_ratio=0.1)
-        t.axis()
-        clen = chrom_sizes.get(sector.name, 1)
-        for row in acmg_rows:
-            if row["chrom"] != sector.name:
-                continue
-            mid = (row["start"] + row["end"]) // 2
-            w = _marker_width(clen)
-            fc    = ACMG_COLOURS.get(row["acmg_class"], "#7F7F7F")
-            alpha = 0.9 if row["acmg_class"] in ("4", "5") else 0.55
-            t.rect(mid, mid + w, fc=fc, alpha=alpha)
-            if row["gene"] in top3_acmg_genes:
-                try:
-                    t.text(row["gene"], mid, size=5, color="black")
-                except Exception:
-                    pass
-
-    # --- SV links (center, r<=46) ---
+    # --- SV links (centre, r < ~65) — interchromosomal BND/TRA emphasised ---
+    # The innermost ring now sits at r=67, so links own a much larger central canvas
+    # than before (was r<46). Cross-genome translocations are the sample signature:
+    # draw them thicker and more opaque; intrachromosomal links stay thin and faint.
     for link in links:
+        interchrom = link["chrom1"] != link["chrom2"]
+        lw    = 1.1 if interchrom else 0.4
+        alpha = 0.55 if interchrom else 0.28
         try:
             circos.link(
                 (link["chrom1"], link["pos1"], link["pos1"] + 1),
                 (link["chrom2"], link["pos2"], link["pos2"] + 1),
-                color=link["colour"], alpha=0.4, lw=0.5,
+                color=link["colour"], alpha=alpha, lw=lw,
             )
         except Exception:
             continue
@@ -445,18 +474,19 @@ def make_circos(sv_vcf: str, cnv_bed: Optional[str], cytobands: str,
     handles = [
         _hdr("── Rings (outer → inner) ──"),
         mpatches.Patch(fc="#888888", alpha=0.8,  label="Chromosomes"),
-        mpatches.Patch(fc="#AAAAAA", alpha=0.7,  label="Coverage depth (50 kb dots, log₂ ratio)"),
-        mpatches.Patch(fc="#D62728", alpha=0.85, label="CNV: gain / DUP (red block)"),
-        mpatches.Patch(fc="#1F77B4", alpha=0.85, label="CNV: loss / DEL (blue block)"),
-        mpatches.Patch(fc="#8C564B", alpha=0.9,  label="STR: EH catalog locus (brown)"),
-        mpatches.Patch(fc="#FF7F0E", alpha=0.85, label="STR: STRling novel ≥100 ru (orange)"),
-        mpatches.Patch(fc="#888888", alpha=0.5,  label="Gene loci (top 30 by AnnotSV score)"),
-        mpatches.Patch(fc="#7F7F7F", alpha=0.6,  label="ACMG class dots"),
-        mlines.Line2D([], [], color="#FF7F0E", lw=1.5, alpha=0.6, label="SV links (centre)"),
-        _hdr("── Coverage depth (log₂ ratio) ──"),
-        mpatches.Patch(fc="#D62728", alpha=0.85, label="Gain  log₂ > +0.3  (CN ≥ 3)"),
-        mpatches.Patch(fc="#AAAAAA", alpha=0.6,  label="Normal  log₂ ≈ 0  (CN = 2)"),
-        mpatches.Patch(fc="#1F77B4", alpha=0.85, label="Loss  log₂ < −0.5  (CN ≤ 1)"),
+        mpatches.Patch(fc="#D62728", alpha=0.95, label="Copy-ratio heatmap: gain (red)"),
+        mpatches.Patch(fc="#1F77B4", alpha=0.95, label="Copy-ratio heatmap: loss (blue), 1 Mb bins"),
+        mpatches.Patch(fc="#D62728", alpha=0.9,  label="CNV block: gain / DUP (red)"),
+        mpatches.Patch(fc="#1F77B4", alpha=0.9,  label="CNV block: loss / DEL (blue)"),
+        mpatches.Patch(fc="#8C564B", alpha=0.95, label="STR: EH catalog locus (brown)"),
+        mpatches.Patch(fc="#FF7F0E", alpha=0.9,  label="STR: STRling novel (orange)"),
+        mpatches.Patch(fc="#7F7F7F", alpha=0.7,  label="Clinical SV ring (ACMG-coloured)"),
+        mpatches.Patch(fc="#FFBF00", alpha=0.95, label="SMN1 locus (gold)"),
+        mlines.Line2D([], [], color="#FF7F0E", lw=1.5, alpha=0.6, label="SV links — interchromosomal"),
+        _hdr("── Copy-ratio heatmap (log₂) ──"),
+        mpatches.Patch(fc="#D62728", alpha=0.95, label="Gain  log₂ > 0  (red)"),
+        mpatches.Patch(fc="#F7F7F7", alpha=1.0,  label="Neutral  log₂ ≈ 0  (white)"),
+        mpatches.Patch(fc="#1F77B4", alpha=0.95, label="Loss  log₂ < 0  (blue); ±1 ≈ CN1..CN4"),
         _hdr("── SV Types ──"),
         mpatches.Patch(fc="#1F77B4", label="DEL"),
         mpatches.Patch(fc="#D62728", label="DUP"),
