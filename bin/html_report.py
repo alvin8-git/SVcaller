@@ -8,6 +8,7 @@ from jinja2 import Environment, FileSystemLoader
 
 TEMPLATE_DIR = Path(__file__).parent.parent / "assets"
 STR_RANGES_PATH = TEMPLATE_DIR / "str_disease_ranges.tsv"
+CNV_SYNDROMES_PATH = TEMPLATE_DIR / "cnv_syndromes.tsv"
 
 # Canonical autosomes + sex chrs for per-chr QC table
 _CANONICAL = [f"chr{c}" for c in list(range(1, 23)) + ["X", "Y"]]
@@ -474,12 +475,60 @@ def _fmt_size(bp: int) -> str:
     return f"{bp} bp"
 
 
-_CNV_FINDING_MIN_BP = 50_000  # minimum size (bp) to surface a CNV in Clinical Findings
+_CNV_SYNDROME_MIN_OVERLAP = 0.5  # CNV must cover >=50% of a syndrome critical region
+
+
+def load_cnv_syndromes(path=CNV_SYNDROMES_PATH) -> list:
+    """Load curated recurrent pathogenic CNV syndrome regions (GRCh38)."""
+    syndromes = []
+    try:
+        with open(path) as fh:
+            for line in fh:
+                if line.startswith("#") or not line.strip():
+                    continue
+                p = line.rstrip("\n").split("\t")
+                if len(p) < 5:
+                    continue
+                try:
+                    start, end = int(p[1]), int(p[2])
+                except ValueError:
+                    continue
+                syndromes.append({
+                    "chrom": p[0], "start": start, "end": end,
+                    "type":  p[3].upper(), "syndrome": p[4],
+                    "note":  p[5] if len(p) > 5 else "",
+                })
+    except FileNotFoundError:
+        pass
+    return syndromes
+
+
+def match_cnv_syndrome(chrom, start, end, svtype, syndromes,
+                       min_overlap=_CNV_SYNDROME_MIN_OVERLAP):
+    """Return the syndrome a CNV hits, or None.
+
+    Requires same chromosome, compatible type (syndrome DEL/DUP/BOTH vs CNV DEL/DUP),
+    and the CNV covering >= min_overlap of the syndrome's critical region.
+    """
+    svtype = (svtype or "").upper()
+    for s in syndromes:
+        if s["chrom"] != chrom:
+            continue
+        if s["type"] != "BOTH" and s["type"] != svtype:
+            continue
+        region = s["end"] - s["start"]
+        if region <= 0:
+            continue
+        ov = min(end, s["end"]) - max(start, s["start"])
+        if ov > 0 and ov / region >= min_overlap:
+            return s
+    return None
 
 
 def build_known_diseases(str_loci: list, smn_tsv_path: str = "",
-                         cnv_bed_path: str = "") -> list:
-    """Tier 1a: named disease diagnoses from STR (EH EXPANDED), SMN (SMA), and BOTH/HIGH CNVs."""
+                         cnv_bed_path: str = "", cnv_syndromes: list = None) -> list:
+    """Tier 1a: named disease diagnoses from STR (EH EXPANDED), SMN (SMA), and CNVs that
+    overlap a known recurrent pathogenic-CNV syndrome region."""
     findings = []
 
     # STR EXPANDED loci
@@ -521,8 +570,12 @@ def build_known_diseases(str_loci: list, smn_tsv_path: str = "",
         except (FileNotFoundError, KeyError):
             pass
 
-    # High-confidence CNVs (BOTH = both tools agree; HIGH = GATK-only quality ≥30)
-    if cnv_bed_path and cnv_bed_path not in ("NO_FILE", "null", ""):
+    # CNVs are surfaced as a "known disease" ONLY when they overlap a curated recurrent
+    # pathogenic-CNV syndrome region (DiGeorge, Williams, PWS/AS, 16p11.2, ...). Generic
+    # large CNVs are NOT diagnoses — they live in the CNV Summary top-10 list and the xlsx.
+    if cnv_syndromes is None:
+        cnv_syndromes = load_cnv_syndromes()
+    if cnv_syndromes and cnv_bed_path and cnv_bed_path not in ("NO_FILE", "null", ""):
         try:
             with open(cnv_bed_path) as fh:
                 for line in fh:
@@ -534,23 +587,24 @@ def build_known_diseases(str_loci: list, smn_tsv_path: str = "",
                     chrom, start, end = parts[0], parts[1], parts[2]
                     svtype     = parts[4].upper() if len(parts) > 4 else ""
                     confidence = parts[6].upper() if len(parts) > 6 else ""
-                    if confidence not in ("BOTH", "HIGH"):
-                        continue
                     try:
-                        size_bp = abs(int(end) - int(start))
+                        start_i, end_i = int(start), int(end)
                     except (ValueError, TypeError):
                         continue
-                    if size_bp < _CNV_FINDING_MIN_BP:
+                    syn = match_cnv_syndrome(chrom, start_i, end_i, svtype, cnv_syndromes)
+                    if not syn:
                         continue
+                    size_bp = abs(end_i - start_i)
                     size_str = (f"{size_bp/1_000_000:.1f} Mb" if size_bp >= 1_000_000
                                 else f"{size_bp/1_000:.0f} kb")
+                    note = f" — {syn['note']}" if syn.get("note") else ""
                     findings.append({
                         "source":   "CNV",
-                        "disease":  f"Copy Number {svtype}",
+                        "disease":  syn["syndrome"],
                         "gene":     f"{chrom}:{start}-{end}",
-                        "detail":   f"{svtype}, {size_str} ({confidence} confidence)",
+                        "detail":   f"{svtype} {size_str}, {confidence} confidence{note}",
                         "status":   confidence,
-                        "severity": "affected" if confidence == "BOTH" else "carrier",
+                        "severity": "affected" if confidence in ("BOTH", "HIGH") else "carrier",
                     })
         except (FileNotFoundError, IndexError):
             pass
@@ -690,6 +744,50 @@ def parse_cnv_summary(cnv_bed_path: str) -> dict:
     except (FileNotFoundError, IndexError):
         pass
     return summary
+
+
+def top_cnvs_by_size(cnv_bed_path: str, n: int = 10, cnv_syndromes: list = None) -> tuple:
+    """Return (top_n_cnvs_by_size, total_count).
+
+    CNVs have no truth set and no per-call gene annotation, so size is the most
+    defensible ranking signal. Surface the n largest (most reviewable) with their
+    confidence tier and any recurrent-syndrome-region hit; the full list is in the xlsx.
+    """
+    rows = []
+    if cnv_syndromes is None:
+        cnv_syndromes = load_cnv_syndromes()
+    try:
+        with open(cnv_bed_path) as fh:
+            for line in fh:
+                if line.startswith("#") or not line.strip():
+                    continue
+                p = line.strip().split("\t")
+                if len(p) < 7:
+                    continue
+                try:
+                    start_i, end_i = int(p[1]), int(p[2])
+                except (ValueError, TypeError):
+                    continue
+                svtype  = p[4].upper() if len(p) > 4 else ""
+                size_bp = abs(end_i - start_i)
+                size_str = (f"{size_bp/1_000_000:.2f} Mb" if size_bp >= 1_000_000
+                            else f"{size_bp/1_000:.0f} kb")
+                syn = match_cnv_syndrome(p[0], start_i, end_i, svtype, cnv_syndromes)
+                rows.append({
+                    "pos":        f"{p[0]}:{p[1]}-{p[2]}",
+                    "svtype":     svtype,
+                    "size":       size_str,
+                    "size_bp":    size_bp,
+                    "cn":         p[3] if len(p) > 3 else "",
+                    "caller":     p[5] if len(p) > 5 else "",
+                    "confidence": p[6].upper() if len(p) > 6 else "",
+                    "syndrome":   syn["syndrome"] if syn else "",
+                })
+    except (FileNotFoundError, IndexError):
+        pass
+    total = len(rows)
+    rows.sort(key=lambda r: -r["size_bp"])
+    return rows[:n], total
 
 
 # ---------------------------------------------------------------------------
@@ -1197,6 +1295,8 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     sv_tier2_total = len(sv_tier2); sv_tier2 = sv_tier2[:_TIER_HTML_MAX]
     sv_tier3_total = len(sv_tier3); sv_tier3 = sv_tier3[:_TIER_HTML_MAX]
     cnv_summary       = parse_cnv_summary(cnv_bed_path)
+    cnv_syndromes      = load_cnv_syndromes()
+    cnv_top, cnv_total = top_cnvs_by_size(cnv_bed_path, n=10, cnv_syndromes=cnv_syndromes)
     benchmark          = parse_benchmark(benchmark_json)           if benchmark_json      else None
     benchmark_bins     = parse_benchmark_sizebin(sizebin_json)     if sizebin_json        else None
     benchmark_v5q      = parse_benchmark(benchmark_v5q_json)       if benchmark_v5q_json  else None
@@ -1206,7 +1306,8 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     str_loci          = parse_str_loci(str_vcf_path or "", str_ranges)
     strling_loci      = parse_strling(strling_tsv_path or "")
     str_consensus, strling_novel_count = build_str_consensus(str_loci, strling_loci)
-    known_diseases    = build_known_diseases(str_loci, smn_tsv_path or "", cnv_bed_path or "")
+    known_diseases    = build_known_diseases(str_loci, smn_tsv_path or "", cnv_bed_path or "",
+                                              cnv_syndromes=cnv_syndromes)
     cascade_flag      = any(
         not r.get("pon_hit") and not r.get("sd_boundary")
         for r in sv_tier1 + sv_tier2
@@ -1232,6 +1333,8 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
         known_diseases=known_diseases,
         xls_filename=xls_filename,
         cnv_summary=cnv_summary,
+        cnv_top=cnv_top,
+        cnv_total=cnv_total,
         smn_html=smn_html,
         circos_svg_inline=circos_svg_inline,
         benchmark=benchmark,

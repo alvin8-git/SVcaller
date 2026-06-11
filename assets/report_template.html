@@ -239,16 +239,51 @@
       {% if cnv_summary.total == 0 %}
       <p class="text-muted mb-0">No CNVs detected (CNVpytor + GATK gCNV consensus threshold not met).</p>
       {% else %}
-      <table class="table table-sm" style="max-width:380px;">
+      <table class="table table-sm" style="max-width:420px;">
         <tr><th>Total CNVs</th><td>{{ cnv_summary.total }}</td></tr>
         <tr><th>Deletions (DEL)</th><td>{{ cnv_summary.del }}</td></tr>
         <tr><th>Duplications (DUP)</th><td>{{ cnv_summary.dup }}</td></tr>
         <tr><th>Both-caller consensus (HIGH)</th><td>{{ cnv_summary.both }}</td></tr>
         <tr><th>GATK-only (MEDIUM)</th><td>{{ cnv_summary.medium }}</td></tr>
       </table>
-      <p class="text-muted mb-0" style="font-size:0.78rem;">
+      <p class="text-muted mb-2" style="font-size:0.78rem;">
         BOTH = CNVpytor + GATK gCNV (reciprocal overlap &ge;50%). MEDIUM = GATK gCNV quality &ge;30, single caller.
+        CNVs are <strong>research-grade</strong>: no orthogonal truth set and no per-call gene annotation.
+        CNVs overlapping a known recurrent syndrome region are promoted to <strong>Clinical Findings</strong> above;
+        the full list of {{ cnv_total }} CNVs is in the companion <strong><a href="{{ xls_filename }}" download>.variants.xlsx</a></strong>.
       </p>
+      {% if cnv_top %}
+      <details>
+        <summary style="cursor:pointer;font-weight:600;user-select:none;">
+          Show top {{ cnv_top|length }} CNVs by size{% if cnv_total > cnv_top|length %} (of {{ cnv_total }}){% endif %} &#9660;
+        </summary>
+        <div class="mt-2" style="overflow-x:auto;">
+        <table class="table table-sm sv-table" style="font-size:0.79rem;">
+          <thead><tr>
+            <th>Type</th><th>Region</th><th>Size</th><th>Copy&nbsp;No.</th>
+            <th>Confidence</th><th>Callers</th><th>Syndrome region</th>
+          </tr></thead>
+          <tbody>
+          {% for c in cnv_top %}
+            <tr{% if c.syndrome %} class="table-danger"{% endif %}>
+              <td><strong>{{ c.svtype }}</strong></td>
+              <td>{{ c.pos }}</td>
+              <td>{{ c.size }}</td>
+              <td>{{ c.cn }}</td>
+              <td>
+                {% if c.confidence == "BOTH" %}<span class="badge bg-success">BOTH</span>
+                {% elif c.confidence == "HIGH" %}<span class="badge bg-info text-dark">HIGH</span>
+                {% else %}<span class="badge bg-secondary">{{ c.confidence or "?" }}</span>{% endif %}
+              </td>
+              <td style="font-size:0.74rem;">{{ c.caller }}</td>
+              <td style="font-size:0.74rem;">{% if c.syndrome %}<span class="badge bg-danger">{{ c.syndrome }}</span>{% else %}&mdash;{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </details>
+      {% endif %}
       {% endif %}
     </div>
   </div>

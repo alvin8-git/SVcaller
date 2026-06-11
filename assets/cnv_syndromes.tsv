@@ -1,0 +1,32 @@
+# Recurrent pathogenic CNV syndrome regions (GRCh38 / hg38).
+# A consensus CNV is surfaced in the report's Clinical Findings only if it covers
+# >=50% of one of these critical regions AND its type is compatible (DEL/DUP/BOTH).
+# Coordinates are approximate critical regions (recurrent CNVs are flanked by segmental
+# duplications); the overlap-fraction gate tolerates breakpoint imprecision.
+# Sources: ClinGen dosage map, DECIPHER, ISCA recurrent-CNV list, OMIM.
+# chrom	start	end	type	syndrome	note
+chr1	10001	5200000	DEL	1p36 deletion syndrome	OMIM 607872
+chr1	146000000	147900000	BOTH	1q21.1 deletion / duplication (TAR region)	OMIM 612474/612475
+chr2	50100000	51250000	DEL	NRXN1 deletion (2p16.3)	neurodevelopmental
+chr2	239000000	242193529	DEL	2q37 deletion (brachydactyly-MR)	OMIM 600430
+chr3	195700000	197400000	BOTH	3q29 deletion / duplication	OMIM 609425
+chr4	10001	2100000	DEL	Wolf-Hirschhorn syndrome (4p16.3)	OMIM 194190
+chr5	10001	12600000	DEL	Cri-du-chat syndrome (5p15)	OMIM 123450
+chr7	72700000	74200000	BOTH	Williams-Beuren (7q11.23 del) / 7q11.23 dup	OMIM 194050/609757
+chr8	8100000	11900000	BOTH	8p23.1 deletion / duplication
+chr11	120700000	135086622	DEL	Jacobsen syndrome (11q24-qter)	OMIM 147791
+chr15	22800000	28400000	BOTH	Prader-Willi / Angelman (15q11-q13 del) / dup15q	OMIM 176270/105830/608636
+chr15	30900000	32900000	DEL	15q13.3 deletion	OMIM 612001
+chr15	72900000	78200000	DEL	15q24 deletion	OMIM 613406
+chr16	14900000	16500000	BOTH	16p13.11 deletion / duplication
+chr16	21900000	22550000	DEL	16p12.1 deletion	OMIM 136570
+chr16	29550000	30200000	BOTH	16p11.2 deletion / duplication (proximal BP4-BP5)	OMIM 611913/614671
+chr17	14050000	15500000	DUP	Charcot-Marie-Tooth 1A (PMP22 dup, 17p12)	OMIM 118220
+chr17	14050000	15500000	DEL	HNPP (PMP22 deletion, 17p12)	OMIM 162500
+chr17	16800000	20300000	BOTH	Smith-Magenis (17p11.2 del) / Potocki-Lupski (dup)	OMIM 182290/610883
+chr17	29100000	30300000	DEL	NF1 microdeletion (17q11.2)	OMIM 613675
+chr17	36400000	37850000	BOTH	17q12 deletion / duplication (RCAD)	OMIM 614527/614526
+chr17	45500000	46200000	DEL	Koolen-de Vries syndrome (17q21.31)	OMIM 610443
+chr22	18900000	21500000	BOTH	22q11.2 deletion (DiGeorge / VCFS) / 22q11.2 dup	OMIM 188400/608363
+chr22	50000000	50800000	DEL	Phelan-McDermid (22q13.3 / SHANK3)	OMIM 606232
+chrX	153200000	154200000	DUP	MECP2 duplication (Xq28)	OMIM 300260

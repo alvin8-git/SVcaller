@@ -45,6 +45,8 @@ def load_cnvpytor(path: str) -> List[CNVSegment]:
             start, end = map(int, coords.split("-"))
             cn_raw = float(parts[3]) if len(parts) > 3 else 2.0
             cn = round(cn_raw)
+            if cn == 2:          # copy-neutral — not a CNV (mirror load_gatk's cn==2 skip)
+                continue
             svtype = "DEL" if svtype_raw == "deletion" or cn < 2 else "DUP"
             segs.append(CNVSegment(chrom, start, end, cn, svtype, "CNVpytor"))
     return segs
