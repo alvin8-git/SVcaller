@@ -55,8 +55,12 @@ workflow PREPROCESS {
     // Insert size distribution QC
     PICARD_INSERT_SIZE(ch_final_bam)
 
-    // Stub metrics for pre-supplied BAMs so downstream report join has an entry
+    // Stub metrics for pre-supplied BAMs so downstream report join has an entry.
+    // Tag with needs_chr_filter to match the sibling QC channels (coverage/flagstat/
+    // insert_size all carry it from ch_final_bam) — otherwise the exact-join report
+    // chain silently drops every FASTQ-derived sample on the meta mismatch.
     ch_markdup_metrics = PICARD_MARKDUP.out.metrics
+        .map { meta, m -> [[*:meta, needs_chr_filter: false], m] }
         .mix(ch_bam_in.map { meta, bam, bai -> [[*:meta, needs_chr_filter: true], file("NO_METRICS")] })
 
     emit:

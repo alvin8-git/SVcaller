@@ -9,6 +9,7 @@ include { GRIDSS_STUB            } from '../modules/gridss/stub'
 include { SAMTOOLS_SUBSET        } from '../modules/samtools/subset'
 include { EXPANSIONHUNTER        } from '../modules/expansionhunter/call'
 include { JASMINE_MERGE          } from '../modules/jasmine/merge'
+include { TRA_CONSENSUS          } from '../modules/jasmine/tra_consensus'
 include { SCRAMBLE_CALL          } from '../modules/scramble/call'
 include { SCRAMBLE_STUB          } from '../modules/scramble/stub'
 include { MELT_CALL              } from '../modules/melt/call'
@@ -134,9 +135,13 @@ workflow SV_CALLING {
 
     JASMINE_MERGE(ch_to_merge, ch_fasta, ch_fai)
 
+    // Rebuild cross-caller support for translocations (Jasmine leaves all TRA at
+    // SUPP=1). Produces the published final sv_merged.vcf.gz.
+    TRA_CONSENSUS(JASMINE_MERGE.out.vcf.join(JASMINE_MERGE.out.tbi))
+
     emit:
-    sv_vcf      = JASMINE_MERGE.out.vcf
-    sv_tbi      = JASMINE_MERGE.out.tbi
+    sv_vcf      = TRA_CONSENSUS.out.vcf
+    sv_tbi      = TRA_CONSENSUS.out.tbi
     str_vcf     = EXPANSIONHUNTER.out.vcf
     strling_tsv = ch_strling_tsv
 }
