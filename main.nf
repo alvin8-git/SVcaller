@@ -39,9 +39,12 @@ workflow {
     ch_annotsv   = params.annotsv_db
                     ? Channel.value(file(params.annotsv_db, checkIfExists: true))
                     : Channel.value(file("NO_ANNOTSV"))
-    ch_cytobands = Channel.fromPath("${projectDir}/assets/GRCh38_cytobands.txt",
-                                     checkIfExists: false)
-    ch_catalog   = Channel.fromPath(params.eh_catalog, checkIfExists: true)
+    // Value channels — shared reference files reused across every sample. A queue
+    // channel (fromPath) holds one item and is consumed on the FIRST sample, so a
+    // multi-sample process (e.g. CIRCOS_PLOT, EXPANSIONHUNTER) only runs once and the
+    // rest of the samples silently vanish downstream. Must be Channel.value.
+    ch_cytobands = Channel.value(file("${projectDir}/assets/GRCh38_cytobands.txt"))
+    ch_catalog   = Channel.value(file(params.eh_catalog, checkIfExists: true))
 
     SVCALLER(
         ch_input, ch_fasta, ch_fai, ch_bwt_index,
