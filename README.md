@@ -349,6 +349,22 @@ Main gap is recall (~25%) — the callset covers ~9,700 of ~30,000 truth SVs. Pr
 
 ---
 
+## Demo report
+
+A complete, self-contained per-sample report is committed at
+**[`docs/demo/HG002_report.html`](docs/demo/HG002_report.html)** — open it in any
+browser (Bootstrap CSS and Circos SVG are inlined; no network needed).
+
+It is rendered by `bin/html_report.py` from HG002's **real** existing outputs
+(SV tiers from `HG002.filtered.tsv`, `HG002.cnv_consensus.bed`, `HG002.smn.tsv`,
+embedded Circos plot) plus **synthetic, clearly-labelled** copy-number/blood-group
+trait contracts so the new **Blood Group & Copy-Number Traits** card is visible
+(Rh(D) factor, AMY1 copies, GSTM1/GSTT1 null, LPA KIV-2). The trait values are
+placeholders — real values come from a full pipeline run (`TRAIT_DEPTH` mosdepth
+on the BAM); see [docs/omnigen-additions-plan.md](docs/omnigen-additions-plan.md).
+
+---
+
 ## Documentation
 
 | Document | What it covers |

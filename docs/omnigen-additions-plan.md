@@ -12,7 +12,7 @@ Implementation plan for four new per-sample contract files consumed by OmniGen
 > Files added: `assets/cnv_trait_regions.bed`, `bin/cnv_traits_common.py`,
 > `bin/rh_status.py`, `bin/amy1_cn.py`, `bin/gst_null.py`, `bin/lpa_kiv2.py`,
 > `modules/traits/depth.nf`, `subworkflows/cnv_traits.nf`,
-> `tests/test_cnv_traits.py`, `docs/cnv_traits_card_demo.html`.
+> `tests/test_cnv_traits.py`, `docs/demo/HG002_report.html` (full demo report).
 > Files edited: `main.nf`, `workflows/svcaller.nf`, `subworkflows/report.nf`,
 > `conf/docker.config`, `bin/html_report.py`, `assets/report_template.html`,
 > `README.md`.
@@ -497,5 +497,7 @@ bin/rh_status.py --depth HG002.trait_depth.regions.bed.gz \
 * Re-confirm every window in `assets/cnv_trait_regions.bed` against RefSeq/GENCODE
   for the exact assembly, and pick `CTRL_*` regions verified copy-stable/non-segdup.
 
-A rendered demo of the report card (synthetic fixture values, not real depth) is
-at `docs/cnv_traits_card_demo.html`.
+A full rendered per-sample demo report — real HG002 SV/CNV/SMN tables plus the
+new Blood Group & Copy-Number Traits card (trait values are synthetic
+placeholders, clearly labelled; no real BAM depth run yet) — is at
+`docs/demo/HG002_report.html`.

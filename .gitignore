@@ -1,8 +1,67 @@
+# SVcaller — track source only. Shared convention with pgx-suite / poly-suite:
+# pipeline outputs, working dirs, large data, and tooling scratch stay on disk
+# locally but are never committed. The ONLY committed report is docs/demo/.
+
+# ── Nextflow outputs & working dirs (tens of GB) ─────────────────────────────
 results/
+results_*/
+results_*.nf.log
 work/
+work_*/
 .nextflow/
 .nextflow.log*
-*.pyc
+
+# ── Input / validation sequencing data (never committed) ─────────────────────
+ValidationBAM/
+minibam/
+
+# ── Built panels / large reference artifacts (built or volume-mounted) ───────
+pon/
+Benchmarks/
+benchmarks_data/
+
+# ── Alignment / variant / index binaries anywhere in the tree ────────────────
+*.bam
+*.bai
+*.cram
+*.crai
+*.sam
+*.vcf.gz
+*.vcf.gz.tbi
+*.tbi
+*.sif
+*.simg
+*.fa
+*.fasta
+*.fai
+
+# ── Installer / archive blobs (e.g. MELTv2.2.2.tar.gz) ───────────────────────
+*.tar.gz
+*.tar.zst
+*.zip
+
+# ── Vendored web asset blob (present on disk for Docker build / offline HTML) ─
+assets/bootstrap.min.css
+
+# ── Tooling state & scratch (machine-local) ──────────────────────────────────
+.omc/
+.gstack/
+nohup.out
+*.log
+*.tmp
+
+# ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
+*.pyc
+*.pyo
 *.egg-info/
+.pytest_cache/
 .DS_Store
+
+# ── Superseded standalone card demo (folded into docs/demo/HG002_report.html) ─
+# Untracked and kept on disk; the full demo report replaces it.
+docs/cnv_traits_card_demo.html
+
+# ── The committed demo report is an intentional documentation artifact ───────
+!docs/demo/
+!docs/demo/**
