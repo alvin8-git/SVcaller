@@ -22,6 +22,7 @@ Accepts FASTQ or pre-aligned BAM input. Produces a per-sample HTML report with a
 - **STR genotyping** — ExpansionHunter (32 disease loci) + STRling genome-wide scanning
 - **Dual CNV calling** — CNVpytor + GATK gCNV with consensus merging
 - **SMN1/SMN2 copy number** — SMNCopyNumberCaller with 2+0 haplotype detection
+- **Copy-number / blood-group traits** — targeted normalized read depth for Rh factor (RHD), AMY1, GSTM1/GSTT1 null, and LPA KIV-2, emitted as stable per-sample contract files
 - **Clinical annotation** — AnnotSV 3.4.6 with SV PON (GIAB 7-sample), gnomAD-SV AF, SegDup, and ENCODE blacklist badges
 - **Genome-wide visualization** — pycirclize Circos plot (SVs, CNV gains/losses, STR expansions, SMN locus)
 - **3-tier clinical HTML report** — ACMG SF v3.2 Tier 1, OMIM morbid Tier 2, Tier 3 with full XLS export; Bootstrap 5, embedded SVG, optional truvari GIAB benchmark
@@ -285,9 +286,33 @@ results/
     ├── <sample_id>.filtered.tsv         # AnnotSV-annotated, gnomAD-SV-filtered SVs
     ├── <sample_id>.circos.svg           # Genome-wide Circos plot (embedded inline in HTML)
     ├── <sample_id>.circos.png
+    ├── bloodgroup/
+    │   └── <sample_id>.rh_status.tsv    # Rh factor: RHD copy number → Rh+/- (CNV trait)
+    ├── cnv_traits/
+    │   ├── <sample_id>.amy1.tsv         # AMY1 (salivary amylase) copy number
+    │   ├── <sample_id>.gst_null.tsv     # GSTM1 / GSTT1 null (homozygous deletion) status
+    │   └── <sample_id>.lpa_kiv2.tsv     # LPA KIV-2 tandem-repeat copy number (Lp(a))
     └── <sample_id>.truvari/             # GIAB benchmark (if --giab_truth set)
         └── summary.json
 ```
+
+### Copy-number / blood-group trait contracts
+
+Small, stable per-sample TSVs emitted by the `CNV_TRAITS` subworkflow for
+downstream interpretation (e.g. OmniGen). Each is a targeted, normalized
+read-depth estimate from the aligned BAM (mosdepth over `assets/cnv_trait_regions.bed`,
+`--mapq 0`, normalized to copy-number-stable `CTRL_*` control regions); the CNV
+consensus BED corroborates called deletions but does not drive the call.
+
+| File | Columns |
+|------|---------|
+| `bloodgroup/<S>.rh_status.tsv` | `sample`, `RHD_copies`, `Rh_status` (pos/neg), `confidence` |
+| `cnv_traits/<S>.amy1.tsv` | `sample`, `AMY1_copies`, `method` |
+| `cnv_traits/<S>.gst_null.tsv` | `sample`, `GSTM1` (null/present), `GSTT1` (null/present) |
+| `cnv_traits/<S>.lpa_kiv2.tsv` | `sample`, `KIV2_copies`, `method` |
+
+See [docs/omnigen-additions-plan.md](docs/omnigen-additions-plan.md) for design,
+coordinates, thresholds, and calibration notes.
 
 The HTML report includes:
 - Alignment QC (coverage, duplication rate, insert size)
@@ -298,6 +323,7 @@ The HTML report includes:
 - **Tier 2** — OMIM morbid gene candidates, top 10 shown; full list in XLS download
 - **Tier 3** — all remaining SVs, top 10 shown; full list in XLS download
 - STR expansion loci with INREPEAT / NORMAL / INTERMEDIATE status
+- **Blood Group & Copy-Number Traits** card — Rh(D) factor (RHD copy number), AMY1 copies, GSTM1/GSTT1 null status, LPA KIV-2 copies
 - GIAB benchmark precision/recall/F1 with per-size-bin breakdown (optional)
 
 ---
@@ -345,11 +371,11 @@ Main gap is recall (~25%) — the callset covers ~9,700 of ~30,000 truth SVs. Pr
 # Install test dependencies
 pip install pytest pycirclize matplotlib jinja2 openpyxl pandas
 
-# Run all 25 unit tests
+# Run all unit tests
 pytest tests/ -v
 ```
 
-Tests cover: samplesheet validation, CNV consensus merging, SMN classification, Circos plot parsing, HTML report rendering.
+Tests cover: samplesheet validation, CNV consensus merging, SMN classification, Circos plot parsing, HTML report rendering, and CNV/blood-group trait interpreters (Rh/RHD, AMY1, GSTM1/GSTT1 null, LPA KIV-2 — arithmetic on synthetic depth fixtures, consensus cross-check against the real HG002 consensus BED, and contract-schema round-trips).
 
 ---
 

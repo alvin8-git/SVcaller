@@ -16,7 +16,8 @@ process BUILD_HTML_REPORT {
                      path(coverage_summary), path(picard_metrics), path(str_vcf),
                      path(flagstat_txt), path(insert_size_metrics),
                      path(benchmark_json_v5q), path(sizebin_json_v5q),
-                     path(strling_tsv), path(sv_vcf)
+                     path(strling_tsv), path(sv_vcf),
+                     path(rh_status_tsv), path(amy1_tsv), path(gst_null_tsv), path(lpa_kiv2_tsv)
 
     output:
     tuple val(meta), path("${meta.id}.report.html"),    emit: html
@@ -33,6 +34,10 @@ process BUILD_HTML_REPORT {
     def bench_v5q_arg   = benchmark_json_v5q.name  != "NO_BENCH_V5Q"  ? "--benchmark-v5q ${benchmark_json_v5q}"  : ""
     def sizebin_v5q_arg = sizebin_json_v5q.name    != "NO_SBN_V5Q"    ? "--sizebin-v5q   ${sizebin_json_v5q}"    : ""
     def strling_arg     = strling_tsv.name         != "NO_STRLING"    ? "--strling-tsv   ${strling_tsv}"         : ""
+    def rh_arg          = rh_status_tsv.name       != "NO_FILE"       ? "--rh-status     ${rh_status_tsv}"       : ""
+    def amy1_arg        = amy1_tsv.name            != "NO_FILE"       ? "--amy1          ${amy1_tsv}"            : ""
+    def gst_arg         = gst_null_tsv.name        != "NO_FILE"       ? "--gst-null      ${gst_null_tsv}"        : ""
+    def lpa_arg         = lpa_kiv2_tsv.name        != "NO_FILE"       ? "--lpa-kiv2      ${lpa_kiv2_tsv}"        : ""
     """
     export PATH=${projectDir}/bin:\$PATH
     smn_report.py \\
@@ -60,7 +65,11 @@ process BUILD_HTML_REPORT {
         ${flagstat_arg} \\
         ${insert_size_arg} \\
         ${str_arg} \\
-        ${strling_arg}
+        ${strling_arg} \\
+        ${rh_arg} \\
+        ${amy1_arg} \\
+        ${gst_arg} \\
+        ${lpa_arg}
     """
 }
 
@@ -84,6 +93,10 @@ workflow REPORT {
     ch_depth_bed     // [ meta, regions.bed.gz ]    mosdepth 50kb windows for Circos ring A
     ch_annotsv_tsv   // [ meta, annotated.tsv ]     raw AnnotSV output for Circos rings B/C
     ch_strling_tsv   // [ meta, tsv ] STRling genome-wide STR expansions (optional)
+    ch_rh_status     // [ meta, rh_status.tsv ]     Rh/RHD blood group (CNV traits)
+    ch_amy1          // [ meta, amy1.tsv ]          AMY1 copy number
+    ch_gst_null      // [ meta, gst_null.tsv ]      GSTM1/GSTT1 null
+    ch_lpa_kiv2      // [ meta, lpa_kiv2.tsv ]       LPA KIV-2 copy number
 
     main:
     ch_circos_in = ch_sv_vcf
@@ -182,9 +195,22 @@ workflow REPORT {
         // Append the merged SV VCF (mandatory, keyed on meta) — fallback source for the
         // SV sheet when AnnotSV produced an empty TSV. Exact join: every sample has one.
         .join(ch_sv_vcf)
+        // tuple: [meta, sv, cnv, smn, svg, bench, sizebin, cov, met, str, flagstat, ins,
+        //         bench_v5q, sizebin_v5q, strling, sv_vcf]
+        // CNV / blood-group trait contract files (all optional → NO_FILE sentinel).
+        // Appended positionally; NO_FILE keeps a report for samples that skip traits.
+        .join(ch_rh_status, remainder: true).filter { it[1] != null }
+        .map { row -> row[0..-2] + [row[-1] ?: file("NO_FILE")] }
+        .join(ch_amy1, remainder: true).filter { it[1] != null }
+        .map { row -> row[0..-2] + [row[-1] ?: file("NO_FILE")] }
+        .join(ch_gst_null, remainder: true).filter { it[1] != null }
+        .map { row -> row[0..-2] + [row[-1] ?: file("NO_FILE")] }
+        .join(ch_lpa_kiv2, remainder: true).filter { it[1] != null }
+        .map { row -> row[0..-2] + [row[-1] ?: file("NO_FILE")] }
         // final: [meta, sv_tsv, cnv_bed, smn_tsv, circos_svg, benchmark_json, sizebin_json,
         //         coverage_summary, picard_metrics, str_vcf, flagstat_txt, insert_size_metrics,
-        //         benchmark_json_v5q, sizebin_json_v5q, strling_tsv, sv_vcf]
+        //         benchmark_json_v5q, sizebin_json_v5q, strling_tsv, sv_vcf,
+        //         rh_status, amy1, gst_null, lpa_kiv2]
 
     BUILD_HTML_REPORT(ch_report_in)
 

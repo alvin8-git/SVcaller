@@ -42,11 +42,13 @@ workflow {
     ch_cytobands = Channel.fromPath("${projectDir}/assets/GRCh38_cytobands.txt",
                                      checkIfExists: false)
     ch_catalog   = Channel.fromPath(params.eh_catalog, checkIfExists: true)
+    ch_trait_regions = Channel.value(file("${projectDir}/assets/cnv_trait_regions.bed",
+                                          checkIfExists: true))
 
     SVCALLER(
         ch_input, ch_fasta, ch_fai, ch_bwt_index,
         ch_dict, ch_pon, ch_intervals, ch_annotsv,
-        ch_cytobands, ch_catalog,
+        ch_cytobands, ch_catalog, ch_trait_regions,
     )
 }
 

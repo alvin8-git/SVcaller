@@ -1,6 +1,7 @@
 include { PREPROCESS      } from '../subworkflows/preprocess'
 include { SV_CALLING      } from '../subworkflows/sv_calling'
 include { CNV_CALLING     } from '../subworkflows/cnv_calling'
+include { CNV_TRAITS      } from '../subworkflows/cnv_traits'
 include { SMN_CALLING     } from '../subworkflows/smn_calling'
 include { ANNOTATE        } from '../subworkflows/annotate'
 include { REPORT          } from '../subworkflows/report'
@@ -18,6 +19,7 @@ workflow SVCALLER {
     ch_annotsv_db
     ch_cytobands
     ch_eh_catalog
+    ch_trait_regions
 
     main:
     // M1: Preprocess
@@ -29,6 +31,10 @@ workflow SVCALLER {
     SV_CALLING(ch_bam, ch_fasta, ch_fai, ch_eh_catalog)
     CNV_CALLING(ch_bam, ch_fasta, ch_fai, ch_dict, ch_pon, ch_intervals)
     SMN_CALLING(ch_bam, ch_fasta, ch_fai)
+
+    // Copy-number / blood-group traits: targeted normalized read depth + consensus
+    // corroboration → per-sample OmniGen contract files (Rh/RHD, AMY1, GST-null, LPA KIV-2)
+    CNV_TRAITS(ch_bam, ch_trait_regions, CNV_CALLING.out.cnv_bed)
 
     // P3: Optional GIAB SV PON annotation — annotates Jasmine VCF with SV_PON=1
     // before AnnotSV so the flag is preserved in the TSV INFO column.
@@ -88,6 +94,10 @@ workflow SVCALLER {
         PREPROCESS.out.regions_bed,
         ANNOTATE.out.annotated_tsv,
         SV_CALLING.out.strling_tsv,
+        CNV_TRAITS.out.rh,
+        CNV_TRAITS.out.amy1,
+        CNV_TRAITS.out.gst,
+        CNV_TRAITS.out.lpa,
     )
 
     emit:

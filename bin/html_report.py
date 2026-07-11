@@ -1248,6 +1248,87 @@ def _inline_bootstrap_css() -> str:
         return ""
 
 
+def _read_trait_tsv(path):
+    """Read a one-record trait contract TSV (header line starts with '#')."""
+    if not path:
+        return None
+    p = Path(path)
+    if p.name in ("NO_FILE", "") or not p.exists():
+        return None
+    header, data = None, None
+    for line in p.read_text().splitlines():
+        if not line.strip():
+            continue
+        if line.startswith("#"):
+            header = line.lstrip("#").split("\t")
+        elif data is None:
+            data = line.split("\t")
+    if not header or not data:
+        return None
+    return dict(zip(header, data))
+
+
+def build_cnv_traits_section(rh_status_path=None, amy1_path=None,
+                             gst_null_path=None, lpa_kiv2_path=None):
+    """Build the 'Blood Group & Copy-Number Traits' report card.
+
+    Returns an HTML string (a Bootstrap card), or '' when no trait file is present.
+    """
+    rh   = _read_trait_tsv(rh_status_path)
+    amy1 = _read_trait_tsv(amy1_path)
+    gst  = _read_trait_tsv(gst_null_path)
+    lpa  = _read_trait_tsv(lpa_kiv2_path)
+    if not any([rh, amy1, gst, lpa]):
+        return ""
+
+    def esc(x):
+        return (str(x).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+    rows = []
+    if rh:
+        badge = "danger" if rh.get("Rh_status") == "neg" else "success"
+        label = {"pos": "Rh(D) positive", "neg": "Rh(D) negative"}.get(
+            rh.get("Rh_status"), rh.get("Rh_status", "unknown"))
+        rows.append(
+            '<tr><th>Rh(D) blood group</th>'
+            '<td><span class="badge bg-{}">{}</span></td>'
+            '<td>RHD copies: {} &middot; confidence: {}</td></tr>'.format(
+                badge, esc(label), esc(rh.get("RHD_copies", "NA")),
+                esc(rh.get("confidence", ""))))
+    if amy1:
+        rows.append(
+            '<tr><th>AMY1 (salivary amylase)</th>'
+            '<td>{} copies</td><td>{}</td></tr>'.format(
+                esc(amy1.get("AMY1_copies", "NA")), esc(amy1.get("method", ""))))
+    if gst:
+        def gbadge(v):
+            b = "warning" if v == "null" else "secondary"
+            return '<span class="badge bg-{}">{}</span>'.format(b, esc(v))
+        rows.append(
+            '<tr><th>GSTM1 / GSTT1 (detox)</th>'
+            '<td>GSTM1 {} &middot; GSTT1 {}</td>'
+            '<td>null = homozygous gene deletion</td></tr>'.format(
+                gbadge(gst.get("GSTM1", "unknown")), gbadge(gst.get("GSTT1", "unknown"))))
+    if lpa:
+        rows.append(
+            '<tr><th>Lp(a) — LPA KIV-2</th>'
+            '<td>{} repeat copies</td><td>{}</td></tr>'.format(
+                esc(lpa.get("KIV2_copies", "NA")), esc(lpa.get("method", ""))))
+
+    return (
+        '<div class="card section-card">'
+        '<div class="card-header"><h5>Blood Group &amp; Copy-Number Traits</h5></div>'
+        '<div class="card-body">'
+        '<table class="table table-sm table-bordered mb-1">'
+        '<thead><tr><th>Trait</th><th>Result</th><th>Detail</th></tr></thead>'
+        '<tbody>' + "".join(rows) + '</tbody></table>'
+        '<p class="text-muted small mb-0">Targeted normalized read-depth estimates '
+        '(RHD/AMY1/GSTM1/GSTT1/LPA-KIV2); CNV consensus used only to corroborate '
+        'called deletions.</p>'
+        '</div></div>'
+    )
+
+
 def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   sv_tsv_path: str, circos_svg_path: str, out_path: str,
                   pipeline_version: str = "1.0.0",
@@ -1262,7 +1343,11 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   str_vcf_path: str = None,
                   strling_tsv_path: str = None,
                   smn_tsv_path: str = None,
-                  sv_vcf_path: str = None) -> None:
+                  sv_vcf_path: str = None,
+                  rh_status_path: str = None,
+                  amy1_path: str = None,
+                  gst_null_path: str = None,
+                  lpa_kiv2_path: str = None) -> None:
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("report_template.html")
 
@@ -1297,6 +1382,8 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     cnv_summary       = parse_cnv_summary(cnv_bed_path)
     cnv_syndromes      = load_cnv_syndromes()
     cnv_top, cnv_total = top_cnvs_by_size(cnv_bed_path, n=10, cnv_syndromes=cnv_syndromes)
+    cnv_traits_html    = build_cnv_traits_section(rh_status_path, amy1_path,
+                                                  gst_null_path, lpa_kiv2_path)
     benchmark          = parse_benchmark(benchmark_json)           if benchmark_json      else None
     benchmark_bins     = parse_benchmark_sizebin(sizebin_json)     if sizebin_json        else None
     benchmark_v5q      = parse_benchmark(benchmark_v5q_json)       if benchmark_v5q_json  else None
@@ -1335,6 +1422,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
         cnv_summary=cnv_summary,
         cnv_top=cnv_top,
         cnv_total=cnv_total,
+        cnv_traits_html=cnv_traits_html,
         smn_html=smn_html,
         circos_svg_inline=circos_svg_inline,
         benchmark=benchmark,
@@ -1373,6 +1461,10 @@ def main():
     parser.add_argument("--sv-vcf",           default=None, dest="sv_vcf",
                         help="Merged SV VCF; fallback source for the SV sheet when the "
                              "AnnotSV TSV is empty (run without --annotsv_db).")
+    parser.add_argument("--rh-status",        default=None, dest="rh_status")
+    parser.add_argument("--amy1",             default=None, dest="amy1")
+    parser.add_argument("--gst-null",         default=None, dest="gst_null")
+    parser.add_argument("--lpa-kiv2",         default=None, dest="lpa_kiv2")
     args = parser.parse_args()
     render_report(
         sample_id=args.sample,
@@ -1394,6 +1486,10 @@ def main():
         strling_tsv_path=args.strling_tsv,
         smn_tsv_path=args.smn_tsv,
         sv_vcf_path=args.sv_vcf,
+        rh_status_path=args.rh_status,
+        amy1_path=args.amy1,
+        gst_null_path=args.gst_null,
+        lpa_kiv2_path=args.lpa_kiv2,
     )
 
 
