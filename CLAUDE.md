@@ -165,6 +165,7 @@ main.nf                          # Entry: parse samplesheet, set up channels, ca
 - M2, M3, M4 run in parallel on the same BAM channel after preprocessing.
 - M3 case mode runs `GATK_PREPROCESS_INTERVALS` (bin-length 1000) before `CollectReadCounts` — must match PON build intervals.
 - SV merge (Jasmine) requires Manta+Delly+GRIDSS to succeed; Scramble and MELT are optional (only added to vcf_list.txt if they have calls).
+- `TRA_CONSENSUS` (`bin/tra_consensus.py`) runs after Jasmine: Jasmine does not co-cluster interchromosomal breakends, so every translocation lands at SUPP=1 and the SUPP≥2 gate erased all of them (0/26 on COLO829). This step re-clusters TRA by breakend proximity (`--tra_window`, default 1000 bp) across callers and recomputes SUPP/SUPP_VEC → 24/26 recall on COLO829. It (not JASMINE_MERGE) publishes the final `sv_merged.vcf.gz`. GRIDSS still drops inter-chr pairs in `gridss_convert_bnd.py`, so it contributes no TRA vote yet (the 2 missed are Delly-only).
 - CNV consensus (`bin/cnv_consensus.py`) uses reciprocal overlap ≥0.5 to call `BOTH`/`HIGH` calls; GATK-only calls with quality ≥30 are included as `MEDIUM`.
 - Mosdepth halts the pipeline if coverage < `params.min_depth` (default 30).
 - Optional inputs (PoN, intervals, AnnotSV DB, GIAB truth) use `Channel.value(file("NO_PON"))` / `Channel.empty()` sentinel patterns. ANNOTSV emits a stub empty TSV when `--annotsv_db` is not provided.
@@ -175,6 +176,7 @@ main.nf                          # Entry: parse samplesheet, set up channels, ca
 
 - **PON built without GC correction**: `CreateReadCountPanelOfNormals` omits `--annotated-intervals` because the GRCh38 `.dict` file has alphabetical chromosome order while BAM headers use numeric order — GATK dict comparison fails. Acceptable for WGS at 30x.
 - **Nextflow channel exhaustion**: shared reference files (FASTA, FAI, dict, bwt_index) must use `Channel.value()` not `Channel.fromPath()` — queue channels are consumed after the first subworkflow and all subsequent subworkflows receive nothing. Fixed in `main.nf`, `pon_build.nf`, and `cnv_calling.nf`.
+- **Meta-map consistency for exact joins**: REPORT's `ch_report_in` uses exact `.join()` on the full `meta` map, so any channel whose meta differs by even one key is silently dropped (no report produced). `ch_final_bam` adds `needs_chr_filter` (preprocess.nf) which propagates to coverage/flagstat/insert_size/SV/CNV/SMN, but `PICARD_MARKDUP.out.metrics` is produced before the tag — it must be re-tagged (`needs_chr_filter: false`) to match, or every FASTQ-derived sample's report silently vanishes. When adding meta keys mid-pipeline, tag ALL sibling channels or normalize joins to `meta.id`.
 - **BWA-MEM2 index path**: The bwt_index is staged as a directory in the work dir. BWA-MEM2 must be called with `${bwt_index}/${fasta}` (not just `${fasta}`) so it finds index files inside the staged directory rather than the work dir root.
 - **samtools not in bwa-mem2 container**: `quay.io/biocontainers/bwa-mem2:2.2.1--he70b90d_8` does not include samtools. Sorting is done in a separate `SAMTOOLS_SORT` process using `quay.io/biocontainers/samtools:1.23.1--ha83d96e_0`.
 - **annotsv not in conda env**: runs via Docker (`quay.io/biocontainers/annotsv:3.4.6--py313hdfd78af_0`) or gracefully skipped (emits empty TSV header) when `--annotsv_db` not provided.
@@ -243,6 +245,7 @@ validation/giab_samplesheet.csv
 | `--giab_truth_v5q` | null | GIAB v5.0q truth VCF.gz (enables Truvari v5q benchmark) |
 | `--skip_melt` | false | Skip MELT MEI calling (saves ~2h; use when MELT container unavailable) |
 | `--melt_refs` | null | Path to MELT me_refs dir (auto-detected from container if unset) |
+| `--tra_window` | 1000 | Breakend-proximity window (bp) for cross-caller translocation consensus (TRA_CONSENSUS) |
 | `--min_depth` | 25 | Mosdepth coverage threshold |
 | `--outdir` | results | Output directory |
 | `--auto_cleanup` | false | Delete `-work-dir` on successful completion (drops `-resume` cache; one-shot runs only). Otherwise run `bash bin/nf-cleanup.sh <sampleId>` post-run. |

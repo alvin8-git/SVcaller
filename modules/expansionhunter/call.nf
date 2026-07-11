@@ -2,6 +2,11 @@ process EXPANSIONHUNTER {
     tag "${meta.id}"
     label 'process_low'
 
+    // Publish the repeat-expansion profile to a stable results path so downstream
+    // consumers (e.g. OmniGen) read it from results/ instead of the ephemeral
+    // Nextflow work/ hash dir, which is garbage-collected and changes every run.
+    publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.str_profile.json"
+
     input:
     tuple val(meta), path(bam), path(bai)
     path fasta

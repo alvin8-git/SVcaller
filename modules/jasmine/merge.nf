@@ -1,7 +1,7 @@
 process JASMINE_MERGE {
     tag "${meta.id}"
     label 'process_medium'
-    publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.sv_merged.vcf.gz*"
+    // Not published: TRA_CONSENSUS consumes this and publishes the final sv_merged.vcf.gz.
 
     input:
     tuple val(meta), path(vcfs)   // list of VCF.gz files: [manta, delly, gridss, scramble, melt]

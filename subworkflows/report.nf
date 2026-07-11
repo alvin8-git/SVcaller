@@ -103,9 +103,11 @@ workflow REPORT {
         .join(ch_cnv_bed, remainder: true)
         .filter { it[1] != null }   // drop cnv_bed-only remainders (sv_vcf absent)
         .map { meta, sv, cnv -> [meta, sv, cnv ?: file("NO_FILE")] }
-        // Exact (inner) join on meta — deterministic. remainder:true raced Jasmine
-        // (str_vcf caches first) and non-deterministically dropped STR to NO_STR.
-        .join(ch_str_vcf)
+        // STR is optional for the plot: remainder + NO_STR fallback (final map below)
+        // so a sample missing/late STR keeps its circos instead of vanishing. An exact
+        // join here silently dropped whole samples whose EH didn't emit (SMAM/SMAD).
+        .join(ch_str_vcf, remainder: true)
+        .filter { it[1] != null }   // drop str-only remainders (sv_vcf absent)
         .join(ch_depth_bed, remainder: true)
         .join(ch_annotsv_tsv, remainder: true)
         .filter { it[1] != null }
@@ -154,10 +156,12 @@ workflow REPORT {
         .join(CIRCOS_PLOT.out.svg)
         .join(ch_coverage)
         .join(ch_metrics)
-        // Exact (inner) join on meta — NOT remainder:true. ExpansionHunter always runs,
-        // so every sample has an STR VCF; remainder:true raced Jasmine and non-
-        // deterministically dropped the STR VCF to NO_STR for some samples.
-        .join(ch_str_vcf)
+        // STR optional: remainder + NO_STR fallback so a sample whose EH didn't emit
+        // degrades the STR section instead of silently dropping the whole report.
+        // The REPORT-count guard below fails fast if any sample still vanishes.
+        .join(ch_str_vcf, remainder: true)
+        .filter { it[1] != null }   // drop str-only remainders (sv_tsv absent)
+        .map { meta, sv, cnv, smn, svg, cov, met, str -> [meta, sv, cnv, smn, svg, cov, met, str ?: file("NO_STR")] }
         .join(ch_flagstat)
         .join(ch_insert_size)
         // tuple: [meta, sv, cnv, smn, svg, cov, met, str, flagstat, ins]
@@ -213,6 +217,19 @@ workflow REPORT {
         //         rh_status, amy1, gst_null, lpa_kiv2]
 
     BUILD_HTML_REPORT(ch_report_in)
+
+    // Fail-fast guard: every sample entering REPORT (one sv_tsv each) must produce an
+    // HTML report. A meta-mismatch or missing-channel join used to drop samples silently
+    // and the run still printed "complete" (SMAM/SMAD lost their reports this way).
+    ch_sv_tsv.count()
+        .combine(BUILD_HTML_REPORT.out.html.count())
+        .subscribe { expected, got ->
+            if (got < expected) {
+                error "REPORT: only ${got}/${expected} samples produced an HTML report — " +
+                      "${expected - got} silently dropped in a channel join. Check meta-map " +
+                      "consistency / channel cardinality in subworkflows/report.nf."
+            }
+        }
 
     emit:
     html    = BUILD_HTML_REPORT.out.html
