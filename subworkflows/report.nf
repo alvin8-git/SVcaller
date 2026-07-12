@@ -113,9 +113,17 @@ workflow REPORT {
         .filter { it[1] != null }
         .join(ch_strling_tsv, remainder: true)
         .filter { it[1] != null }
-        .map { meta, sv, cnv, str, depth, annotsv, strling ->
+        // CNV-trait TSVs feed the optional trait ring; remainder + NO_FILE fallback
+        // so trait-less samples (e.g. BAM-less COLO829) still render (ring skipped).
+        .join(ch_rh_status, remainder: true).filter { it[1] != null }
+        .join(ch_amy1,      remainder: true).filter { it[1] != null }
+        .join(ch_gst_null,  remainder: true).filter { it[1] != null }
+        .join(ch_lpa_kiv2,  remainder: true).filter { it[1] != null }
+        .map { meta, sv, cnv, str, depth, annotsv, strling, rh, amy1, gst, lpa ->
             [meta, sv, cnv, str ?: file("NO_STR"), depth ?: file("NO_DEPTH"),
-             annotsv ?: file("NO_ANNOTSV"), strling ?: file("NO_STRLING")]
+             annotsv ?: file("NO_ANNOTSV"), strling ?: file("NO_STRLING"),
+             rh ?: file("NO_FILE"), amy1 ?: file("NO_FILE"),
+             gst ?: file("NO_FILE"), lpa ?: file("NO_FILE")]
         }
     CIRCOS_PLOT(ch_circos_in, ch_cytobands)
 

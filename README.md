@@ -193,10 +193,14 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf \
     --ref_fasta /path/to/hg38.canonical.fa \
     --giab_truth /path/to/GIAB/HG002_T2TQ100-V1.0_stvar.vcf.gz \
     --giab_truth_v5q /path/to/GIAB/HG002_v5.0q_stvar.vcf.gz \
-    --outdir results_HG002 \
-    -work-dir work_HG002 \
-    > /tmp/HG002_run1.log 2>&1 &
+    --outdir results \
+    -work-dir work \
+    > HG002_run1.log 2>&1 &
 ```
+
+All samples share a single unified `--outdir results` (Nextflow writes each sample
+to its own `results/<sample_id>/` subdir) and a single `-work-dir work` scratch
+directory. See [Output](#output) for the consolidated layout.
 
 ### Resume a failed run
 
@@ -273,6 +277,22 @@ Pass it to the main pipeline with `--pon /path/to/SVcaller/pon/pon/giab_cnv_pon.
 
 ## Output
 
+All runs share one consolidated `results/` tree, one subdirectory per sample.
+Current occupants (see [ORGANIZATION.md](ORGANIZATION.md) for the reorg history):
+
+```
+results/
+├── HG002/                    # GIAB reference (SV/CNV/STR/SMN + blood-group traits)
+├── HG001/                    # GIAB NA12878 (30X GRCh38 + blood-group traits)
+├── COLO829/                  # tumor SV/CNV (depth traits omitted — no BAM)
+├── SMN/{SMAD,SMAM,SMAPB}/    # SMA trio
+├── _experiments/{HG002_wedge,svpon}/   # retained experimental runs
+├── pon/                      # shared Panel of Normals (single copy)
+└── cache/                    # shared reference-derived pipeline cache (gitignored)
+```
+
+Each sample subdirectory contains:
+
 ```
 results/
 └── <sample_id>/
@@ -317,7 +337,8 @@ coordinates, thresholds, and calibration notes.
 The HTML report includes:
 - Alignment QC (coverage, duplication rate, insert size)
 - SV summary table by type and caller
-- Embedded Circos plot (SVs, CNV gains/losses, STR expansions, SMN locus)
+- Embedded Circos plot (SVs, CNV gains/losses, STR expansions, SMN locus, and a
+  labelled CNV-trait ring — RHD/AMY1/GSTM1/GSTT1/LPA KIV-2 — when trait TSVs are present)
 - SMN1/SMN2 copy number with SMA carrier/affected classification
 - **Tier 1** — ACMG SF v3.2 actionable SVs (≥2 callers, no PON hit)
 - **Tier 2** — OMIM morbid gene candidates, top 10 shown; full list in XLS download
@@ -357,11 +378,26 @@ browser (Bootstrap CSS and Circos SVG are inlined; no network needed).
 
 It is rendered by `bin/html_report.py` from HG002's **real** existing outputs
 (SV tiers from `HG002.filtered.tsv`, `HG002.cnv_consensus.bed`, `HG002.smn.tsv`,
-embedded Circos plot) plus **synthetic, clearly-labelled** copy-number/blood-group
-trait contracts so the new **Blood Group & Copy-Number Traits** card is visible
-(Rh(D) factor, AMY1 copies, GSTM1/GSTT1 null, LPA KIV-2). The trait values are
-placeholders — real values come from a full pipeline run (`TRAIT_DEPTH` mosdepth
-on the BAM); see [docs/omnigen-additions-plan.md](docs/omnigen-additions-plan.md).
+embedded Circos plot). The **Blood Group & Copy-Number Traits** card
+(Rh(D) factor, AMY1 copies, GSTM1/GSTT1 null, LPA KIV-2) now shows **real,
+validated** values computed from targeted normalized read depth on the 30X HG002
+BAM (2026-07-12): Rh(D) **positive** (RHD CN 2), GSTM1/GSTT1 **present**, AMY1 2,
+LPA KIV-2 5. The Rh(D)-positive call agrees with the CNV consensus (no RHD
+deletion) and the GSTM1 het-deletion call agrees with GIAB v5.0q truth — see the
+validation table in [docs/omnigen-additions-plan.md](docs/omnigen-additions-plan.md).
+AMY1 and LPA KIV-2 absolute copies remain proportional-only pending calibration.
+
+Two more full reports are committed alongside it:
+
+- **[`docs/demo/HG001_report.html`](docs/demo/HG001_report.html)** — GIAB NA12878,
+  regenerated from real 30X outputs with the trait card computed from the HG001 BAM
+  (Rh(D) **positive**, GSTM1/GSTT1 **present**, AMY1 2, KIV-2 6). Note: NA12878 is
+  often cited as a "GSTM1-null" anchor, but this BAM reads **~1 copy** at GSTM1
+  (het deletion), not a homozygous null — see the validation table in
+  [docs/omnigen-additions-plan.md](docs/omnigen-additions-plan.md).
+- **[`docs/demo/COLO829_report.html`](docs/demo/COLO829_report.html)** — COLO829
+  tumor, SV/CNV focus. The Blood Group & Copy-Number Traits card carries an explicit
+  note that depth traits were **not computed** (no aligned BAM was available).
 
 ---
 

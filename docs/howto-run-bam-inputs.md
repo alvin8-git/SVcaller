@@ -37,7 +37,7 @@ Each sample must have its own work directory to prevent session lock conflicts.
 # validation/smn_SMAPB_samplesheet.csv
 
 for SAMPLE in SMAM SMAD SMAPB; do
-  WORK_DIR=/path/to/SVcaller/work_smn/${SAMPLE}
+  WORK_DIR=/path/to/SVcaller/work/${SAMPLE}
   mkdir -p "${WORK_DIR}/.nxf_cache"
   NXF_ANSI_LOG=false nohup nextflow run /path/to/SVcaller/main.nf \
     -profile docker \
@@ -49,7 +49,7 @@ for SAMPLE in SMAM SMAD SMAPB; do
     --eh_catalog  /path/to/SVcaller/assets/eh_catalog.json \
     --sv_pon      /path/to/SVcaller/pon/sv_pon/giab_sv_pon.bed \
     --skip_gridss true \
-    --outdir      /path/to/SVcaller/results_smn \
+    --outdir      /path/to/SVcaller/results \
     -work-dir     "$WORK_DIR" \
     -resume \
     > /path/to/tmp/smn_${SAMPLE}_run1.log 2>&1 &

@@ -2,7 +2,7 @@
 # Post-run cleanup. Two modes:
 #
 #   bash bin/nf-cleanup.sh <sample_id>
-#       Remove work_<sample_id> after confirming results are published, and
+#       Remove work/<sample_id> after confirming results are published, and
 #       prune orphaned .nextflow/cache sessions.  (per-sample full delete)
 #
 #   bash bin/nf-cleanup.sh --reclaim [--force]
@@ -80,11 +80,11 @@ fi
 # Mode: per-sample full delete
 # ---------------------------------------------------------------------------
 SAMPLE="${1:?Usage: nf-cleanup.sh <sample_id> | --reclaim [--force]}"
-WORK_DIR="${REPO_DIR}/work_${SAMPLE}"
+WORK_DIR="${REPO_DIR}/work/${SAMPLE}"
 
 # 1. Verify results published before deleting work dir
 RESULTS_FOUND=0
-for OUTDIR in "${REPO_DIR}/results" "${REPO_DIR}/results_smn" "${REPO_DIR}/results_giab" "${REPO_DIR}/results_${SAMPLE}"; do
+for OUTDIR in "${REPO_DIR}/results"; do
   if [ -d "${OUTDIR}/${SAMPLE}" ] || ls "${OUTDIR}"/*.html 2>/dev/null | grep -q "${SAMPLE}" 2>/dev/null; then
     RESULTS_FOUND=1
     echo "Results confirmed at: ${OUTDIR}"
@@ -93,7 +93,7 @@ for OUTDIR in "${REPO_DIR}/results" "${REPO_DIR}/results_smn" "${REPO_DIR}/resul
 done
 
 if [ "${RESULTS_FOUND}" -eq 0 ]; then
-  echo "ERROR: No results found for ${SAMPLE} in any results_* directory." >&2
+  echo "ERROR: No results found for ${SAMPLE} in ${REPO_DIR}/results/." >&2
   echo "       Run 'ls results*/*/  to verify outputs before cleaning." >&2
   exit 1
 fi

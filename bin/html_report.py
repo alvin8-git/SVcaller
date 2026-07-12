@@ -1269,16 +1269,31 @@ def _read_trait_tsv(path):
 
 
 def build_cnv_traits_section(rh_status_path=None, amy1_path=None,
-                             gst_null_path=None, lpa_kiv2_path=None):
+                             gst_null_path=None, lpa_kiv2_path=None,
+                             traits_note=None):
     """Build the 'Blood Group & Copy-Number Traits' report card.
 
     Returns an HTML string (a Bootstrap card), or '' when no trait file is present.
+    When no trait files are present but a `traits_note` is supplied (e.g. a
+    BAM-less sample where depth could not be computed), a small note card is
+    emitted instead so the omission is stated explicitly rather than silent.
     """
     rh   = _read_trait_tsv(rh_status_path)
     amy1 = _read_trait_tsv(amy1_path)
     gst  = _read_trait_tsv(gst_null_path)
     lpa  = _read_trait_tsv(lpa_kiv2_path)
     if not any([rh, amy1, gst, lpa]):
+        if traits_note:
+            note = (str(traits_note).replace("&", "&amp;")
+                    .replace("<", "&lt;").replace(">", "&gt;"))
+            return (
+                '<div class="card section-card">'
+                '<div class="card-header"><h5>Blood Group &amp; '
+                'Copy-Number Traits</h5></div>'
+                '<div class="card-body">'
+                '<p class="text-muted mb-0">' + note + '</p>'
+                '</div></div>'
+            )
         return ""
 
     def esc(x):
@@ -1347,7 +1362,8 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   rh_status_path: str = None,
                   amy1_path: str = None,
                   gst_null_path: str = None,
-                  lpa_kiv2_path: str = None) -> None:
+                  lpa_kiv2_path: str = None,
+                  traits_note: str = None) -> None:
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("report_template.html")
 
@@ -1383,7 +1399,8 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     cnv_syndromes      = load_cnv_syndromes()
     cnv_top, cnv_total = top_cnvs_by_size(cnv_bed_path, n=10, cnv_syndromes=cnv_syndromes)
     cnv_traits_html    = build_cnv_traits_section(rh_status_path, amy1_path,
-                                                  gst_null_path, lpa_kiv2_path)
+                                                  gst_null_path, lpa_kiv2_path,
+                                                  traits_note=traits_note)
     benchmark          = parse_benchmark(benchmark_json)           if benchmark_json      else None
     benchmark_bins     = parse_benchmark_sizebin(sizebin_json)     if sizebin_json        else None
     benchmark_v5q      = parse_benchmark(benchmark_v5q_json)       if benchmark_v5q_json  else None
@@ -1465,6 +1482,10 @@ def main():
     parser.add_argument("--amy1",             default=None, dest="amy1")
     parser.add_argument("--gst-null",         default=None, dest="gst_null")
     parser.add_argument("--lpa-kiv2",         default=None, dest="lpa_kiv2")
+    parser.add_argument("--traits-note",      default=None, dest="traits_note",
+                        help="Explanatory note rendered in the Blood Group & "
+                             "Copy-Number Traits card when no trait TSVs are "
+                             "supplied (e.g. a BAM-less sample).")
     args = parser.parse_args()
     render_report(
         sample_id=args.sample,
@@ -1490,6 +1511,7 @@ def main():
         amy1_path=args.amy1,
         gst_null_path=args.gst_null,
         lpa_kiv2_path=args.lpa_kiv2,
+        traits_note=args.traits_note,
     )
 
 

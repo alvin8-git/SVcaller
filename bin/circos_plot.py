@@ -8,7 +8,10 @@ Ring layout (radius, outer → inner) — "genome fingerprint", links-first:
   74-79   STR loci barcode (EH=brown, STRling novel=orange), full-height ticks
   67-72   clinical SV ring: top SVs, coloured by ACMG class (5=red,4=orange,3=grey),
           SMN locus gold; gene/ACMG merged into one ring (was two)
-  0-65    SV links centre — large canvas; interchromosomal BND/TRA emphasised
+  59-64   CNV-trait loci (RHD/AMY1/GSTM1/GSTT1/LPA KIV-2), labelled gene + call;
+          present/normal=grey, deletion/null=blue, high-CN=red (optional; skipped
+          when no trait TSVs are supplied)
+  0-57    SV links centre — large canvas; interchromosomal BND/TRA emphasised
 
 The plot is a gestalt overview, not a positional record: exact coordinates,
 copy number, and confidence live in the HTML report sections and the .xlsx.
@@ -35,9 +38,92 @@ ACMG_COLOURS = {
     "3": "#7F7F7F",
 }
 
+# Fixed genomic windows for the CNV-trait ring (GRCh38, chr-prefixed). These are
+# reference coordinates only — the CALL for each locus (Rh status, present/null,
+# copy number) is read at run time from the trait contract TSVs, never hardcoded.
+TRAIT_LOCI = {
+    "RHD":      ("chr1",  25272393,  25330445),
+    "AMY1":     ("chr1",  103571000, 103760000),
+    "GSTM1":    ("chr1",  109687814, 109693020),
+    "GSTT1":    ("chr22", 24376133,  24384680),
+    "LPA_KIV2": ("chr6",  160605000, 160650000),
+}
+# Colour buckets for the trait ring: deletion/null (loss) = blue, high copy = red,
+# present/normal = grey.
+TRAIT_COLOURS = {"del": "#1F77B4", "amp": "#D62728", "norm": "#7F7F7F"}
+
 
 def sv_colour(svtype: str) -> str:
     return SV_COLOURS.get(svtype.upper(), "#7F7F7F")
+
+
+def _read_trait_tsv(path: Optional[str]) -> Optional[dict]:
+    """Read a one-record trait contract TSV ('#col1\\tcol2...' header + one data
+    row) into {col: value}. Returns None for missing / sentinel inputs."""
+    if not path or path in ("NO_FILE", ""):
+        return None
+    try:
+        with open(path) as fh:
+            lines = [ln.rstrip("\n") for ln in fh if ln.strip()]
+        if len(lines) < 2:
+            return None
+        cols = lines[0].lstrip("#").split("\t")
+        vals = lines[1].split("\t")
+        return dict(zip(cols, vals))
+    except Exception:
+        return None
+
+
+def parse_cnv_traits(rh_path: Optional[str], amy1_path: Optional[str],
+                     gst_path: Optional[str], lpa_path: Optional[str]) -> List[dict]:
+    """Build the CNV-trait ring markers from the four trait contract TSVs.
+
+    Returns [{chrom, start, end, label, bucket}], one per locus that has a real
+    call. Values come straight from the TSVs (no hardcoded calls); an absent or
+    sentinel TSV simply contributes no marker (ring skipped if none present).
+    """
+    def locus(name, label, bucket):
+        c, s, e = TRAIT_LOCI[name]
+        return {"chrom": c, "start": s, "end": e, "label": label, "bucket": bucket}
+
+    def _as_int(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    markers = []
+    rh = _read_trait_tsv(rh_path)
+    if rh and rh.get("Rh_status") and rh["Rh_status"] not in ("unknown", "NA"):
+        st = rh["Rh_status"]; cn = rh.get("RHD_copies", "?")
+        if st == "neg":
+            markers.append(locus("RHD", "RHD Rh− (del)", "del"))
+        else:
+            markers.append(locus("RHD", "RHD Rh+ (CN{})".format(cn), "norm"))
+
+    amy1 = _read_trait_tsv(amy1_path)
+    if amy1 and amy1.get("AMY1_copies") not in (None, "NA"):
+        cn = amy1["AMY1_copies"]; cni = _as_int(cn)
+        bucket = "amp" if (cni is not None and cni > 2) else \
+                 ("del" if (cni is not None and cni < 2) else "norm")
+        markers.append(locus("AMY1", "AMY1 CN{}".format(cn), bucket))
+
+    gst = _read_trait_tsv(gst_path)
+    if gst:
+        for gene in ("GSTM1", "GSTT1"):
+            v = gst.get(gene)
+            if v and v != "unknown":
+                markers.append(locus(gene, "{} {}".format(gene, v),
+                                     "del" if v == "null" else "norm"))
+
+    lpa = _read_trait_tsv(lpa_path)
+    if lpa and lpa.get("KIV2_copies") not in (None, "NA"):
+        cn = lpa["KIV2_copies"]
+        # LPA KIV-2 is a normal tandem VNTR (typ. ~5-40 copies); label the count,
+        # keep it neutral (grey) rather than flagging it as an amplification.
+        markers.append(locus("LPA_KIV2", "LPA KIV-2 CN{}".format(cn), "norm"))
+
+    return markers
 
 
 def parse_cnv_bed(path: str) -> Tuple[List[dict], List[dict]]:
@@ -318,9 +404,14 @@ def make_circos(sv_vcf: str, cnv_bed: Optional[str], cytobands: str,
                 str_vcf: Optional[str] = None,
                 depth_bed: Optional[str] = None,
                 annotsv_tsv: Optional[str] = None,
-                strling_tsv: Optional[str] = None) -> None:
+                strling_tsv: Optional[str] = None,
+                rh_status_tsv: Optional[str] = None,
+                amy1_tsv: Optional[str] = None,
+                gst_null_tsv: Optional[str] = None,
+                lpa_kiv2_tsv: Optional[str] = None) -> None:
     from pycirclize import Circos
     import matplotlib.pyplot as plt
+    import datetime
 
     chrom_sizes  = load_chrom_sizes(cytobands)
     gains, losses = parse_cnv_bed(cnv_bed) if cnv_bed and cnv_bed != "NO_FILE" else ([], [])
@@ -329,6 +420,7 @@ def make_circos(sv_vcf: str, cnv_bed: Optional[str], cytobands: str,
     strling_loci = parse_strling_tsv(strling_tsv)  # high-confidence STRling novel
     depth_wins   = parse_depth_bed(depth_bed)
     gene_rows, acmg_rows = parse_annotsv_tsv(annotsv_tsv)
+    trait_markers = parse_cnv_traits(rh_status_tsv, amy1_tsv, gst_null_tsv, lpa_kiv2_tsv)
 
     # Global median depth for fold-change normalization
     global_median = 1.0
@@ -340,7 +432,8 @@ def make_circos(sv_vcf: str, cnv_bed: Optional[str], cytobands: str,
     print(f"Circos: depth windows={len(depth_wins)}, median={global_median:.1f}x, "
           f"cnv_gains={len(gains)}, cnv_losses={len(losses)}, "
           f"str_eh={len(str_loci)}, str_novel={len(strling_loci)}, "
-          f"gene_loci={len(gene_rows)}, acmg_dots={len(acmg_rows)}")
+          f"gene_loci={len(gene_rows)}, acmg_dots={len(acmg_rows)}, "
+          f"cnv_traits={len(trait_markers)}")
 
     circos = Circos(chrom_sizes, space=1.5)
     circos.text(f"SVcaller\n{sample_id}", size=10, r=25)
@@ -445,7 +538,31 @@ def make_circos(sv_vcf: str, cnv_bed: Optional[str], cytobands: str,
                 except Exception:
                     pass
 
-    # --- SV links (centre, r < ~65) — interchromosomal BND/TRA emphasised ---
+    # --- Ring 6: CNV-trait loci (59-64) — RHD/AMY1/GSTM1/GSTT1/LPA KIV-2 ---
+    # Optional ring: plotted only when trait TSVs were supplied (skipped for
+    # BAM-less/trait-less samples). Each locus is a labelled marker coloured by its
+    # call read from the contract TSVs: deletion/null=blue, high-CN=red, else grey.
+    if trait_markers:
+        for sector in circos.sectors:
+            t = sector.add_track((59, 64), r_pad_ratio=0.1)
+            t.axis(fc="#FCFCFC", ec="#CCCCCC", lw=0.3)
+            clen = chrom_sizes.get(sector.name, 1)
+            w = _marker_width(clen)
+            for m in trait_markers:
+                if m["chrom"] != sector.name:
+                    continue
+                mid = (m["start"] + m["end"]) // 2
+                end = min(mid + w, clen - 1)
+                if end <= mid:
+                    continue
+                t.rect(mid, end, fc=TRAIT_COLOURS.get(m["bucket"], "#7F7F7F"),
+                       ec="none", alpha=0.95)
+                try:
+                    t.text(m["label"], mid, size=5, color="black")
+                except Exception:
+                    pass
+
+    # --- SV links (centre, r < ~57) — interchromosomal BND/TRA emphasised ---
     # The innermost ring now sits at r=67, so links own a much larger central canvas
     # than before (was r<46). Cross-genome translocations are the sample signature:
     # draw them thicker and more opaque; intrachromosomal links stay thin and faint.
@@ -482,6 +599,8 @@ def make_circos(sv_vcf: str, cnv_bed: Optional[str], cytobands: str,
         mpatches.Patch(fc="#FF7F0E", alpha=0.9,  label="STR: STRling novel (orange)"),
         mpatches.Patch(fc="#7F7F7F", alpha=0.7,  label="Clinical SV ring (ACMG-coloured)"),
         mpatches.Patch(fc="#FFBF00", alpha=0.95, label="SMN1 locus (gold)"),
+        mpatches.Patch(fc="#7F7F7F", alpha=0.95, label="CNV-trait locus: present / normal (grey)"),
+        mpatches.Patch(fc="#1F77B4", alpha=0.95, label="CNV-trait locus: deletion / null (blue)"),
         mlines.Line2D([], [], color="#FF7F0E", lw=1.5, alpha=0.6, label="SV links — interchromosomal"),
         _hdr("── Copy-ratio heatmap (log₂) ──"),
         mpatches.Patch(fc="#D62728", alpha=0.95, label="Gain  log₂ > 0  (red)"),
@@ -498,6 +617,11 @@ def make_circos(sv_vcf: str, cnv_bed: Optional[str], cytobands: str,
         mpatches.Patch(fc="#FF7F0E", label="Class 4 — Likely Pathogenic"),
         mpatches.Patch(fc="#7F7F7F", label="Class 3 — VUS"),
     ]
+    # Drop the CNV-trait legend rows when the trait ring was not drawn, so
+    # trait-less samples (e.g. BAM-less COLO829) keep a clean legend.
+    if not trait_markers:
+        handles = [h for h in handles
+                   if not getattr(h, "get_label", lambda: "")().startswith("CNV-trait locus")]
     fig.legend(
         handles=handles,
         loc="lower right",
@@ -513,10 +637,20 @@ def make_circos(sv_vcf: str, cnv_bed: Optional[str], cytobands: str,
         bbox_transform=fig.transFigure,
     )
 
-    fig.savefig(out_svg)
+    # Provenance: visible render-date footer + embedded SVG metadata, so a
+    # carried-forward SVG is distinguishable from a fresh render.
+    today = datetime.date.today().isoformat()
+    fig.text(0.01, 0.01, f"SVcaller circos · {sample_id} · rendered {today}",
+             size=6, color="#999999", ha="left", va="bottom")
+
+    fig.savefig(out_svg, metadata={
+        "Title": f"{sample_id} genome circos",
+        "Creator": "SVcaller bin/circos_plot.py",
+        "Date": today,
+    })
     fig.savefig(out_png, dpi=150)
     plt.close(fig)
-    print(f"Circos plot saved: {out_svg}, {out_png}")
+    print(f"Circos plot saved: {out_svg}, {out_png} (rendered {today})")
 
 
 def main():
@@ -531,6 +665,16 @@ def main():
     parser.add_argument("--annotsv-tsv", default=None,  help="Raw AnnotSV TSV for gene/ACMG rings")
     parser.add_argument("--strling-tsv", default=None,  dest="strling_tsv",
                         help="STRling genotype TSV for novel STR ring")
+    # CNV-trait ring inputs (optional): the four blood-group/copy-number trait
+    # contract TSVs. Any subset may be given; the ring is skipped if none are.
+    parser.add_argument("--rh-status", default=None, dest="rh_status_tsv",
+                        help="rh_status.tsv (RHD/Rh) for the CNV-trait ring")
+    parser.add_argument("--amy1",      default=None, dest="amy1_tsv",
+                        help="amy1.tsv (AMY1 copy number) for the CNV-trait ring")
+    parser.add_argument("--gst-null",  default=None, dest="gst_null_tsv",
+                        help="gst_null.tsv (GSTM1/GSTT1) for the CNV-trait ring")
+    parser.add_argument("--lpa-kiv2",  default=None, dest="lpa_kiv2_tsv",
+                        help="lpa_kiv2.tsv (LPA KIV-2) for the CNV-trait ring")
     args = parser.parse_args()
     out_png = args.out.replace(".svg", ".png")
     make_circos(args.sv_vcf, args.cnv_bed, args.cytobands,
@@ -538,7 +682,11 @@ def main():
                 str_vcf=args.str_vcf,
                 depth_bed=args.depth_bed,
                 annotsv_tsv=args.annotsv_tsv,
-                strling_tsv=args.strling_tsv)
+                strling_tsv=args.strling_tsv,
+                rh_status_tsv=args.rh_status_tsv,
+                amy1_tsv=args.amy1_tsv,
+                gst_null_tsv=args.gst_null_tsv,
+                lpa_kiv2_tsv=args.lpa_kiv2_tsv)
 
 
 if __name__ == "__main__":

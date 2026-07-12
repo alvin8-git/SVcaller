@@ -25,7 +25,7 @@ INTERVALS=/data/alvin/ref/GRCh38/wgs_autosomal.bed
 PON=/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5
 EH_CATALOG=${REPO_DIR}/assets/eh_catalog.json
 SV_PON=/data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed
-OUTDIR=${REPO_DIR}/results_smn
+OUTDIR=${REPO_DIR}/results
 LOG_DIR=/data/alvin/tmp
 
 mkdir -p "$OUTDIR"
@@ -35,7 +35,7 @@ PIDS=()
 
 for SAMPLE in SMAM SMAD SMAPB; do
   SAMPLESHEET=${REPO_DIR}/validation/smn_${SAMPLE}_samplesheet.csv
-  WORK_DIR=${REPO_DIR}/work_smn/${SAMPLE}
+  WORK_DIR=${REPO_DIR}/work/${SAMPLE}
   CACHE_DIR=${WORK_DIR}/.nxf_cache
   LOG=${LOG_DIR}/smn_${SAMPLE}_${RUN_LABEL}.log
 

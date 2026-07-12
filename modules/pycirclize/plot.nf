@@ -5,7 +5,7 @@ process CIRCOS_PLOT {
     publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.circos.png"
 
     input:
-    tuple val(meta), path(sv_vcf), path(cnv_bed), path(str_vcf), path(depth_bed), path(annotsv_tsv), path(strling_tsv)
+    tuple val(meta), path(sv_vcf), path(cnv_bed), path(str_vcf), path(depth_bed), path(annotsv_tsv), path(strling_tsv), path(rh_status_tsv), path(amy1_tsv), path(gst_null_tsv), path(lpa_kiv2_tsv)
     path cytobands
 
     output:
@@ -18,7 +18,11 @@ process CIRCOS_PLOT {
     def depth_arg    = depth_bed.name   != "NO_DEPTH"    ? "--depth-bed   ${depth_bed}"   : ""
     def annotsv_arg  = annotsv_tsv.name != "NO_ANNOTSV"  ? "--annotsv-tsv ${annotsv_tsv}" : ""
     def strling_arg  = strling_tsv.name != "NO_STRLING"  ? "--strling-tsv ${strling_tsv}" : ""
-    // v10: CNV ring (58-61), STR ring EH+STRling (54-57), depth (62-92)
+    // CNV-trait ring inputs (optional): the four trait contract TSVs. Absent → ring skipped.
+    def rh_arg       = rh_status_tsv.name != "NO_FILE"   ? "--rh-status   ${rh_status_tsv}" : ""
+    def amy1_arg     = amy1_tsv.name      != "NO_FILE"   ? "--amy1        ${amy1_tsv}"      : ""
+    def gst_arg      = gst_null_tsv.name  != "NO_FILE"   ? "--gst-null    ${gst_null_tsv}"  : ""
+    def lpa_arg      = lpa_kiv2_tsv.name  != "NO_FILE"   ? "--lpa-kiv2    ${lpa_kiv2_tsv}"  : ""
     """
     export PATH=${projectDir}/bin:\$PATH
     circos_plot.py \\
@@ -30,6 +34,10 @@ process CIRCOS_PLOT {
         ${depth_arg} \\
         ${annotsv_arg} \\
         ${strling_arg} \\
+        ${rh_arg} \\
+        ${amy1_arg} \\
+        ${gst_arg} \\
+        ${lpa_arg} \\
         --out       ${meta.id}.circos.svg
     """
 }

@@ -14,8 +14,8 @@ EH_CATALOG=${REPO_DIR}/assets/eh_catalog.json
 ANNOTSV_DB=/data/alvin/ref/annotsv/Annotations_Human
 SV_PON=/data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed
 INTERVALS=/data/alvin/ref/GRCh38/wgs_autosomal.bed
-OUTDIR=${REPO_DIR}/results_giab
-WORKDIR_BASE=${REPO_DIR}/work_giab
+OUTDIR=${REPO_DIR}/results
+WORKDIR_BASE=${REPO_DIR}/work
 LOG_DIR=/data/alvin/tmp
 
 SAMPLES=("${@:-HG001 HG003 HG004 HG005 HG006 HG007}")

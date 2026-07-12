@@ -415,8 +415,9 @@ existing HG002 bed. **No BAM, no Nextflow, no containers required.**
 
 ### 4.2 Prototype-able offline (optional, uses existing HG002 work BAM)
 
-HG002 BAMs already exist under
-`work_HG002_wedge2/*/HG002.bwa.sortdup.bqsr.bam`. A standalone
+The HG002 BAM is at
+`/data/alvin/ref/GIAB/HG002.bwa.sortdup.bqsr.bam` (this offline check has since
+been run for real on both HG002 and HG001 — see the VALIDATED sections below). A standalone
 `mosdepth --by assets/cnv_trait_regions.bed` on that BAM can sanity-check the
 depth numbers and the normalization baseline before any pipeline run. This
 exercises `TRAIT_DEPTH` logic without running the pipeline. Use known truth for
@@ -458,10 +459,12 @@ schema; any OmniGen-side code.
 ## 6. Running for real depth numbers (needs a full pipeline run)
 
 The wiring, containers, contract paths, and the report card are all in place and
-unit-tested, but the actual RHD/AMY1/GST/KIV-2 numbers require `TRAIT_DEPTH`
-(mosdepth) to run on a real BAM. The work-dir BAMs under
-`work_HG002_wedge2/*/HG002.*.bam` are 0-byte/cleaned (auto_cleanup ran), so an
-offline prototype was not possible — run the pipeline on a real BAM.
+unit-tested. The actual RHD/AMY1/GST/KIV-2 numbers require `TRAIT_DEPTH`
+(mosdepth, or an index-driven `samtools bedcov` equivalent) to run on a real BAM.
+**This has now been done for HG002** (30X GRCh38 BAM at
+`/data/alvin/ref/GIAB/HG002.bwa.sortdup.bqsr.bam`) — see
+"VALIDATED — first real depth run on HG002" below for the numbers and the
+consistency checks.
 
 Run the whole pipeline (traits are wired into `SVCALLER`, no extra flag needed):
 
@@ -497,7 +500,152 @@ bin/rh_status.py --depth HG002.trait_depth.regions.bed.gz \
 * Re-confirm every window in `assets/cnv_trait_regions.bed` against RefSeq/GENCODE
   for the exact assembly, and pick `CTRL_*` regions verified copy-stable/non-segdup.
 
-A full rendered per-sample demo report — real HG002 SV/CNV/SMN tables plus the
-new Blood Group & Copy-Number Traits card (trait values are synthetic
-placeholders, clearly labelled; no real BAM depth run yet) — is at
-`docs/demo/HG002_report.html`.
+### VALIDATED — first real depth run on HG002 (2026-07-12)
+
+Ran the targeted depth + all four interpreters on the real 30X HG002 BAM
+(`/data/alvin/ref/GIAB/HG002.bwa.sortdup.bqsr.bam`, GRCh38). Depth was measured
+with `samtools bedcov -Q 0` over `assets/cnv_trait_regions.bed` (index-driven,
+targeted — matches `mosdepth --by --mapq 0`: both exclude UNMAP/SECONDARY/QCFAIL/DUP
+and apply no MAPQ floor). Artifacts:
+`results/HG002/HG002.trait_depth.regions.bed.gz`, `results/HG002/HG002.bam_stats.json`,
+`results/HG002/bloodgroup/HG002.rh_status.tsv`,
+`results/HG002/cnv_traits/HG002.{amy1,gst_null,lpa_kiv2}.tsv`.
+
+**Normalization sanity check (PASS):** the 8 `CTRL_*` windows read 31.0–34.7X,
+median 2n baseline **32.31X**. This agrees with the pipeline's genome-wide
+`HG002.mosdepth.summary.txt` autosomal mean (~31.6X; chr1 31.11, chr4 32.02;
+`total` 29.02X is lower only because it includes chrX/Y/MT). Controls behave as
+diploid, copy-stable references.
+
+| Trait | Region depth | ratio (÷2n) | norm. copies | Interpreter call | Truth / expected | Verdict |
+|-------|-------------:|------------:|-------------:|------------------|------------------|---------|
+| RHD (Rh) | 36.37X | 1.13 | 2.25→**2** | Rh(D) **pos**, HIGH | RhD-positive (no RHD del) | **PASS** |
+| AMY1 | 30.49X | 0.94 | 1.89→**2** | 2 copies | window-averaged, uncalibrated | reported (see note) |
+| GSTM1 | 14.84X | 0.46 | 0.92→**~1** | **present** | het-deletion, GT 0\|1 (1 copy) | **PASS vs truth** / see anchor note |
+| GSTT1 | 32.47X | 1.00 | 2.01→**2** | **present** | present (no del in truth) | **PASS** |
+| LPA KIV-2 | 85.27X | 2.64 | 5.28→**5** | 5 copies | uncalibrated (proportional only) | reported (see note) |
+
+**Rh (PASS):** RHD depth ratio 1.13 (mildly inflated by RHCE paralog
+cross-mapping, as the interpreter docstring predicts) → 2 copies → Rh(D) positive,
+matching HG002/NA24385 truth. The CNV consensus BED has **0** DEL rows over the
+RHD window — the corroborating channel agrees (no deletion ⇒ present). Depth-vs-BED
+agree.
+
+**GSTM1 anchor — honest finding.** The task anchor expected HG002 to be a
+*homozygous* GSTM1-null (CN≈0). The data do **not** support homozygous null:
+- Read depth over GSTM1 is 14.84X = ratio **0.46 ≈ 0.5**, i.e. **~1 remaining
+  copy** — a heterozygous-deletion signature, not the ratio→0 of a homozygous null.
+- GIAB truth confirms this: both `HG002_GRCh38_v5.0q_stvar.vcf.gz` and the
+  T2T-Q100 truth carry an **18,445 bp DEL at chr1:109,682,998** spanning the whole
+  GSTM1 window, genotyped **`0|1` (heterozygous)** in v5.0q (FORMAT `GT:AD`,
+  `0|1:1,1`; region flagged `LCR=0.997`, a low-complexity/paralogous locus).
+- So both independent channels (read-depth *and* assembly-based truth) agree:
+  HG002 carries **one** functional GSTM1 copy → **not** homozygous-null. The
+  binary interpreter (`null | present`) correctly emits **present**.
+- The CNV consensus BED has 0 DELs over GSTM1 (consensus under-calls this
+  paralogous deletion — exactly why depth leads), so it neither confirms nor
+  contradicts.
+- Conclusion: no number was massaged to force a null. The interpreter call is
+  correct against the actual GIAB genotype; the *stated* homozygous-null
+  expectation is not supported by the evidence for HG002. **Recommended
+  enhancement:** add a heterozygous-deletion tier (ratio ~0.35–0.65) to
+  `gst_null.py` so a 1-copy state is reported explicitly instead of collapsing to
+  "present". The `NULL_THRESHOLD = 0.15` correctly did **not** fire here.
+
+**AMY1 / LPA KIV-2 (reported, uncalibrated):** AMY1 = 2 and KIV-2 = 5 are the raw
+normalized-depth estimates. Both remain proportional-only until calibrated against
+a truth sample (the AMY1 window averages the array against flanking single-copy
+sequence; the KIV-2 constant depends on how many repeat units the reference window
+spans). LPA does carry a corroborating consensus **DUP** over
+chr6:160,611,001–160,646,000 (HIGH), consistent with a >2 KIV-2 copy state.
+
+A full rendered per-sample demo report — real HG002 SV/CNV/SMN tables **and the
+Blood Group & Copy-Number Traits card populated with these real, validated depth
+calls** (no longer synthetic placeholders) — is at `docs/demo/HG002_report.html`,
+regenerated by `bin/html_report.py`.
+
+### VALIDATED — second real depth run on HG001 / NA12878 (2026-07-12)
+
+Same method on the 30X GRCh38 HG001 BAM
+(`/data/alvin/ref/GIAB/HG001.bwa.sortdup.bqsr.bam`): `samtools bedcov -Q 0` over
+`assets/cnv_trait_regions.bed`, then all four interpreters. Artifacts:
+`results/HG001/HG001.trait_depth.regions.bed.gz`, `results/HG001/HG001.bam_stats.json`,
+`results/HG001/bloodgroup/HG001.rh_status.tsv`,
+`results/HG001/cnv_traits/HG001.{amy1,gst_null,lpa_kiv2}.tsv`.
+
+**Normalization sanity check (PASS):** the 8 `CTRL_*` windows read 29.9–33.0X,
+median 2n baseline **30.81X** (mean 31.02X). This agrees with HG001's genome-wide
+`HG001.mosdepth.summary.txt` (autosomal mean ~29.9X; `total` 28.75X incl. chrX/Y/MT).
+
+| Trait | Region depth | ratio (÷2n) | norm. copies | Interpreter call | Truth / expected | Verdict |
+|-------|-------------:|------------:|-------------:|------------------|------------------|---------|
+| RHD (Rh) | 19.00X | 0.62 | 1.23→**1** | Rh(D) **pos**, MEDIUM | Rh(D)-positive | **PASS** |
+| AMY1 | 30.92X | 1.00 | 2.01→**2** | 2 copies | uncalibrated | reported |
+| GSTM1 | 16.79X | 0.545 | 1.09→**~1** | **present** | expected homozygous-null (CN≈0) | **MISMATCH vs assumed truth** — see anchor note |
+| GSTT1 | 31.39X | 1.02 | 2.04→**2** | **present** | present | **PASS** |
+| LPA KIV-2 | 86.95X | 2.82 | 5.65→**6** | 6 copies | uncalibrated | reported |
+
+**Rh (PASS):** RHD reads 19.0X (ratio 0.62). Unlike HG002 this runs *low*, not
+high — at MAPQ≥20 it drops further to 15.76X (ratio ~0.51), i.e. RHCE cross-mapping
+here inflates the Q0 number rather than the signal being 2 full copies; the true
+unique signal is ~1 copy. One functional RHD copy ⇒ Rh(D) **positive** (correct;
+NA12878 is Rh D positive). Consensus BED has 0 RHD DELs — agrees.
+
+**GSTM1 anchor — honest finding (the headline result of this run), settled by a
+paralog-aware PSV test.** The task anchored HG001/NA12878 as *the* canonical
+**homozygous** GSTM1-null, expecting CN≈0. Read depth alone cannot decide
+het-deletion vs homozygous-null here, because GSTM1's paralog **GSTM2** is nearly
+identical and its reads can cross-map into the GSTM1 window — a homozygous null
+could in principle read ~0.5 ("1 copy") purely from GSTM2 contamination. So the
+question was settled with **paralog-specific variants (PSVs)** — positions where
+the GRCh38 GSTM1 and GSTM2 references are fixed-different — computed by aligning
+the two paralog sequences (GRCh38) and then tallying, at each PSV, which allele
+HG001's reads carry (a standalone `samtools mpileup` + pairwise-alignment
+analysis). **The data do not support a homozygous null:**
+- **Depth:** GSTM1 = **16.79X, ratio 0.545 (~1 copy)** — a heterozygous-deletion
+  level, not the ratio→0 of a homozygous null.
+- **MAPQ (decisive, alignment-independent):** **611 of 617 window reads (99%) are
+  MAPQ≥20**, i.e. confidently/uniquely placed at GSTM1; only 6 are MAPQ0
+  multimappers. Because GSTM1 is present in the *reference* whatever the sample
+  carries, a GSTM2-origin read is ambiguous between the two loci → MAPQ0. Reads
+  reaching MAPQ≥20 at GSTM1 therefore genuinely originate from GSTM1 ⇒ GSTM1
+  sequence is present in NA12878.
+- **PSV allele tally:** at **39 fixed GSTM1-vs-GSTM2 discriminating positions**
+  (in the conserved exon where cross-mapping is most likely), HG001 reads split
+  **433 GSTM1-allele : 0 GSTM2-allele (100% GSTM1)**. No detectable GSTM2
+  cross-mapping — the coverage is real GSTM1.
+- **1/1 calls are real, not artifacts:** the 11 GSTM1-window HaplotypeCaller `1/1`
+  records are **none on a PSV and none carry the GSTM2 base**, so they are genuine
+  GSTM1 variants read as homozygous because a single (hemizygous) GSTM1 copy
+  remains — *not* GSTM2 cross-map artifacts. (All-`1/1`/zero-het *alone* would have
+  been ambiguous — consistent with either het-del or pure cross-mapping — which is
+  exactly why the PSV test was needed; it lands unambiguously on het.)
+- **Deletion channel:** the SV/CNV consensus BED has **0** DEL over GSTM1 — the
+  genome-wide ensemble is blind to this paralogous deletion (the documented reason
+  depth leads). The copy-number evidence for the deletion is the depth itself
+  (~1 copy).
+- **Conclusion:** HG001 carries **~1 functional GSTM1 copy — a heterozygous
+  deletion**, essentially the same state as HG002. The interpreter's `present`
+  call is **correct for the data** (`NULL_THRESHOLD=0.15` correctly did not fire at
+  0.545). Versus the *assumed* homozygous-null truth this is a **documented
+  MISMATCH** — the premise is not supported by this BAM. **No copy number was
+  fabricated or forced toward null**, and neither answer was assumed — the PSVs
+  were tallied and reported as-is.
+- **Does `gst_null.py` need a paralog-aware fix?** Not for correctness on these
+  samples. The paralog-blindness risk (GSTM2 filling ~1 copy of apparent depth so a
+  homozygous null reads as "present") **did not materialize** — cross-mapping here
+  is negligible (0/433 GSTM2 alleles at PSVs; 99% unique reads), so a *true*
+  homozygous GSTM1 null would read ~0 depth and `gst_null.py` would correctly emit
+  `null`. The real, still-open gap is the **het-deletion tier** (ratio ~0.35–0.65)
+  tracked in `TODO.md`: neither HG002 nor HG001 provided a clean homozygous-null
+  anchor, so the `null` cutoff remains validated only from below (both true 1-copy
+  states correctly stay `present`). A **robustness enhancement** worth noting:
+  PSV-based (paralog-aware) genotyping would make GSTM1/GSTT1 calling immune to
+  cross-mapping on samples where it *is* heavy, and would directly distinguish
+  1-copy from 2-copy — recommended if these calls move toward clinical use.
+
+**AMY1 / LPA KIV-2 (reported, uncalibrated):** AMY1 = 2, KIV-2 = 6 — raw
+normalized-depth estimates, proportional-only pending calibration.
+
+The rendered report with these real values is at `docs/demo/HG001_report.html`
+(regenerated by `bin/html_report.py`).

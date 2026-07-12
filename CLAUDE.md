@@ -54,7 +54,7 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --annotsv_db ${REF}/annotsv/Annotations_Human \
   --sv_pon ${PROJ}/pon/sv_pon/giab_sv_pon.bed \
   --outdir ${PROJ}/results \
-  -work-dir ${PROJ}/work_HG002 \
+  -work-dir ${PROJ}/work \
   -resume > ${TMP}/main_runN.log 2>&1 &
 
 # SMN validation — SMA trio only; no Truvari (no SV truth for clinical samples)
@@ -68,8 +68,8 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --eh_catalog assets/eh_catalog.json \
   --sv_pon ${PROJ}/pon/sv_pon/giab_sv_pon.bed \
   --skip_gridss true \
-  --outdir ${PROJ}/results_smn \
-  -work-dir ${PROJ}/work_smn \
+  --outdir ${PROJ}/results \
+  -work-dir ${PROJ}/work \
   -resume > ${TMP}/smn_runN.log 2>&1 &
 
 # GIAB PON sample reports — HG001, HG003-HG007 (HG002 done via validation run)
@@ -85,8 +85,8 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --sv_pon ${PROJ}/pon/sv_pon/giab_sv_pon.bed \
   --skip_gridss true \
   --skip_melt true \
-  --outdir ${PROJ}/results_giab \
-  -work-dir ${PROJ}/work_giab_reports \
+  --outdir ${PROJ}/results \
+  -work-dir ${PROJ}/work \
   -resume > ${TMP}/giab_reports_runN.log 2>&1 &
 
 # Clinical sample (single sample, new patient)

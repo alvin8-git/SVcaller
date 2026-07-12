@@ -93,6 +93,48 @@ F1 score interpretation:
 - F1 ≥ 0.4: typical for multi-caller WGS pipelines on HG002
 - F1 < 0.3: investigate caller failures or reference mismatch
 
+### 8. Blood Group & Copy-Number Traits
+
+Populated from the `CNV_TRAITS` subworkflow (`results/<S>/bloodgroup/*.rh_status.tsv`
+and `results/<S>/cnv_traits/*.{amy1,gst_null,lpa_kiv2}.tsv`). Each call is a
+**targeted, normalized read-depth** estimate: mosdepth (`--mapq 0`, multi-mapping
+reads kept) over the trait window divided by the median depth of the copy-number-stable
+`CTRL_*` control windows (the diploid 2n baseline). The CNV consensus BED is used
+only to *corroborate* a called deletion — it under-calls these paralogous
+whole-gene deletions, so depth leads.
+
+| Trait | Reported as | Read this way |
+|-------|-------------|---------------|
+| Rh(D) blood group | pos / neg + RHD copies + confidence | RHD CN≈2 ⇒ Rh(D) positive; homozygous RHD deletion (CN→0) ⇒ Rh(D) negative. RHD depth runs slightly high from RHCE paralog cross-mapping. |
+| AMY1 | copies | Salivary-amylase array size. **Proportional-only until calibrated** — the window averages the array against flanking single-copy sequence, so absolute copies are approximate. |
+| GSTM1 / GSTT1 | present / null | `null` = homozygous whole-gene deletion. **A ratio near 0.5 is a heterozygous deletion (1 copy) and reports as `present`** — the current call is binary and does not distinguish het-del from 2-copy. |
+| Lp(a) — LPA KIV-2 | repeat copies | Cardiovascular-risk VNTR. **Proportional-only until calibrated** — the constant depends on how many KIV-2 units the reference window already spans. |
+
+**Worked example — HG002 (validated 2026-07-12).** Control baseline 32.31X (matches
+the pipeline's ~31.6X autosomal mean). Rh(D) **positive** (RHD 36.4X, CN 2; consensus
+BED has no RHD deletion — the two channels agree). GSTT1 **present** (32.5X, ratio 1.00).
+GSTM1 reads **present** at ratio 0.46 (~1 copy): GIAB v5.0q truth confirms a heterozygous
+18.4 kb GSTM1 deletion (`GT 0|1`), i.e. one functional copy — so "present" is correct and
+this is *not* a homozygous null. AMY1=2 and KIV-2=5 are the uncalibrated depth estimates.
+See `docs/omnigen-additions-plan.md` for the full validation table.
+
+**Worked example — HG001 / NA12878 (validated 2026-07-12).** Control baseline 30.81X
+(matches the pipeline's ~29.9X autosomal mean). Rh(D) **positive** (RHD 19.0X → CN 1,
+confidence MEDIUM; consensus BED has no RHD deletion). GSTT1 **present** (31.4X, ratio 1.02).
+**GSTM1 caveat (settled by a paralog-aware PSV test).** NA12878 is often cited as *the*
+canonical homozygous GSTM1-null, but this BAM reads GSTM1 at 16.8X, **ratio 0.545 (~1 copy)**.
+Depth alone can't tell a het deletion from a homozygous null, because GSTM1's near-identical
+paralog **GSTM2** can cross-map in; so we checked paralog-specific variants (fixed
+GSTM1-vs-GSTM2 differences). The result is unambiguous **heterozygous deletion, not null**:
+99% of window reads (611/617) are MAPQ≥20 (uniquely GSTM1, not ambiguous cross-mappers); at
+39 GSTM1-vs-GSTM2 discriminating sites the reads are **433 GSTM1-allele : 0 GSTM2-allele**;
+and the 11 `1/1` calls sit off the PSVs and don't match GSTM2 bases (real GSTM1 hemizygous
+variants). So `present` is the correct call **for the data**, and the expected homozygous-null
+is a documented **mismatch** with this alignment — the numbers were not forced. (`gst_null.py`
+needs no paralog fix here: cross-mapping is negligible, so a true null would read ~0 depth and
+fire `null` correctly.) AMY1=2, KIV-2=6 uncalibrated. Neither HG002 nor HG001 exercises the
+`null` branch — a genuine homozygous-null sample is still needed to validate it end-to-end.
+
 ## Verification
 
 The report was generated correctly if:
