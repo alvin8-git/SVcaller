@@ -26,6 +26,7 @@ workflow SV_CALLING {
     ch_fasta      // path
     ch_fai        // path
     ch_eh_catalog // path
+    ch_bwa_index  // classic bwa index files (.amb/.ann/.bwt/.pac/.sa) for SvABA
 
     main:
     // FILTER_CHROMS: skip for FASTQ-derived BAMs (aligned to hg38.canonical.fa — no alt contigs).
@@ -114,7 +115,9 @@ workflow SV_CALLING {
     // P7: SvABA local-assembly caller; 6th position in SUPP_VEC
     // SUPP_VEC positions: Manta[0] Delly[1] GRIDSS[2] Scramble[3] MELT[4] SvABA[5]
     if (!params.skip_svaba) {
-        SVABA_CALL(ch_validated_bam, ch_fasta, ch_fai)
+        // ch_bwa_index stages the CLASSIC bwa index next to ref_fasta so SvABA's
+        // bwa_idx_load_from_disk can find it. Without it SvABA dies on every run.
+        SVABA_CALL(ch_validated_bam, ch_fasta, ch_fai, ch_bwa_index)
         ch_svaba_vcf = SVABA_CALL.out.vcf
     } else {
         SVABA_STUB(ch_validated_bam)

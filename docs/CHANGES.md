@@ -1,5 +1,38 @@
 # Changes
 
+## 2026-07-15 — SvABA never actually ran: stage its classic BWA index
+
+**Root cause.** `modules/svaba/call.nf` invoked `svaba run -G ${ref_fasta} ...` while
+declaring only `path ref_fasta` + `path ref_fai` as inputs. SvABA internally calls
+`bwa_idx_load_from_disk`, which loads the **classic** BWA index
+(`hg38.canonical.fa.{amb,ann,bwt,pac,sa}`) from disk next to the reference. Because those
+five files were never declared as a staged input, Nextflow never symlinked them into the
+isolated task work dir, and SvABA died at startup with:
+
+```
+[E::bwa_idx_load_from_disk] fail to locate the index files
+Unable to open index file: hg38.canonical.fa
+```
+
+**Why nobody noticed.** The `svaba run` line used to end in `2>&1 || true`, so the crash
+exited 0 and fell through to the empty-VCF stub — SvABA contributed **zero** SVs on every
+run in the repo's history, including the committed HG002 demo (which was really Manta+Delly
++GRIDSS+Scramble+MELT only). Today's fail-loud change (removing `|| true`) unmasked the
+latent staging bug. Note the classic BWA index is a **different format** from the bwa-mem2
+alignment index (`.0123` / `.bwt.2bit.64`) — the two are not interchangeable, which is why
+having the alignment index present did not help SvABA.
+
+**Fix.** `modules/svaba/call.nf` now declares `path bwa_index`, and the index is threaded
+`main.nf` → `workflows/svcaller.nf` (`ch_bwa_index`) → `subworkflows/sv_calling.nf` →
+`SVABA_CALL`, so Nextflow stages `.amb/.ann/.bwt/.pac/.sa` alongside `${ref_fasta}`. A new
+`--bwa_index` param overrides the prefix (defaults to `ref_fasta`). Unless `--skip_svaba` is
+set, `main.nf` validates the five files exist and fails loud with an actionable message
+(`classic BWA index not found for <ref>; build with 'bwa index <ref>' or pass --skip_svaba`).
+`--skip_svaba` (SVABA_STUB) still works and requires no classic index.
+
+**Impact.** HG002/HG003 (and any prior result) gained no SvABA calls; they need a re-run to
+pick up SvABA's contribution to the merged SV set.
+
 ## 2026-07-15 — Fail-loud guards on empty report inputs + drop dead SURVIVOR_MERGE selector
 
 **Silent-failure class (the OmniGen "clean bill of health" bug), now closed in the reporters.**

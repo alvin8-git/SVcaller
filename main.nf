@@ -30,6 +30,32 @@ workflow {
     ch_dict      = Channel.value(file("${params.ref_fasta}".replaceAll(/\.fa(sta)?$/, ".dict"),
                                       checkIfExists: false))
     ch_bwt_index = Channel.value(file(params.ref_fasta).parent)
+
+    // CLASSIC bwa index for SvABA. SvABA calls bwa_idx_load_from_disk internally, which
+    // needs hg38.canonical.fa.{amb,ann,bwt,pac,sa} co-located with ref_fasta in the task
+    // work dir. This is a DIFFERENT format from the bwa-mem2 index (.0123/.bwt.2bit.64)
+    // used for alignment, so ch_bwt_index does NOT satisfy SvABA. Historically these files
+    // were never staged and `2>&1 || true` masked the crash, so SvABA silently produced
+    // nothing. Stage them explicitly (see modules/svaba/call.nf) — only required when SvABA
+    // actually runs, so operators using --skip_svaba need not build the classic index.
+    def bwa_prefix = params.bwa_index ?: params.ref_fasta
+    ch_bwa_index = Channel.value(file("NO_BWA_INDEX"))
+    if (!params.skip_svaba) {
+        def bwa_exts    = ['amb', 'ann', 'bwt', 'pac', 'sa']
+        def bwa_missing = bwa_exts.findAll { !file("${bwa_prefix}.${it}").exists() }
+        if (bwa_missing) {
+            error """ERROR: classic BWA index not found for ${bwa_prefix} """ +
+                  """(missing: ${bwa_missing.collect { "${bwa_prefix}.${it}" }.join(', ')}).
+SvABA needs the CLASSIC bwa index (.amb/.ann/.bwt/.pac/.sa) alongside the reference; the
+bwa-mem2 alignment index (.0123/.bwt.2bit.64) is a different format and will NOT work.
+Build it with:   bwa index ${bwa_prefix}
+or run without SvABA:   --skip_svaba"""
+        }
+        ch_bwa_index = Channel.value(bwa_exts.collect {
+            file("${bwa_prefix}.${it}", checkIfExists: true)
+        })
+    }
+
     ch_pon       = params.pon
                     ? Channel.value(file(params.pon, checkIfExists: true))
                     : Channel.value(file("NO_PON"))
@@ -49,7 +75,7 @@ workflow {
                                           checkIfExists: true))
 
     SVCALLER(
-        ch_input, ch_fasta, ch_fai, ch_bwt_index,
+        ch_input, ch_fasta, ch_fai, ch_bwt_index, ch_bwa_index,
         ch_dict, ch_pon, ch_intervals, ch_annotsv,
         ch_cytobands, ch_catalog, ch_trait_regions,
     )

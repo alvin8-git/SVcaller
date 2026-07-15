@@ -32,9 +32,14 @@ You need three things on disk before running:
 
 | File | Path | Notes |
 |------|------|-------|
-| GRCh38 canonical FASTA | `/path/to/ref/GRCh38/hg38.canonical.fa` | chr1-22+X+Y+M only; BWA-MEM2 index at same prefix |
+| GRCh38 canonical FASTA | `/path/to/ref/GRCh38/hg38.canonical.fa` | chr1-22+X+Y+M only; needs `.fai` + BWA-MEM2 index (for alignment) AND the classic BWA index (for SvABA), both at same prefix |
 | Autosomal intervals BED | `/path/to/ref/GRCh38/wgs_autosomal.bed` | Used by GATK CNV |
 | GATK gCNV PON | `/path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5` | Built from 7 GIAB normals |
+
+Two BWA indexes live at the FASTA prefix and are **not** interchangeable: the bwa-mem2
+index (`.0123`, `.bwt.2bit.64`, …) drives alignment, while SvABA needs the **classic** BWA
+index (`.amb`, `.ann`, `.bwt`, `.pac`, `.sa`) which you build with `bwa index hg38.canonical.fa`.
+If it is missing the pipeline fails loud at startup (or run with `--skip_svaba` to omit SvABA).
 
 **If these already exist, skip to Step 3.** If not, see [How to build a Panel of Normals](howto-build-pon.md) for the PON, and download the GRCh38 reference from NCBI/Ensembl.
 

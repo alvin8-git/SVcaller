@@ -19,7 +19,7 @@ Tracks implementation status against the design spec (`docs/superpowers/specs/20
 - [x] GRIDSS (`modules/gridss/call.nf`) + BND→DEL/DUP/INV converter (`bin/gridss_convert_bnd.py`)
 - [x] Scramble MEI caller (`modules/scramble/call.nf`)
 - [x] MELT MEI caller (`modules/melt/call.nf`) — local container build required
-- [x] SvABA local-assembly caller (`modules/svaba/call.nf`)
+- [x] SvABA local-assembly caller (`modules/svaba/call.nf`) — 2026-07-15 fixed latent staging bug: SvABA had NEVER produced a variant because its classic BWA index (`.amb/.ann/.bwt/.pac/.sa`) was never staged next to `ref_fasta` (masked by a since-removed `|| true`). Now declares `path bwa_index`, threaded via `ch_bwa_index` with `--bwa_index` param + fail-loud check. NOTE: HG002/HG003 must be re-run to actually gain SvABA calls.
 - [x] STRling genome-wide STR caller (`modules/strling/call.nf`)
 - [x] ExpansionHunter — 32 disease STR loci (`modules/expansionhunter/call.nf`)
 - [x] JASMINE merge (min_support=2) (`modules/jasmine/merge.nf`)

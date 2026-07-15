@@ -57,6 +57,18 @@ Before any caller runs, `VALIDATE_REF_BAM` (`modules/samtools/validate_ref_bam.n
 | GRIDSS | `modules/gridss/call.nf` | BND (precise breakpoints) | gridss/gridss:2.13.2 |
 | Scramble | `modules/scramble/call.nf` | MEI (ALU, L1, SVA insertions) | quay.io/biocontainers/scramble:1.0.2 |
 | MELT | `modules/melt/call.nf` | MEI (ALU, HERVK, LINE1, SVA) | svcaller/melt:2.2.2 (local build) |
+| SvABA | `modules/svaba/call.nf` | DEL, DUP, INV, INS (local assembly) | quay.io/biocontainers/svaba:1.2.0 |
+
+**SvABA** performs local assembly and calls `bwa_idx_load_from_disk` internally, so it
+requires the **classic** BWA index (`ref_fasta.{amb,ann,bwt,pac,sa}`) staged next to the
+reference — a *different* format from the bwa-mem2 alignment index (`.0123`/`.bwt.2bit.64`),
+not interchangeable. `SVABA_CALL` declares `path bwa_index`; the index is threaded from
+`main.nf` (`ch_bwa_index`, prefix `--bwa_index`, default `ref_fasta`) through
+`subworkflows/sv_calling.nf` so Nextflow symlinks all five files into the task work dir.
+Unless `--skip_svaba` is set, `main.nf` fails loud if the index is absent, pointing the
+operator at `bwa index <ref>`. Historically these files were never staged and a
+`2>&1 || true` masked the resulting crash, so SvABA silently produced nothing (see
+[CHANGES.md](CHANGES.md), 2026-07-15).
 
 **Delly** outputs BCF binary even with `.vcf` extension. `DELLY_MERGE` uses `bcftools concat | bcftools sort` (inside the GATK container which includes bcftools 1.13) to convert and sort.
 

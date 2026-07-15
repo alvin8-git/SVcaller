@@ -13,6 +13,7 @@ workflow SVCALLER {
     ch_fasta
     ch_fai
     ch_bwt_index
+    ch_bwa_index  // classic bwa index files for SvABA (.amb/.ann/.bwt/.pac/.sa)
     ch_dict
     ch_pon
     ch_intervals
@@ -28,7 +29,7 @@ workflow SVCALLER {
     ch_bam = PREPROCESS.out.bam
 
     // M2 + M3 + M4: run in parallel on same BAM
-    SV_CALLING(ch_bam, ch_fasta, ch_fai, ch_eh_catalog)
+    SV_CALLING(ch_bam, ch_fasta, ch_fai, ch_eh_catalog, ch_bwa_index)
     CNV_CALLING(ch_bam, ch_fasta, ch_fai, ch_dict, ch_pon, ch_intervals)
     SMN_CALLING(ch_bam, ch_fasta, ch_fai)
 

@@ -7,6 +7,13 @@ process SVABA_CALL {
     tuple val(meta), path(bam), path(bai)
     path ref_fasta
     path ref_fai
+    // CLASSIC bwa index (.amb/.ann/.bwt/.pac/.sa). SvABA calls bwa_idx_load_from_disk,
+    // which loads these from disk next to ${ref_fasta}. They MUST be staged here or SvABA
+    // dies with "[E::bwa_idx_load_from_disk] fail to locate the index files". This is a
+    // different format from the bwa-mem2 alignment index and is not interchangeable.
+    // Historically these were never declared, so Nextflow never symlinked them and SvABA
+    // failed on every run — masked by a since-removed `2>&1 || true`.
+    path bwa_index
 
     output:
     tuple val(meta), path("${meta.id}.svaba.vcf.gz"), emit: vcf

@@ -169,3 +169,48 @@ def test_annotsv_distinguishes_empty_input_from_failure():
     assert "exit 1" in text, "AnnotSV must hard-fail when it silently produced nothing"
     # The legitimate empty-input path must still emit a real header, not a 0-byte file.
     assert "SV_chrom" in text
+
+
+def test_svaba_declares_classic_bwa_index_input():
+    """SvABA must declare the classic bwa index as a staged input.
+
+    WHY: SvABA calls bwa_idx_load_from_disk internally and needs the CLASSIC bwa index
+    (ref_fasta.{amb,ann,bwt,pac,sa}) symlinked next to ${ref_fasta} in the task work dir.
+    For the entire history of the repo the SVABA_CALL module declared only `ref_fasta` +
+    `ref_fai`, so Nextflow never staged the index and SvABA died with
+    "[E::bwa_idx_load_from_disk] fail to locate the index files" -- a failure masked by a
+    since-removed `2>&1 || true`. If the index input declaration is dropped again, SvABA
+    silently stops staging its index and contributes nothing. This test locks it in.
+    """
+    text = (REPO / "modules" / "svaba" / "call.nf").read_text()
+
+    # Isolate the SVABA_CALL process (not the STUB) input block.
+    call_start = text.index("process SVABA_CALL")
+    stub_start = text.index("process SVABA_STUB")
+    call_block = text[call_start:stub_start]
+
+    input_start = call_block.index("input:")
+    output_start = call_block.index("output:")
+    input_block = call_block[input_start:output_start]
+
+    # A `path` input carrying the bwa index must be declared so Nextflow symlinks the
+    # .amb/.ann/.bwt/.pac/.sa files into the task work dir alongside ${ref_fasta}.
+    assert re.search(r"^\s*path\s+bwa_index\b", input_block, re.M), (
+        "SVABA_CALL must declare `path bwa_index` so Nextflow stages the classic bwa "
+        "index next to ref_fasta; without it bwa_idx_load_from_disk fails on every run."
+    )
+
+
+def test_main_fails_loud_when_classic_bwa_index_absent():
+    """Absent classic bwa index must surface an actionable error, not a silent failure.
+
+    Unless --skip_svaba is set, main.nf must check the index exists and tell the operator
+    exactly how to fix it (build with `bwa index` or pass --skip_svaba).
+    """
+    text = (REPO / "main.nf").read_text()
+    assert "skip_svaba" in text, "main.nf must gate the index requirement on --skip_svaba"
+    assert "bwa index" in text, "the error must tell operators to run `bwa index <ref>`"
+    assert "classic BWA index not found" in text, (
+        "main.nf must emit a clear 'classic BWA index not found' error when SvABA runs "
+        "without its index."
+    )
