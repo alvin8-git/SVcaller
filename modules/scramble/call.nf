@@ -19,12 +19,18 @@ process SCRAMBLE_CALL {
 
     # Step 2: call MEI — scramble.sh hardcodes --install-dir and --mei-refs internally.
     # SCRAMble.R does setwd(INSTALL.DIR) before reading the cluster file, so absolute path required.
+    # No '|| true': a SCRAMble crash previously fell through to the empty-VCF branch
+    # below and was indistinguishable downstream from a real "no MEIs detected" result.
+    # To run without SCRAMble on purpose, use --skip_scramble (SCRAMBLE_STUB).
     scramble.sh \\
         --cluster-file \$PWD/clusters.txt \\
         --ref \$PWD/${fasta} \\
         --out-name \$PWD/${meta.id}.scramble \\
-        --eval-meis || true
+        --eval-meis
 
+    # SCRAMble exited 0. A VCF with only a header (or no MEI rows) is a VALID empty
+    # result -- zero mobile-element insertions is a real finding -- so the else branch
+    # below still emits a well-formed header-only VCF (never a zero-byte file).
     if [ -f "${meta.id}.scramble.vcf" ] && grep -qv '^#' "${meta.id}.scramble.vcf" 2>/dev/null; then
         grep '^#' ${meta.id}.scramble.vcf > ${meta.id}.scramble.sorted.vcf
         grep -v '^#' ${meta.id}.scramble.vcf | sort -k1,1 -k2,2n >> ${meta.id}.scramble.sorted.vcf

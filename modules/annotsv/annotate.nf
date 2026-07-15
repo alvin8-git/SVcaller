@@ -32,8 +32,32 @@ process ANNOTSV {
 
     # AnnotSV may write to a date-stamped subdir even with an absolute -outputFile path
     if [ ! -s "${meta.id}.annotated.tsv" ]; then
-        f=\$(find . -maxdepth 2 -name "${meta.id}.annotated.tsv" | head -1)
-        [ -n "\$f" ] && mv "\$f" . || touch ${meta.id}.annotated.tsv
+        f=\$(find . -mindepth 2 -maxdepth 3 -name "${meta.id}.annotated.tsv" | head -1)
+        if [ -n "\$f" ]; then
+            mv "\$f" ./${meta.id}.annotated.tsv
+        fi
+    fi
+
+    # Still nothing? Distinguish a LEGITIMATE empty result from a masked failure.
+    # AnnotSV can exit 0 and emit no file when there is genuinely nothing to annotate
+    # (no SV records >= -SVminSize 50 in the input). That is a real, valid empty result
+    # and must be published as a header-only TSV -- never as a zero-byte file.
+    # But if the input DID contain SV records and AnnotSV still produced nothing, the
+    # annotation silently failed and this process must fail. Publishing an empty
+    # placeholder here previously let a crashed stage render downstream as "no findings".
+    if [ ! -s "${meta.id}.annotated.tsv" ]; then
+        n_in=\$(zcat -f ${sv_vcf} | grep -vc '^#' || true)
+        if [ "\${n_in:-0}" -eq 0 ]; then
+            echo "NOTE: input ${sv_vcf} contains 0 SV records; emitting header-only annotation." >&2
+            printf 'SV_chrom\tSV_start\tSV_end\tSV_type\tAnnotSV_ranking_score\tGene_name\tOMIM_morbid\tB_gain_AFmax\tB_loss_AFmax\n' \\
+                > ${meta.id}.annotated.tsv
+        else
+            echo "ERROR: AnnotSV produced no output for '${meta.id}' but the input VCF" >&2
+            echo "(${sv_vcf}) contains \${n_in} SV record(s). The annotation step failed silently." >&2
+            echo "Refusing to publish an empty placeholder TSV. Work dir contents:" >&2
+            ls -laR . >&2
+            exit 1
+        fi
     fi
 
     cat <<-END_VERSIONS > versions.yml

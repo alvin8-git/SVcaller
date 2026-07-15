@@ -18,13 +18,19 @@ process MELT_CALL {
     ${refs_override}
     bowtie2 --version 2>&1 | head -1 || true
 
-    # Auto-detect MELT installation if not provided via --melt_refs
+    # Auto-detect MELT installation if not provided via --melt_refs.
+    # A missing MELT install is a MISCONFIGURATION, not a result. Emitting an empty VCF
+    # here made "MELT was never installed" look identical to "this genome has zero mobile
+    # element insertions". If MELT is intentionally unavailable, run with --skip_melt,
+    # which routes to MELT_STUB and records the stage as explicitly skipped.
     if [ -z "\${MELT_REFS:-}" ]; then
         melt_jar=\$(find /usr/share /opt/conda/share /opt -name "MELT.jar" 2>/dev/null | head -1 || true)
         if [ -z "\$melt_jar" ]; then
-            echo "WARNING: MELT.jar not found; emitting empty VCF" >&2
-            printf "##fileformat=VCFv4.1\\n#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\tFORMAT\\t${meta.id}\\n" | gzip > ${meta.id}.melt.vcf.gz
-            exit 0
+            echo "ERROR: MELT.jar not found on this system and --melt_refs was not set." >&2
+            echo "MELT cannot run. Refusing to emit an empty VCF that would be read as" >&2
+            echo "'no mobile element insertions found'." >&2
+            echo "Fix: install MELT / set --melt_refs, or run with --skip_melt to skip MELT explicitly." >&2
+            exit 1
         fi
         MELT_DIR=\$(dirname "\$melt_jar")
         MELT_REFS="\${MELT_DIR}/me_refs/Hg38"
@@ -32,17 +38,27 @@ process MELT_CALL {
     else
         MELT_BEDS="\${MELT_REFS}/../add_bed_files/1KGP_Hg38"
         melt_jar=\$(find /usr/share /opt/conda/share /opt -name "MELT.jar" 2>/dev/null | head -1 || true)
+        if [ -z "\$melt_jar" ]; then
+            echo "ERROR: --melt_refs was set to '\${MELT_REFS}' but no MELT.jar was found." >&2
+            echo "Fix: install MELT, or run with --skip_melt to skip MELT explicitly." >&2
+            exit 1
+        fi
+        MELT_DIR=\$(dirname "\$melt_jar")
     fi
 
-    # Check ME refs exist
+    # Check ME refs exist -- again a misconfiguration, not an empty result.
     n_refs=\$(ls "\${MELT_REFS}"/*_MELT.zip 2>/dev/null | wc -l || echo 0)
     if [ "\$n_refs" -eq 0 ]; then
-        echo "WARNING: no *_MELT.zip found in \${MELT_REFS}; emitting empty VCF" >&2
-        printf "##fileformat=VCFv4.1\\n#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\tFORMAT\\t${meta.id}\\n" | gzip > ${meta.id}.melt.vcf.gz
-        exit 0
+        echo "ERROR: no *_MELT.zip mobile-element references found in '\${MELT_REFS}'." >&2
+        echo "MELT cannot detect any ME type without them. Refusing to emit an empty VCF." >&2
+        echo "Fix: point --melt_refs at a valid me_refs/Hg38 dir, or run with --skip_melt." >&2
+        exit 1
     fi
 
-    # Run MELT Single for each ME type (ALU, LINE1/LINE, SVA, HERVK)
+    # Run MELT Single for each ME type (ALU, LINE1/LINE, SVA, HERVK).
+    # A non-zero exit from MELT is a crash, not "zero insertions of this type" -- the
+    # previous '|| true' let every ME type die and still produce a confident empty VCF.
+    failed_types=""
     mkdir -p melt_tmp
     for zip_file in "\${MELT_REFS}"/*_MELT.zip; do
         me=\$(basename "\$zip_file" _MELT.zip)
@@ -50,7 +66,7 @@ process MELT_CALL {
         gene_bed="\${MELT_DIR}/add_bed_files/Hg38/Hg38.genes.bed"
         n_arg=""
         [ -f "\$gene_bed" ] && n_arg="-n \$gene_bed"
-        java -Xmx${mem_gb}g -jar "\$melt_jar" Single \\
+        if ! java -Xmx${mem_gb}g -jar "\$melt_jar" Single \\
             -bamfile ${bam} \\
             -h       ${ref_fasta} \\
             -t       "\$zip_file" \\
@@ -58,8 +74,17 @@ process MELT_CALL {
             -w       melt_tmp/\${me} \\
             -c       ${params.min_depth} \\
             -reads   ${params.melt_min_reads} \\
-            2>&1 || true
+            2>&1; then
+            failed_types="\${failed_types} \${me}"
+        fi
     done
+
+    if [ -n "\$failed_types" ]; then
+        echo "ERROR: MELT Single failed for ME type(s):\${failed_types}" >&2
+        echo "A crashed MELT run must not be published as 'no mobile element insertions'." >&2
+        echo "Fix the MELT failure above, or run with --skip_melt to skip MELT explicitly." >&2
+        exit 1
+    fi
 
     # Merge per-type VCFs; filter to canonical chr + PASS; normalise SVTYPE → INS
     first=""
@@ -68,9 +93,13 @@ process MELT_CALL {
         first="\$vcf"; break
     done
 
+    # Every MELT type exited 0, so each should have written a *.final_comp.vcf (with zero
+    # rows if it found nothing). No VCF at all means MELT did not actually run.
     if [ -z "\$first" ]; then
-        printf "##fileformat=VCFv4.1\\n#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\tFORMAT\\t${meta.id}\\n" | gzip > ${meta.id}.melt.vcf.gz
-        exit 0
+        echo "ERROR: MELT exited 0 for all ME types but wrote no *.final_comp.vcf." >&2
+        echo "Refusing to emit an empty VCF that would be read as 'no MEIs found'." >&2
+        find melt_tmp -type f >&2 || true
+        exit 1
     fi
 
     (

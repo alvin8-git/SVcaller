@@ -387,6 +387,19 @@ deletion) and the GSTM1 het-deletion call agrees with GIAB v5.0q truth — see t
 validation table in [docs/omnigen-additions-plan.md](docs/omnigen-additions-plan.md).
 AMY1 and LPA KIV-2 absolute copies remain proportional-only pending calibration.
 
+As of 2026-07-13 the demo again carries every section, including the two whose
+inputs were lost when the `work_HG002` scratch dir was reclaimed (both stages were
+re-run, not reconstructed):
+
+- **Short Tandem Repeat (STR) Findings** — ExpansionHunter 5.0.0 over the 32-locus
+  `assets/eh_catalog.json`.
+- **Validation Benchmark** — Truvari 4.3.1 against *both* GIAB HG002 SV truth sets.
+  On this Manta+DELLY call set (`--skip_gridss`): T2TQ100-V1.0 precision 0.733 /
+  recall 0.255 / F1 0.378 (TP 7,135 · FP 2,605 · FN 22,120); v5.0q precision 0.738 /
+  recall 0.259 / F1 0.383 (TP 6,884 · FP 2,450 · FN 20,837). Recall is bounded by
+  short reads against an INS-heavy assembly truth set, with per-size-bin metrics in
+  the report.
+
 Two more full reports are committed alongside it:
 
 - **[`docs/demo/HG001_report.html`](docs/demo/HG001_report.html)** — GIAB NA12878,
@@ -413,7 +426,38 @@ Two more full reports are committed alongside it:
 | [How to interpret the HTML report](docs/howto-interpret-report.md) | Clinical interpretation of all report sections and Circos rings |
 | [Parameter reference](docs/reference-parameters.md) | All CLI flags, samplesheet format, output files, resource labels |
 | [Architecture reference](docs/reference-architecture.md) | Module-by-module technical description with I/O and design notes |
-| [Design decisions](docs/explanation-design.md) | Why the pipeline is built the way it is (channel patterns, sentinel files, PON choices, FILTER_CHROMS @SQ fix) |
+| [Design decisions](docs/explanation-design.md) | Why the pipeline is built the way it is (channel patterns, sentinel files, PON choices, FILTER_CHROMS @SQ fix, no-empty-placeholder rule) |
+| [Changes](docs/CHANGES.md) | Notable behavioural changes and the incidents that motivated them |
+
+---
+
+## Failure semantics — no empty placeholders
+
+**A failed caller never publishes an output file.** If a stage cannot produce a real
+result, it exits non-zero and the run stops (`errorStrategy = 'finish'`, see
+`conf/base.config`). SVcaller will not write a zero-byte or fabricated-empty artifact
+to `results/`.
+
+This matters because a downstream consumer cannot distinguish the two on disk. An
+earlier version of this pipeline used `|| touch <output>` fallbacks, so a crashed SMN
+caller published an empty `smn.tsv`, exited 0, and a consumer report rendered it as
+*"0 Carrier findings — Clear"* for a real person. See [docs/CHANGES.md](docs/CHANGES.md)
+for the full incident write-up.
+
+The distinction the pipeline maintains:
+
+- **A legitimate empty result is still published.** A VCF with a proper header and zero
+  variant rows means "we looked and found nothing" — that is a real, valid answer.
+- **An intentionally skipped stage is explicit.** Use `--skip_melt`, `--skip_scramble`,
+  `--skip_svaba` or `--skip_gridss`. These route to a dedicated `*_STUB` process that
+  emits a well-formed header-only VCF. This is the *only* sanctioned way to run without
+  a caller.
+- **A crashed or missing caller is a hard failure.** It is never silently downgraded to
+  an empty result.
+
+Practical consequence: if MELT is not installed, `MELT_CALL` now fails with an error
+telling you to install it or pass `--skip_melt` — it no longer emits an empty VCF that
+reads as "no mobile element insertions found".
 
 ---
 
@@ -428,6 +472,11 @@ pytest tests/ -v
 ```
 
 Tests cover: samplesheet validation, CNV consensus merging, SMN classification, Circos plot parsing, HTML report rendering, and CNV/blood-group trait interpreters (Rh/RHD, AMY1, GSTM1/GSTT1 null, LPA KIV-2 — arithmetic on synthetic depth fixtures, consensus cross-check against the real HG002 consensus BED, and contract-schema round-trips).
+
+`tests/test_no_empty_placeholders.py` is a regression guard for the empty-placeholder
+incident described above: it statically asserts that no module reintroduces an
+`|| touch <output>` fallback, an `echo '{}' >` placeholder, or a `|| true` that swallows
+a caller's exit code.
 
 ---
 

@@ -46,3 +46,24 @@ results/
 No tracked pipeline logic changed as part of the move; the only code edit was a
 backward-compatible `--traits-note` option added to `bin/html_report.py` so a
 BAM-less sample (COLO829) can state explicitly that depth traits were not computed.
+
+## What changed on 2026-07-13
+
+Reclaiming `work_HG002` also removed the only copies of the HG002 Truvari
+`benchmark.json` and ExpansionHunter STR VCF, so those two report sections had
+dropped out of the demo. Both stages were **re-run from the surviving inputs**
+(`results/HG002/HG002.sv_merged.vcf.gz` + the 30X GRCh38 HG002 BAM) with the
+same commands as `modules/truvari/bench.nf` and `modules/expansionhunter/call.nf`,
+and `docs/demo/HG002_report.html` was regenerated with `bin/html_report.py`.
+The regenerated demo is a strict superset of the 2026-07-12 one (circos with the
+CNV-trait ring, trait card and QC all retained). Their outputs are now kept in
+`results/` so they survive the next scratch reclaim:
+
+```
+results/HG002/HG002.str.vcf.gz{,.tbi}        # ExpansionHunter 5.0.0, 32-locus catalog
+results/HG002/HG002.str_profile.json
+results/HG002/benchmark/HG002.{T2T,v5q}.truvari_{summary,sizebin}.json
+```
+
+Numbers are recorded in [TODO.md](TODO.md) ("HG002 demo report: Truvari + STR
+sections restored — 2026-07-13").

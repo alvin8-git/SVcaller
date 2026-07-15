@@ -114,7 +114,51 @@ Why the pipeline is built the way it is. Each section covers a non-obvious choic
 
 ---
 
+## A failed caller must never publish an output (no empty placeholders)
+
+**The problem.** Several modules ended their command blocks with an `|| touch <output>`
+fallback, or wrote `echo '{}' > <output>.json`. The intent was benign — satisfy the
+Nextflow output declaration so the pipeline keeps moving when a tool's output filename
+varies across versions. The effect was not. When a caller genuinely **failed**, the
+process still exited 0 and published a **zero-byte file**. Nextflow saw its declared
+output, marked the task successful, and the run completed.
+
+On disk, a crashed stage and a negative result are then byte-for-byte indistinguishable.
+Downstream, OmniGen gated its reads on `os.path.exists()` — `True` for a 0-byte file —
+and rendered a **complete-looking consumer report** reading *"0 Carrier findings,
+0 Medication flags, Clear"*. A crashed SMN caller became a clean bill of health for a
+human being. (Full write-up: [CHANGES.md](CHANGES.md).)
+
+**The approach.** A caller that fails, fails. No placeholder is written, the process exits
+non-zero, and `errorStrategy = 'finish'` (`conf/base.config`) stops the run with an
+actionable error — the real stderr, exit code and work dir. The three states are kept
+strictly distinct:
+
+| State | On disk | How it is reached |
+|---|---|---|
+| Real negative result | Well-formed artifact, header, zero data rows | Caller ran successfully and found nothing |
+| Intentionally skipped | Well-formed header-only VCF from a `*_STUB` process | Operator passed `--skip_melt` / `--skip_scramble` / `--skip_svaba` / `--skip_gridss` |
+| Failure | **Nothing** | Caller crashed, or its dependencies are missing |
+
+The key design point is the middle row: *optionality is expressed in the workflow, not by
+writing a fake file in the module.* The `--skip_*` flags and their `*_STUB` processes
+already existed — which is precisely why the in-module "tool not found → emit empty VCF,
+exit 0" paths were pure failure-masking and could be deleted outright. "MELT is not
+installed" is a misconfiguration to surface, not a genome with no mobile-element
+insertions.
+
+**Trade-off.** Runs that previously "succeeded" on a broken or missing caller will now
+fail. That is the point: they were not succeeding, they were silently reporting nothing
+found. The cost is that a genuinely optional stage must be skipped explicitly rather than
+allowed to quietly no-op. For a pipeline whose output a clinician reads, an error you must
+act on beats a report you cannot trust.
+
+`tests/test_no_empty_placeholders.py` statically guards the patterns against reintroduction.
+
+---
+
 ## Related
 
 - [Architecture reference](reference-architecture.md) — module-by-module technical description
 - [Parameter reference](reference-parameters.md) — all CLI flags
+- [Changes](CHANGES.md) — behavioural changes and the incidents behind them

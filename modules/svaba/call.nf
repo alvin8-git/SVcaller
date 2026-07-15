@@ -13,14 +13,25 @@ process SVABA_CALL {
 
     script:
     """
-    # Germline single-sample SvABA run
+    # Germline single-sample SvABA run.
+    # No '|| true' here: if SvABA crashes, this process must fail. Swallowing the exit
+    # code let a crashed caller fall through to the empty-VCF stub below and render
+    # downstream as a legitimate "0 SVs found".
+    # To run without SvABA on purpose, use --skip_svaba (SVABA_STUB).
     svaba run \\
         -t ${bam} \\
         -G ${ref_fasta} \\
         -a ${meta.id} \\
         -p ${task.cpus} \\
-        --germline \\
-        2>&1 || true
+        --germline
+
+    # SvABA can exit 0 without writing its SV VCF if it died mid-run; treat that as failure.
+    if [ ! -f "${meta.id}.svaba.sv.vcf" ]; then
+        echo "ERROR: svaba run exited 0 but produced no ${meta.id}.svaba.sv.vcf." >&2
+        echo "Refusing to emit an empty VCF that would look like '0 SVs found'." >&2
+        ls -la >&2
+        exit 1
+    fi
 
     # Normalise: merge sv + indel VCFs, strip to canonical chrs, add SVLEN where absent
     (
@@ -57,13 +68,15 @@ process SVABA_CALL {
         done
     ) | sort -k1,1 -k2,2n | bgzip > ${meta.id}.svaba.vcf.gz
 
-    tabix -p vcf ${meta.id}.svaba.vcf.gz || true
+    # A header-only VCF (SvABA ran fine, found nothing) is a VALID empty result and is
+    # kept as such. What is no longer tolerated is reaching this point via a crash.
+    tabix -p vcf ${meta.id}.svaba.vcf.gz
 
-    # Emit empty VCF stub if SvABA produced nothing
+    # Guard the published artifact: it must at least carry a #CHROM header line.
     if ! tabix -H ${meta.id}.svaba.vcf.gz 2>/dev/null | grep -q "^#CHROM"; then
-        printf "##fileformat=VCFv4.1\n##INFO=<ID=SVTYPE,Number=1,Type=String,Description=\"SV type\">\n##INFO=<ID=SVLEN,Number=1,Type=Integer,Description=\"SV length\">\n##INFO=<ID=END,Number=1,Type=Integer,Description=\"End position\">\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t${meta.id}\n" \\
-            | bgzip > ${meta.id}.svaba.vcf.gz
-        tabix -p vcf ${meta.id}.svaba.vcf.gz || true
+        echo "ERROR: normalised ${meta.id}.svaba.vcf.gz has no #CHROM header." >&2
+        echo "Refusing to publish a malformed/empty VCF." >&2
+        exit 1
     fi
     rm -f ${meta.id}.svaba.sv.vcf ${meta.id}.svaba.indel.vcf \
           ${meta.id}.svaba.bps.txt.gz ${meta.id}.svaba.discordant.txt.gz \

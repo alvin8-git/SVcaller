@@ -31,11 +31,24 @@ process EXPANSIONHUNTER {
     bgzip ${meta.id}.str.vcf
     tabix -p vcf ${meta.id}.str.vcf.gz
 
-    # Normalise output json filename across EH versions
+    # Normalise output json filename across EH versions.
+    # An empty '{}' profile is NOT a valid "no repeat expansions" result -- it is what a
+    # broken ExpansionHunter run looks like. This file is published to results/ and read
+    # by OmniGen, which previously could not tell the two apart and rendered a crashed
+    # caller as a clean report. If EH exited 0 without a profile, fail loudly.
     if [ -f ${meta.id}.str.json ]; then
         cp ${meta.id}.str.json ${meta.id}.str_profile.json
     else
-        echo '{}' > ${meta.id}.str_profile.json
+        echo "ERROR: ExpansionHunter exited 0 but wrote no ${meta.id}.str.json profile." >&2
+        echo "Refusing to publish a fake empty '{}' STR profile: downstream consumers" >&2
+        echo "would read it as 'no repeat expansions detected'." >&2
+        ls -la >&2
+        exit 1
+    fi
+
+    if [ ! -s ${meta.id}.str_profile.json ]; then
+        echo "ERROR: ${meta.id}.str_profile.json is empty." >&2
+        exit 1
     fi
 
     cat <<-END_VERSIONS > versions.yml

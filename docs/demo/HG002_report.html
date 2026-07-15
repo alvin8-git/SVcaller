@@ -43,7 +43,7 @@
 <div class="header-bar">
   <h2>SVcaller Structural Variant Report</h2>
   <h4>Sample: HG002</h4>
-  <span class="pipeline-version">Pipeline v1.0.0 | Reference: GRCh38 (hg38.canonical) | Generated: 2026-07-12</span>
+  <span class="pipeline-version">Pipeline v1.0.0 | Reference: GRCh38 (hg38.canonical) | Generated: 2026-07-13</span>
 </div>
 
 <div class="container-fluid mt-3 px-4">
@@ -66,6 +66,40 @@
     <div class="card-body">
 
       <!-- Tier 1a: Named disease diagnoses (STR EXPANDED + SMA) -->
+      
+      <div class="mb-4">
+        <h6 class="text-danger fw-bold">&#9888;&nbsp;Known Disease Diagnoses</h6>
+        <table class="table table-sm table-bordered" style="max-width:780px;">
+          <thead class="table-danger">
+            <tr><th>Disease</th><th>Gene / Locus</th><th>Finding</th><th>Status</th><th>Source</th></tr>
+          </thead>
+          <tbody>
+          
+            <tr>
+              <td><strong>Spinocerebellar Ataxia 2 / ALS modifier</strong></td>
+              <td><code>ATXN2</code></td>
+              <td>CAG repeat, CN: 22/62</td>
+              <td>
+                <span class="badge bg-danger">EXPANDED</span>
+                
+              </td>
+              <td><span class="badge bg-dark text-white" style="font-size:0.72rem;">STR</span></td>
+            </tr>
+          
+            <tr>
+              <td><strong>Hereditary Spastic Paraplegia 6 (SPG6)</strong></td>
+              <td><code>NIPA1</code></td>
+              <td>GCG repeat, CN: 4/18</td>
+              <td>
+                <span class="badge bg-danger">EXPANDED</span>
+                
+              </td>
+              <td><span class="badge bg-dark text-white" style="font-size:0.72rem;">STR</span></td>
+            </tr>
+          
+          </tbody>
+        </table>
+      </div>
       
 
       <!-- Tier 1b: ACMG SF v3.2 actionable SV/CNV -->
@@ -36719,6 +36753,144 @@ z
 
   <!-- STR FINDINGS (EH catalog + STRling consensus) -->
   
+  <div class="card section-card">
+    <div class="card-header"><h5>Short Tandem Repeat (STR) Findings</h5></div>
+    <div class="card-body">
+      <p class="text-muted mb-2" style="font-size:0.78rem;">
+        <strong>EH</strong> = ExpansionHunter targeted at 32 known disease loci.
+        <strong>EH+STRling</strong> = concordant between callers at the same position — highest confidence.
+        
+      </p>
+      <table class="table table-sm sv-table">
+        <thead>
+          <tr>
+            <th>Status</th><th>Source</th><th>Gene / Locus</th><th>Disease</th><th>Inh.</th>
+            <th>Chr:Pos</th><th>Unit</th><th>Alleles (CN)</th>
+            <th>Normal&nbsp;&le;</th><th>Path&nbsp;&ge;</th><th>Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+        
+          <tr class="table-danger">
+            <td>
+              <span class="badge-expanded">EXPANDED</span>
+              
+            </td>
+            <td>
+              <span class="badge bg-primary" style="padding:2px 5px;border-radius:4px;font-size:0.78rem;color:white;">EH</span>
+            </td>
+            <td><strong>ATXN2</strong></td>
+            <td style="font-size:0.78rem;">Spinocerebellar Ataxia 2 / ALS modifier</td>
+            <td style="font-size:0.78rem;">AD</td>
+            <td style="font-size:0.78rem;">chr12:111598950</td>
+            <td><code>CAG</code></td>
+            <td>
+              <strong>22/62</strong>
+              <span class="badge bg-warning text-dark d-block mt-1" style="font-size:0.70rem;" title="INREPEAT: allele too large for short reads to span; estimate is unreliable — confirm with long-read sequencing">&#9888; INREPEAT</span>
+              
+            </td>
+            <td>31</td>
+            <td>33</td>
+            <td style="font-size:0.78rem;">
+              Span: 1/0 / Flank: 19/21
+                <small class="d-block text-muted">CI: 20-22/52-102</small>
+              
+              
+            </td>
+          </tr>
+        
+          <tr class="table-danger">
+            <td>
+              <span class="badge-expanded">EXPANDED</span>
+              
+            </td>
+            <td>
+              <span class="badge bg-primary" style="padding:2px 5px;border-radius:4px;font-size:0.78rem;color:white;">EH</span>
+            </td>
+            <td><strong>NIPA1</strong></td>
+            <td style="font-size:0.78rem;">Hereditary Spastic Paraplegia 6 (SPG6)</td>
+            <td style="font-size:0.78rem;">AD</td>
+            <td style="font-size:0.78rem;">chr15:22787428</td>
+            <td><code>GCG</code></td>
+            <td>
+              <strong>4/18</strong>
+              
+              
+            </td>
+            <td>7</td>
+            <td>9</td>
+            <td style="font-size:0.78rem;">
+              Span: 2/8 / Flank: 27/27
+                <small class="d-block text-muted">CI: 3-7/18-18</small>
+              
+              
+            </td>
+          </tr>
+        
+          <tr>
+            <td>
+              <span class="badge-intermediate">INTERMEDIATE</span>
+              
+            </td>
+            <td>
+              <span class="badge bg-primary" style="padding:2px 5px;border-radius:4px;font-size:0.78rem;color:white;">EH</span>
+            </td>
+            <td><strong>CNBP</strong></td>
+            <td style="font-size:0.78rem;">Myotonic Dystrophy Type 2 (DM2)</td>
+            <td style="font-size:0.78rem;">AD</td>
+            <td style="font-size:0.78rem;">chr3:129172575</td>
+            <td><code>CCTG</code></td>
+            <td>
+              <strong>13/51</strong>
+              <span class="badge bg-warning text-dark d-block mt-1" style="font-size:0.70rem;" title="INREPEAT: allele too large for short reads to span; estimate is unreliable — confirm with long-read sequencing">&#9888; INREPEAT</span>
+              
+            </td>
+            <td>30</td>
+            <td>75</td>
+            <td style="font-size:0.78rem;">
+              Span: 3/0 / Flank: 4/15
+                <small class="d-block text-muted">CI: 13-13/46-90</small>
+              
+              
+            </td>
+          </tr>
+        
+          <tr>
+            <td>
+              <span class="badge-intermediate">INTERMEDIATE</span>
+              
+            </td>
+            <td>
+              <span class="badge bg-primary" style="padding:2px 5px;border-radius:4px;font-size:0.78rem;color:white;">EH</span>
+            </td>
+            <td><strong>RFC1</strong></td>
+            <td style="font-size:0.78rem;">CANVAS Syndrome</td>
+            <td style="font-size:0.78rem;">AR</td>
+            <td style="font-size:0.78rem;">chr4:39348423</td>
+            <td><code>AAAAG</code></td>
+            <td>
+              <strong>12/33</strong>
+              <span class="badge bg-warning text-dark d-block mt-1" style="font-size:0.70rem;" title="INREPEAT: allele too large for short reads to span; estimate is unreliable — confirm with long-read sequencing">&#9888; INREPEAT</span>
+              
+            </td>
+            <td>11</td>
+            <td>400</td>
+            <td style="font-size:0.78rem;">
+              Span: 6/0 / Flank: 16/19
+                <small class="d-block text-muted">CI: 12-12/31-53</small>
+              
+              
+            </td>
+          </tr>
+        
+        </tbody>
+      </table>
+      <p class="text-muted mb-0" style="font-size:0.78rem;">
+        Disease thresholds sourced from STRchive / OMIM. EXPANDED = observed CN &ge; pathogenic threshold. CI = 95% confidence interval (ExpansionHunter).
+      </p>
+    </div>
+  </div>
+  
 
   <!-- TIER 2: CANDIDATE VARIANTS -->
   <div class="card section-card">
@@ -37237,8 +37409,94 @@ z
 
   <!-- GIAB BENCHMARK — T2TQ100-V1.0 -->
   
+  <div class="card section-card">
+    <div class="card-header"><h5>Validation Benchmark — GIAB HG002 T2TQ100-V1.0 (GRCh38)</h5></div>
+    <div class="card-body">
+      <p class="bench-label mb-2">Truth: GIAB HG002 T2T-Q100 v1.0 SV benchmark (2023). Truvari v4.3.1 — passonly, typeignore, pctseq=0, sizemin=50 bp.</p>
+      <table class="table table-sm" style="max-width:560px;">
+        <thead><tr><th>Category</th><th>Precision</th><th>Recall</th><th>F1</th><th>TP</th><th>FP</th><th>FN</th></tr></thead>
+        <tbody>
+        
+          <tr>
+            <td>Overall</td>
+            <td>0.733</td>
+            <td>0.255</td>
+            <td><strong>0.378</strong></td>
+            <td>7135</td><td>2605</td><td>22120</td>
+          </tr>
+        
+        </tbody>
+      </table>
+      
+      <details class="mt-2"><summary>Per-size-bin metrics</summary>
+        <table class="table table-sm mt-2" style="max-width:420px; font-size:0.8rem;">
+          <thead><tr><th>Size Bin</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+          <tbody>
+          
+            <tr><td>50-300 bp</td><td>0.734</td>
+                <td>0.209</td><td>0.326</td></tr>
+          
+            <tr><td>300 bp-1 kb</td><td>0.612</td>
+                <td>0.375</td><td>0.465</td></tr>
+          
+            <tr><td>1-10 kb</td><td>0.502</td>
+                <td>0.238</td><td>0.323</td></tr>
+          
+            <tr><td>>10 kb</td><td>0.617</td>
+                <td>0.207</td><td>0.310</td></tr>
+          
+          </tbody>
+        </table>
+      </details>
+      
+    </div>
+  </div>
+  
 
   <!-- GIAB BENCHMARK — v5.0q -->
+  
+  <div class="card section-card">
+    <div class="card-header"><h5>Validation Benchmark — GIAB HG002 v5.0q (GRCh38, 2026-03-02)</h5></div>
+    <div class="card-body">
+      <p class="bench-label mb-2">Truth: GIAB HG002 v5.0q SV benchmark (2026-03-02) — MEI-complete, 46,504 SVs. Truvari v4.3.1 — passonly, typeignore, pctseq=0, sizemin=50 bp.</p>
+      <table class="table table-sm" style="max-width:560px;">
+        <thead><tr><th>Category</th><th>Precision</th><th>Recall</th><th>F1</th><th>TP</th><th>FP</th><th>FN</th></tr></thead>
+        <tbody>
+        
+          <tr>
+            <td>Overall</td>
+            <td>0.738</td>
+            <td>0.259</td>
+            <td><strong>0.383</strong></td>
+            <td>6884</td><td>2450</td><td>20837</td>
+          </tr>
+        
+        </tbody>
+      </table>
+      
+      <details class="mt-2"><summary>Per-size-bin metrics</summary>
+        <table class="table table-sm mt-2" style="max-width:420px; font-size:0.8rem;">
+          <thead><tr><th>Size Bin</th><th>Precision</th><th>Recall</th><th>F1</th></tr></thead>
+          <tbody>
+          
+            <tr><td>50-300 bp</td><td>0.735</td>
+                <td>0.214</td><td>0.331</td></tr>
+          
+            <tr><td>300 bp-1 kb</td><td>0.616</td>
+                <td>0.381</td><td>0.471</td></tr>
+          
+            <tr><td>1-10 kb</td><td>0.511</td>
+                <td>0.238</td><td>0.325</td></tr>
+          
+            <tr><td>>10 kb</td><td>0.620</td>
+                <td>0.195</td><td>0.297</td></tr>
+          
+          </tbody>
+        </table>
+      </details>
+      
+    </div>
+  </div>
   
 
 </div>
@@ -37248,7 +37506,7 @@ z
   <strong>Callers:</strong> Manta &middot; Delly &middot; GRIDSS &middot; Scramble &middot; MELT v2.2.2 &middot; SvABA &middot; STRling &middot; ExpansionHunter &middot; CNVpytor &middot; GATK gCNV &middot; SMNCopyNumberCaller |
   <strong>Annotation:</strong> AnnotSV 3.4 &middot; gnomAD-SV v2.1 |
   <strong>Reference:</strong> GRCh38 (hg38.canonical) |
-  <strong>Generated:</strong> 2026-07-12
+  <strong>Generated:</strong> 2026-07-13
 </div>
 
 </body>
