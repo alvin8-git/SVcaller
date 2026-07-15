@@ -1,5 +1,47 @@
 # Changes
 
+## 2026-07-15 — Fail-loud guards on empty report inputs + drop dead SURVIVOR_MERGE selector
+
+**Silent-failure class (the OmniGen "clean bill of health" bug), now closed in the reporters.**
+A sibling consumer (OmniGen) had a bug where a crashed upstream caller left a 0-byte
+placeholder that, being gated only on `os.path.exists()` (True for an empty file), rendered
+as a clean *negative* result instead of a failure. Two SVcaller reporters had the same latent
+shape:
+
+- `bin/smn_report.py::parse_smn_tsv` opened the SMN TSV with no non-empty check. A 0-byte or
+  header-only file (a crashed `SMNCopyNumberCaller`) fell through to `if not lines: return`
+  defaults, and `render_html_section` then defaulted `smn1/smn2` to `2` — rendering **"Normal
+  (CN=2)"** for a caller that never ran. Now `parse_smn_tsv` raises `SmnInputError` on a
+  present-but-empty / header-only-no-data TSV; a `NO_*` sentinel (a legitimate skip) still
+  returns the neutral/unknown result.
+- `bin/html_report.py::render_report` read its required inputs (`--smn-html`, `--circos-svg`,
+  `--sv-tsv`, `--cnv-bed`) directly (`Path(...).read_text()` / `parse_*`), so a 0-byte input
+  rendered an empty section / "no findings". Added `UpstreamEmptyError` + `_is_absent` +
+  `_require_nonempty`, called at the top of `render_report`. A present-but-empty required
+  input now fails loudly.
+
+The distinction mirrors OmniGen `prototype/upstream.py`: **absent != empty != populated.**
+ABSENT (a Nextflow `NO_*` sentinel, e.g. `--cnv-bed NO_FILE` for a sample with no CNV data) is
+a legitimate skip and passes silently. EMPTY (0 bytes / whitespace — a crash placeholder) is a
+hard, visible failure. A **header-only** file ("we looked, found nothing") remains a valid
+negative result and is deliberately allowed through — the existing empty-AnnotSV-TSV → merged-VCF
+fallback still works. Healthy-path output is unchanged: verified byte-for-byte-shape against the
+real `results/HG002/` inputs (report renders at 1.28 MB, matching the committed 1.29 MB), and the
+guards do not fire on non-empty inputs.
+
+New regression tests (`tests/test_smn_report.py`, `tests/test_html_report.py`) assert a 0-byte /
+header-only required input raises rather than producing blank output, and that a `NO_FILE`
+sentinel is still an honest skip. Suite: 67 → **77 passed**.
+
+**Dead config selector removed.** `conf/docker.config` carried
+`withName: 'SURVIVOR_MERGE' { container = '...survivor...' }`, but the active pipeline merges SVs
+with `JASMINE_MERGE` (`subworkflows/sv_calling.nf`). `SURVIVOR_MERGE` is referenced only by the
+separate `workflows/sv_pon_build.nf` panel-of-normals builder, and `modules/survivor/merge.nf`
+already declares its container inline — so the selector was dead weight that made Nextflow emit
+`WARN: There's no process matching config selector: SURVIVOR_MERGE` on every main-pipeline run.
+Removed. `modules/survivor/merge.nf` is **not** orphaned (still used by `sv_pon_build.nf`) and was
+left in place.
+
 ## 2026-07-13 — CNV_TRAITS scripts committed non-executable (exit 126)
 
 `bin/gst_null.py`, `bin/amy1_cn.py`, `bin/lpa_kiv2.py` and `bin/rh_status.py` are invoked

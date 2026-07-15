@@ -79,3 +79,50 @@ def test_sv_sheet_falls_back_to_vcf_when_tsv_empty(tmp_path):
     xls = openpyxl.load_workbook(str(out).replace(".report.html", ".variants.xlsx"))
     sv_sheet = xls["SV"]
     assert sv_sheet.max_row - 1 == 2               # 2 data rows from the merged VCF
+
+
+# --- Silent-failure guard: a 0-byte required input is a crash, not "no findings" ---
+# A header-only file is a legitimate negative result (see the fallback test above);
+# a truly EMPTY (0-byte / whitespace) required input is a crashed upstream stage and
+# must raise UpstreamEmptyError instead of rendering a clean "no findings" report.
+
+def _guard_inputs(tmp_path):
+    smn_html = tmp_path / "smn.html"; smn_html.write_text("<p>SMN</p>")
+    cnv_bed = tmp_path / "cnv.bed"
+    cnv_bed.write_text("#chrom\tstart\tend\tcn\tsvtype\tcaller_support\tconfidence\tquality\tsample\n")
+    sv_tsv = tmp_path / "sv.tsv"
+    sv_tsv.write_text("AnnotSV_ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tAnnotSV_ranking_score\n")
+    circos_svg = tmp_path / "circos.svg"; circos_svg.write_text("<svg/>")
+    return smn_html, cnv_bed, sv_tsv, circos_svg
+
+
+@pytest.mark.parametrize("victim", ["sv_tsv", "smn_html", "circos_svg", "cnv_bed"])
+def test_empty_required_input_raises(tmp_path, victim):
+    from html_report import render_report, UpstreamEmptyError
+    smn_html, cnv_bed, sv_tsv, circos_svg = _guard_inputs(tmp_path)
+    paths = {"smn_html": smn_html, "cnv_bed": cnv_bed, "sv_tsv": sv_tsv, "circos_svg": circos_svg}
+    paths[victim].write_text("")   # crashed upstream stage -> 0-byte placeholder
+    out = tmp_path / "GUARD_TEST.report.html"
+    with pytest.raises(UpstreamEmptyError):
+        render_report(
+            sample_id="GUARD_TEST",
+            smn_html_path=str(smn_html), cnv_bed_path=str(cnv_bed),
+            sv_tsv_path=str(sv_tsv), circos_svg_path=str(circos_svg),
+            out_path=str(out), pipeline_version="1.0.0",
+        )
+    assert not out.exists()         # no clean-looking report left behind
+
+
+def test_absent_cnv_sentinel_is_not_a_failure(tmp_path):
+    """A NO_FILE sentinel (sample legitimately has no CNV data) must NOT raise."""
+    from html_report import render_report
+    smn_html, cnv_bed, sv_tsv, circos_svg = _guard_inputs(tmp_path)
+    sentinel = tmp_path / "NO_FILE"; sentinel.write_text("")   # sentinel is empty by design
+    out = tmp_path / "SENTINEL_TEST.report.html"
+    render_report(
+        sample_id="SENTINEL_TEST",
+        smn_html_path=str(smn_html), cnv_bed_path=str(sentinel),
+        sv_tsv_path=str(sv_tsv), circos_svg_path=str(circos_svg),
+        out_path=str(out), pipeline_version="1.0.0",
+    )
+    assert out.exists() and "SENTINEL_TEST" in out.read_text()

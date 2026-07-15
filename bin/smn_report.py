@@ -5,6 +5,13 @@ from pathlib import Path
 from typing import Optional
 
 
+class SmnInputError(RuntimeError):
+    """The SMN TSV exists but is empty / has no data row => the SMN copy-number
+    caller RAN and FAILED. It must never be rendered as a default 'Normal (CN=2)'
+    result. Mirrors OmniGen prototype/upstream.py: absent (a Nextflow NO_* sentinel)
+    != empty (a crashed caller's 0-byte placeholder) != a real, populated result."""
+
+
 def classify_sma(smn1_cn: int, smn2_cn: int) -> dict:
     """Classify SMA status from SMN1 copy number."""
     if smn1_cn == 0:
@@ -47,12 +54,26 @@ def parse_smn_tsv(tsv_path: str) -> dict:
         "smn1_allele1": None, "smn1_allele2": None,
         "confidence": "UNKNOWN",
     }
+    # ABSENT (a Nextflow NO_* sentinel) is a legitimate skip -> neutral/unknown result.
+    # A PRESENT-yet-empty file is the zero-byte placeholder a crashed SMN caller leaves
+    # behind: fail loudly instead of silently defaulting to "Normal (CN=2)".
+    name = Path(tsv_path).name
+    if name.startswith("NO_") or name == "":
+        return result
     with open(tsv_path) as fh:
         lines = [l.strip() for l in fh if l.strip() and not l.startswith("#")]
     if not lines:
-        return result
+        raise SmnInputError(
+            f"SMN TSV '{tsv_path}' is empty -- the SMN copy-number caller failed. "
+            f"Refusing to render an empty artifact as a default 'Normal (CN=2)' result."
+        )
     header = lines[0].split("\t")
     values = lines[1].split("\t") if len(lines) > 1 else []
+    if not values:
+        raise SmnInputError(
+            f"SMN TSV '{tsv_path}' has a header but no data row -- the SMN copy-number "
+            f"caller produced no result. Refusing to default to 'Normal (CN=2)'."
+        )
     d = dict(zip(header, values))
     try:
         result["smn1_cn"]      = int(d.get("SMN1_CN", d.get("smn1", 2)))

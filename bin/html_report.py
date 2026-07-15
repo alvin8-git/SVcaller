@@ -17,6 +17,44 @@ _MAX_ARTIFACT_SIZE = 50_000_000  # chromosome-spanning calls — always artifact
 _LARGE_SV_SUPP_MIN = 2           # require multi-caller support for SVs >1 Mb
 
 
+class UpstreamEmptyError(RuntimeError):
+    """A required upstream artifact exists but is EMPTY (0 bytes / whitespace-only) =>
+    the stage that should have produced it RAN and FAILED. It must never be rendered as
+    a negative ("no findings") result. Mirrors OmniGen prototype/upstream.py: absent
+    (a Nextflow NO_* sentinel or a missing path) != empty (a crash placeholder) !=
+    populated. A header-only file ("we looked, found nothing") is a valid negative
+    result and is deliberately allowed through."""
+
+
+def _is_absent(path) -> bool:
+    """True if `path` is a legitimately absent input: unset, a Nextflow NO_* sentinel,
+    or a path that does not exist on disk. Such inputs are an honest skip, not a failure."""
+    if not path:
+        return True
+    name = Path(path).name
+    if name == "" or name.startswith("NO_"):
+        return True
+    return not Path(path).exists()
+
+
+def _require_nonempty(path, label: str) -> None:
+    """Fail loudly if a *present* required input is empty (0 bytes / whitespace-only).
+
+    Absent inputs (sentinel / missing) pass silently — they are handled downstream as an
+    honest skip. But a present-yet-empty file is the zero-byte placeholder an upstream
+    stage leaves on failure; rendering it as a clean "no findings" result is the exact
+    silent-failure bug this guard prevents. A header-only file is a valid negative result
+    and is allowed through."""
+    if _is_absent(path):
+        return
+    p = Path(path)
+    if p.stat().st_size == 0 or not p.read_bytes().strip():
+        raise UpstreamEmptyError(
+            f"{label}: '{path}' exists but is empty — the upstream stage failed. "
+            f"Refusing to render an empty artifact as a negative (no-findings) result."
+        )
+
+
 _SD_PAIR_POS_WINDOW = 50_000   # bp — start position proximity for SD pair detection
 _SD_PAIR_SIZE_TOL   = 0.20     # fractional size difference tolerance
 
@@ -1364,6 +1402,14 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   gst_null_path: str = None,
                   lpa_kiv2_path: str = None,
                   traits_note: str = None) -> None:
+    # Fail-loud guards: a present-but-empty required input is a crashed upstream stage,
+    # not a negative result. Absent (NO_* sentinel) inputs remain a legitimate skip.
+    # (cnv-bed is optional and arrives as a NO_FILE sentinel when a sample has no CNV data.)
+    _require_nonempty(smn_html_path, "SMN HTML section (--smn-html)")
+    _require_nonempty(circos_svg_path, "Circos plot (--circos-svg)")
+    _require_nonempty(sv_tsv_path, "Annotated SV table (--sv-tsv)")
+    _require_nonempty(cnv_bed_path, "CNV consensus BED (--cnv-bed)")
+
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("report_template.html")
 
