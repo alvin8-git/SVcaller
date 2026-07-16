@@ -1,5 +1,19 @@
 # Changes
 
+## 2026-07-16 — Portability: stop hardcoding `/data/alvin/tmp`
+
+**Problem.** Two configs baked a host-specific path into every run, breaking the pipeline
+on any other machine:
+
+- `conf/docker.config`: `docker.runOptions = '--rm -v /data/alvin/tmp:/tmp'`
+- `nextflow.config`: `env.TMPDIR = '/data/alvin/tmp'`
+
+**Fix.** Introduced a `params.tmp_dir` that defaults to `System.getenv('TMPDIR') ?: '/tmp'`.
+Both the Docker bind mount (`--rm -v ${params.tmp_dir}:/tmp`) and `env.TMPDIR = params.tmp_dir`
+now derive from it. Behaviour is preserved on hosts that export `TMPDIR`; portable everywhere
+else. Override with `--tmp_dir <path>` for a dedicated scratch volume. `nextflow config` and
+`nextflow config -profile docker` both parse clean.
+
 ## 2026-07-15 — SvABA never actually ran: stage its classic BWA index
 
 **Root cause.** `modules/svaba/call.nf` invoked `svaba run -G ${ref_fasta} ...` while
