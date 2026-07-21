@@ -136,7 +136,7 @@ pytest tests/test_cnv_consensus.py
 pytest tests/test_cnv_consensus.py::test_reciprocal_overlap
 ```
 
-The Python scripts in `bin/` are tested with pytest but execute inside `svcaller/utils:1.2` Docker container during the pipeline run.
+79 tests, ~0.5 s — no fixtures or containers needed, so run them on every `bin/` edit. (The README's "25 passing" badge is stale.) The scripts themselves execute inside the `svcaller/utils:1.2` container during a pipeline run.
 
 ## Samplesheet Format
 
@@ -154,22 +154,28 @@ HG003,,,/path/HG003.bam
 main.nf                          # Entry: parse samplesheet, set up channels, call SVCALLER
 └── workflows/svcaller.nf        # Top-level orchestration
     ├── subworkflows/preprocess.nf   # M1: BWA-MEM2 align → SAMTOOLS_SORT → Picard MarkDup → Mosdepth QC
-    ├── subworkflows/sv_calling.nf   # M2: Manta + Delly + GRIDSS + Scramble + MELT (parallel) → Jasmine merge; ExpansionHunter (STRs)
+    ├── subworkflows/sv_calling.nf   # M2: Manta + Delly + GRIDSS + Scramble + MELT + SvABA (parallel) → Jasmine merge → TRA_CONSENSUS; ExpansionHunter + STRling (STRs)
     ├── subworkflows/cnv_calling.nf  # M3: CNVpytor + GATK gCNV → cnv_consensus.py (reciprocal overlap merge)
+    ├── subworkflows/cnv_traits.nf   # M3b: targeted depth → Rh (RHD) / AMY1 / GSTM1-GSTT1-null / Lp(a) KIV-2 copy-number traits
     ├── subworkflows/smn_calling.nf  # M4: SMNCopyNumberCaller
-    ├── subworkflows/annotate.nf     # M5: AnnotSV
+    ├── subworkflows/annotate.nf     # M5: AnnotSV (+ optional SV_PON_ANNOTATE before it, in svcaller.nf)
     └── subworkflows/report.nf       # M6/M7: pycirclize Circos SVG + optional Truvari bench → HTML report
+
+workflows/pon_build.nf           # Build the GATK gCNV PON HDF5 from GIAB BAMs
+workflows/sv_pon_build.nf        # Build the SV PON BED: Manta per GIAB sample (HG002 excluded) → SURVIVOR merge → sites in >=2 samples
 ```
 
+Long-form how-to guides live in `docs/` (`howto-run-clinical-sample.md`, `howto-run-bam-inputs.md`, `howto-build-pon.md`, `howto-run-validation.md`, `howto-interpret-report.md`, `explanation-design.md`). Prefer updating those over growing this file.
+
 **Key design points:**
-- M2, M3, M4 run in parallel on the same BAM channel after preprocessing.
+- M2, M3, M4 run in parallel on the same BAM channel after preprocessing. M3b (CNV_TRAITS) consumes the BAM plus `CNV_CALLING.out.cnv_bed`, so it runs after M3.
 - M3 case mode runs `GATK_PREPROCESS_INTERVALS` (bin-length 1000) before `CollectReadCounts` — must match PON build intervals.
-- SV merge (Jasmine) requires Manta+Delly+GRIDSS to succeed; Scramble and MELT are optional (only added to vcf_list.txt if they have calls).
+- SV merge (Jasmine) requires Manta+Delly+GRIDSS to succeed; Scramble and MELT are optional (only added to vcf_list.txt if they have calls). **SvABA is currently staged but not merged** — `sv_calling.nf` passes 6 VCFs to `JASMINE_MERGE`, but `modules/jasmine/merge.nf` only decompresses `vcfs[0..4]` and builds `vcf_list.txt` from those, so `vcfs[5]` (SvABA) never reaches Jasmine. Despite `--skip_svaba` defaulting to false, the ensemble is effectively 5 callers. Fix by extending the merge script before trusting any "6-caller" claim in the README or the F1 table below.
 - `TRA_CONSENSUS` (`bin/tra_consensus.py`) runs after Jasmine: Jasmine does not co-cluster interchromosomal breakends, so every translocation lands at SUPP=1 and the SUPP≥2 gate erased all of them (0/26 on COLO829). This step re-clusters TRA by breakend proximity (`--tra_window`, default 1000 bp) across callers and recomputes SUPP/SUPP_VEC → 24/26 recall on COLO829. It (not JASMINE_MERGE) publishes the final `sv_merged.vcf.gz`. GRIDSS still drops inter-chr pairs in `gridss_convert_bnd.py`, so it contributes no TRA vote yet (the 2 missed are Delly-only).
 - CNV consensus (`bin/cnv_consensus.py`) uses reciprocal overlap ≥0.5 to call `BOTH`/`HIGH` calls; GATK-only calls with quality ≥30 are included as `MEDIUM`.
-- Mosdepth halts the pipeline if coverage < `params.min_depth` (default 30).
+- Mosdepth halts the pipeline if coverage < `params.min_depth` (default 25). MELT also reuses `min_depth` as its `-c` coverage argument.
 - Optional inputs (PoN, intervals, AnnotSV DB, GIAB truth) use `Channel.value(file("NO_PON"))` / `Channel.empty()` sentinel patterns. ANNOTSV emits a stub empty TSV when `--annotsv_db` is not provided.
-- REPORT workflow joins 9 channels into BUILD_HTML_REPORT: sv_tsv, cnv_bed, smn_tsv, circos_svg, benchmark_json, sizebin_json, coverage_summary, picard_metrics, str_vcf. Each optional channel uses `remainder: true` join + `?: file("NO_FILE")` fallback.
+- REPORT takes 22 channels (see the `take:` block in `subworkflows/report.nf` for the authoritative list — it grows as sections are added, so read it rather than trusting a copy here). Each optional channel uses `remainder: true` join + `?: file("NO_FILE")` fallback.
 - Truvari runs overall + 4 size bins (50–300 bp, 300 bp–1 kb, 1–10 kb, >10 kb) — both JSONs wired to HTML report.
 
 ## Known Issues / Environment Notes
@@ -183,7 +189,7 @@ main.nf                          # Entry: parse samplesheet, set up channels, ca
 - **AnnotSV `-annotationsDir` path**: pass `\$(dirname ${annotsv_db})` (parent of `Annotations_Human`), not `${annotsv_db}` itself — AnnotSV appends `Annotations_Human` internally.
 - **Delly BCF format**: Delly 1.2.6 outputs BCF binary even with `.vcf` extension. `DELLY_MERGE` uses `bcftools concat | bcftools sort` in `broadinstitute/gatk:4.5.0.0` container (has bcftools 1.13).
 - **Jasmine unsorted output**: Jasmine does not sort its merged VCF. `JASMINE_MERGE` runs `sort -k1,1 -k2,2n` after Jasmine before `bgzip | tabix`.
-- **svcaller/utils:1.1**: rebuilt from `Dockerfile.utils` to add `COPY assets/ /usr/local/assets/` (report template) and fix STR VCF gzip reading and null Truvari precision/recall values.
+- **svcaller/utils**: now at `1.2` everywhere (`params.utils_container`, `conf/docker.config`, and three modules hardcode it). Rebuilt from `Dockerfile.utils` to add `COPY assets/ /usr/local/assets/` (report template) and fix STR VCF gzip reading and null Truvari precision/recall values. `Dockerfile.utils` bakes in **both** `bin/` (→ `/usr/local/bin`) and `assets/` (→ `/usr/local/assets`), and `html_report.py` finds its Jinja template via `Path(__file__).parent.parent / "assets"` — i.e. it only resolves from that `/usr/local/{bin,assets}` layout. So: rebuild the image after editing `bin/` or `assets/`, and never change `bin/`'s depth relative to `assets/` without fixing `TEMPLATE_DIR`.
 - **samtools flagstat**: wired and working — `mapped_pct` and `dup_rate` both parsed from `HG002.flagstat.txt` and shown in HTML QC section.
 - **MELT container**: `svcaller/melt:2.2.2` — must be built locally from `MELTv2.2.2.tar.gz` (MELT.jar requires registration at melt.igs.umaryland.edu; not in bioconda/biocontainers). Build: `docker build -f Dockerfile.melt -t svcaller/melt:2.2.2 .`. Requires bowtie2 in PATH (included in container). ME types run alphabetically: ALU→HERVK→LINE1→SVA (~2h total at 30×).
 - **MELT INFO headers**: MELT outputs many INFO fields (DIFF/LP/RP/RA/PRIOR/SR/MEINFO etc.) that Jasmine drops from the merged VCF header, causing bcftools/Truvari to fatal-exit. Fixed: `call.nf` strips INFO to SVTYPE/MEITYPE/SVLEN/END; `merge.nf` injects `##INFO=<ID=MEITYPE,...>` before `#CHROM`.
@@ -191,7 +197,7 @@ main.nf                          # Entry: parse samplesheet, set up channels, ca
 
 ## Python Scripts (`bin/`)
 
-All run inside `svcaller/utils:1.1`. Each is a standalone CLI tool:
+All run inside `svcaller/utils:1.2` (`params.utils_container`). Each is a standalone CLI tool:
 
 | Script | Purpose |
 |---|---|
@@ -200,6 +206,15 @@ All run inside `svcaller/utils:1.1`. Each is a standalone CLI tool:
 | `smn_report.py` | Generate SMN1/SMN2 HTML section |
 | `circos_plot.py` | Generate SVG circos plot via pycirclize |
 | `parse_samplesheet.py` | Samplesheet parsing utility |
+| `tra_consensus.py` | Re-cluster interchromosomal BNDs across callers post-Jasmine; publishes final `sv_merged.vcf.gz` |
+| `gridss_convert_bnd.py` | Convert GRIDSS BND pairs → typed DEL/DUP/INV (drops inter-chr pairs) |
+| `cnv_traits_common.py` | Shared normalized-depth helpers for the four trait callers |
+| `rh_status.py` | RHD presence/deletion → Rh blood-group status |
+| `amy1_cn.py` | AMY1 copy number |
+| `gst_null.py` | GSTM1 / GSTT1 null genotype |
+| `lpa_kiv2.py` | LPA KIV-2 repeat copy number |
+
+`bin/nf-cleanup.sh` is shell, not Python — see the Storage section.
 
 ## Module Conventions
 
@@ -209,7 +224,9 @@ Each module under `modules/<tool>/` follows: `input` tuple → `script` block �
 
 **Storage/optimization:** MOSDEPTH runs `--no-per-base` (skips the unused ~4.5 GB/sample per-base BED; only `regions.bed.gz` is consumed). Reclaim orphaned work dirs from failed/superseded runs with `bash bin/nf-cleanup.sh --reclaim` (dry-run; `--force` to delete) — keeps the latest successful run for `-resume`, refuses while a run is active. Scatter-gather is safe only for depth/per-locus tools (Delly already internal; GATK counts/CNVpytor/EH shardable); Manta/GRIDSS/SvABA need whole-genome context — do not chunk. Do NOT `docker rmi`/`prune -a` the locally-built `svcaller/{melt:2.2.2,utils,smncopynum}` images (not re-pullable; `prune -f` dangling-only is safe).
 
-## Current F1 Baseline (2026-06-08, run16: 6-caller Manta+Delly+GRIDSS+Scramble+MELT+SvABA, GRIDSS BND→SV fix)
+## Current F1 Baseline (2026-06-08, run16: labelled "6-caller Manta+Delly+GRIDSS+Scramble+MELT+SvABA", GRIDSS BND→SV fix)
+
+> The "6-caller" label is inaccurate — SvABA never reaches Jasmine (see the SV merge note in Key design points). These numbers are a 5-caller ensemble. Re-benchmark after wiring SvABA in.
 
 | Benchmark | F1 | Precision | Recall | TP-base | FP | comp cnt |
 |---|---|---|---|---|---|---|
@@ -243,10 +260,19 @@ validation/giab_samplesheet.csv
 | `--annotsv_db` | null | AnnotSV database directory — use `${REF}/annotsv/Annotations_Human` |
 | `--giab_truth` | null | GIAB T2TQ100-V1.0 truth VCF.gz (enables Truvari T2T benchmark) |
 | `--giab_truth_v5q` | null | GIAB v5.0q truth VCF.gz (enables Truvari v5q benchmark) |
+| `--sv_pon` | null | GIAB SV PON BED (recurrent-site blacklist); built by `workflows/sv_pon_build.nf` |
+| `--bwa_index` | null | Prefix of the **classic** BWA index (`.amb/.ann/.bwt/.pac/.sa`) SvABA needs. Auto-derived from `--ref_fasta` if unset; required unless `--skip_svaba` |
+| `--tmp_dir` | `$TMPDIR` or `/tmp` | Host scratch dir bind-mounted into containers. Set it — the default `/tmp` is usually a small root partition |
+| `--skip_gridss` | false | Skip GRIDSS (saves 4-6 h) |
+| `--tiered_gridss` | false | Run GRIDSS only over Manta non-PASS regions — faster, but serial after Manta |
+| `--skip_scramble` | false | Skip Scramble MEI calling (~10 min) |
 | `--skip_melt` | false | Skip MELT MEI calling (saves ~2h; use when MELT container unavailable) |
+| `--skip_svaba` | false | Skip SvABA local-assembly caller |
+| `--skip_strling` | false | Skip STRling genome-wide STR scanning |
 | `--melt_refs` | null | Path to MELT me_refs dir (auto-detected from container if unset) |
+| `--melt_min_reads` | 3 | Min split-read support for a MELT call (MELT default is 5; lowered for recall) |
 | `--tra_window` | 1000 | Breakend-proximity window (bp) for cross-caller translocation consensus (TRA_CONSENSUS) |
-| `--min_depth` | 25 | Mosdepth coverage threshold |
+| `--min_depth` | 25 | Mosdepth coverage threshold (also MELT's `-c`) |
 | `--outdir` | results | Output directory |
 | `--auto_cleanup` | false | Delete `-work-dir` on successful completion (drops `-resume` cache; one-shot runs only). Otherwise run `bash bin/nf-cleanup.sh <sampleId>` post-run. |
 | `--max_cpus` / `--max_memory` / `--max_time` | 64 / 120.GB / 240.h | Per-process resource caps. Lower on small machines (e.g. `--max_memory 32.GB`) to avoid over-subscription. |
