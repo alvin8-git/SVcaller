@@ -12,11 +12,18 @@ work_*/
 .nextflow.log*
 
 # ── Input / validation sequencing data (never committed) ─────────────────────
+# Input BAMs live in the central store, NOT in this tree:
+#   GIAB HG001-HG007  → /data/alvin/ref/GIAB/
+#   SMA trio          → /data/alvin/ref/SMA/   (moved out of ValidationBAM/ 2026-07-21)
+# The ValidationBAM/ rule is retained only to catch accidental recreation.
 ValidationBAM/
 minibam/
+pytest-of-alvin/
 
 # ── Built panels / large reference artifacts (built or volume-mounted) ───────
 pon/
+# benchmarks_data/ moved to /data/alvin/ref/benchmarks/<sample>/fastq/ on 2026-07-21;
+# rule retained to catch accidental recreation. Benchmarks/ (GIAB truth) still local.
 Benchmarks/
 benchmarks_data/
 

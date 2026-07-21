@@ -551,9 +551,11 @@ The final per-sample `<sample>.report.html` is a self-contained file with all co
 
 ## 10. Known Limitations
 
-### 9.1 SMA Samples Not Yet in Validation Samplesheet
+### 9.1 SMA Trio Runs on Externally Aligned BAMs
 
-The clinical SMA trio (SMAPB, SMAM, SMAD) have FASTQs located in `ValidationBAM/SMA_BAM/` but are not yet added to `validation/validation_samplesheet.csv`. Once added, they will be aligned through BWA-MEM2 (preferred over external minimap2 BAMs for SMNCopyNumberCaller accuracy — minimap2 multi-mapping handling at the SMN paralog region differs from BWA-MEM2 and may reduce calling accuracy). See TODO §Next Steps item 1.
+The clinical SMA trio (SMAPB, SMAM, SMAD) runs from pre-aligned BAMs in the central reference store at `/data/alvin/ref/SMA/` (moved out of the repo tree on 2026-07-21), driven by its own `validation/smn_validation_samplesheet.csv` rather than the main `validation_samplesheet.csv` — SMN validation is a separate run by design, since there is no SV truth set for clinical samples.
+
+The limitation is that these BAMs were aligned externally with minimap2, not through this pipeline's BWA-MEM2 step. minimap2 handles multi-mapping at the SMN1/SMN2 paralog region differently from BWA-MEM2, which may reduce SMNCopyNumberCaller accuracy. Re-aligning the trio from FASTQ through BWA-MEM2 would remove this caveat. See TODO §Next Steps item 1.
 
 ### 9.2 PON Built Without GC Correction
 

@@ -1,2 +1,2 @@
 sample,fastq_1,fastq_2,bam
-COLO829_tumor,/data/alvin/SVcaller/benchmarks_data/COLO829/COLO829_tumor_ERR2752450_1.fastq.gz,/data/alvin/SVcaller/benchmarks_data/COLO829/COLO829_tumor_ERR2752450_2.fastq.gz,
+COLO829_tumor,/data/alvin/ref/benchmarks/COLO829/fastq/COLO829_tumor_ERR2752450_1.fastq.gz,/data/alvin/ref/benchmarks/COLO829/fastq/COLO829_tumor_ERR2752450_2.fastq.gz,

@@ -1,2 +1,2 @@
 sample,fastq_1,fastq_2,bam
-SMAPB,,,/data/alvin/SVcaller/ValidationBAM/SMA_BAM/SMAPB.bwa.sortdup.bqsr.bam
+SMAPB,,,/data/alvin/ref/SMA/SMAPB.bwa.sortdup.bqsr.bam
