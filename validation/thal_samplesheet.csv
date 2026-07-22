@@ -1,0 +1,3 @@
+sample,fastq_1,fastq_2,bam
+THAL1,,,/data/alvin/ref/THAL/THAL1_30X.bwa.sortdup.bqsr.bam
+THAL2,,,/data/alvin/ref/THAL/THAL2_30X.bwa.sortdup.bqsr.bam
