@@ -87,7 +87,7 @@
 ### Containers
 | Tool | Image |
 |------|-------|
-| Python utils / report | `svcaller/utils:1.2` |
+| Python utils / report | `svcaller/utils:1.3` |
 | MELT | `svcaller/melt:2.2.2` |
 | SMNCopyNumberCaller | `svcaller/smncopynum:1.1` |
 

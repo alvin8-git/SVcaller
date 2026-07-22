@@ -61,7 +61,7 @@ process HBA_DEPTH {
 process HBA_DEPTH_CALL {
     tag "${meta.id}"
     label 'process_single'
-    container params.utils_container ?: 'svcaller/utils:1.2'
+    container params.utils_container ?: 'svcaller/utils:1.3'
     publishDir "${params.outdir}/${meta.id}/alpha_globin", mode: 'copy', pattern: "*.alpha_depth.tsv"
 
     input:
@@ -85,7 +85,7 @@ process HBA_DEPTH_CALL {
 process HBA_JUNCTION {
     tag "${meta.id}"
     label 'process_single'
-    container params.utils_container ?: 'svcaller/utils:1.2'
+    container params.utils_container ?: 'svcaller/utils:1.3'
     publishDir "${params.outdir}/${meta.id}/alpha_globin", mode: 'copy', pattern: "*.alpha_junction.tsv"
 
     input:
@@ -111,7 +111,7 @@ process HBA_JUNCTION {
 process HBA_SITES {
     tag "${meta.id}"
     label 'process_single'
-    container params.utils_container ?: 'svcaller/utils:1.2'
+    container params.utils_container ?: 'svcaller/utils:1.3'
     publishDir "${params.outdir}/${meta.id}/alpha_globin", mode: 'copy', pattern: "*.alpha_sites.tsv"
 
     input:
@@ -159,7 +159,7 @@ process HBA_SITES {
 process ALPHA_GLOBIN_INTEGRATE {
     tag "${meta.id}"
     label 'process_single'
-    container params.utils_container ?: 'svcaller/utils:1.2'
+    container params.utils_container ?: 'svcaller/utils:1.3'
     publishDir "${params.outdir}/${meta.id}/alpha_globin", mode: 'copy', pattern: "*.alpha_globin.tsv"
 
     input:

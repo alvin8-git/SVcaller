@@ -71,7 +71,7 @@ is a population inference dressed as a measurement.
 surviving HBA2 is hemizygous, so a real variant sits near 100% VAF, not 50%.
 Emit the raw VAF *and* the copy-number-aware call, never the latter alone.
 
-**Rebuild the container after editing `bin/`.** `svcaller/utils:1.2` bakes in
+**Rebuild the container after editing `bin/`.** `svcaller/utils:1.3` bakes in
 `bin/` and `assets/`. Edit a script, skip the rebuild, and the pipeline silently
 runs the old code. Also: `html_report.py` resolves its template via
 `Path(__file__).parent.parent / "assets"` — never change `bin/`'s depth relative

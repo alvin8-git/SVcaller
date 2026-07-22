@@ -6,7 +6,7 @@ include { MULTIQC                          } from '../modules/multiqc/report'
 process BUILD_HTML_REPORT {
     tag "${meta.id}"
     label 'process_single'
-    container 'svcaller/utils:1.2'
+    container params.utils_container ?: 'svcaller/utils:1.3'
     publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.report.html"
     publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.variants.xlsx"
 

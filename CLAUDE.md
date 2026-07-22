@@ -136,7 +136,7 @@ pytest tests/test_cnv_consensus.py
 pytest tests/test_cnv_consensus.py::test_reciprocal_overlap
 ```
 
-299 tests, ~3.9 s — no containers or network needed, so run them on every `bin/` edit. (The README's "25 passing" badge is stale, and this count was itself stale at 79 until 2026-07-22.) A handful skip themselves when `samtools` is not on PATH. The scripts themselves execute inside the `svcaller/utils:1.2` container during a pipeline run.
+307 tests, ~4 s — no containers or network needed, so run them on every `bin/` edit. (The README's "25 passing" badge is stale, and this count was itself stale at 79 until 2026-07-22.) A handful skip themselves when `samtools` is not on PATH. The scripts themselves execute inside the `svcaller/utils:1.3` container during a pipeline run.
 
 ## Samplesheet Format
 
@@ -200,7 +200,7 @@ Long-form how-to guides live in `docs/` (`howto-run-clinical-sample.md`, `howto-
 
 ## Python Scripts (`bin/`)
 
-All run inside `svcaller/utils:1.2` (`params.utils_container`). Each is a standalone CLI tool:
+All run inside `svcaller/utils:1.3` (`params.utils_container`). Each is a standalone CLI tool:
 
 | Script | Purpose |
 |---|---|
@@ -289,7 +289,7 @@ validation/giab_samplesheet.csv
 | `--outdir` | results | Output directory |
 | `--auto_cleanup` | false | Delete `-work-dir` on successful completion (drops `-resume` cache; one-shot runs only). Otherwise run `bash bin/nf-cleanup.sh <sampleId>` post-run. |
 | `--max_cpus` / `--max_memory` / `--max_time` | 64 / 120.GB / 240.h | Per-process resource caps. Lower on small machines (e.g. `--max_memory 32.GB`) to avoid over-subscription. |
-| `--utils_container` | `svcaller/utils:1.2` | Container for Python bin/ scripts |
+| `--utils_container` | `svcaller/utils:1.3` | Container for Python bin/ scripts |
 
 # context-mode — MANDATORY routing rules
 

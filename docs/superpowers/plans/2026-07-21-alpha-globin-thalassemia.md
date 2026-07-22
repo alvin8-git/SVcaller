@@ -1057,9 +1057,14 @@ THAL2's Hb Quong Sze het and THAL1's absence at the same site from the real BAMs
   meta map, where one divergent key silently drops a whole sample's report with
   no error. Adding a 23rd channel blind, with no way to run the pipeline, is how
   that bug returns.
-- **`svcaller/utils:1.2` has not been rebuilt.** It bakes in `bin/` and
-  `assets/`; until it is rebuilt the pipeline runs the OLD code and none of this
-  exists at runtime.
+- ~~**`svcaller/utils:1.2` has not been rebuilt.**~~ **DONE 2026-07-22.** Rebuilt
+  and then re-tagged **`svcaller/utils:1.3`**, because rebuilding `:1.2` in place
+  left one tag meaning two different sets of contents with nothing in the repo
+  signalling it. Verified inside the image: all 7 new `bin/` scripts, all 4
+  globin assets, and the widened `0-6` range rather than the old cap. The tag was
+  written in **14** places — including three that hardcoded it and silently
+  ignored `--utils_container` — all now consistent and guarded by
+  `tests/test_container_assignments.py`.
 - **`validation/thal_benchmark.sh` does not exist.** The plan calls it part of
   the deliverable, not a follow-up. It is still a follow-up.
 - **`assets/cnv_syndromes.tsv` has no α-globin entry**, and the three filter

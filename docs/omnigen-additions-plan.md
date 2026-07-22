@@ -41,7 +41,7 @@ Key patterns observed:
   `publishDir "${params.outdir}/${meta.id}", pattern: "*.smn.tsv"`. This is the
   exact shape our four features should copy.
 * **CNV consensus.** `subworkflows/cnv_calling.nf` process `CNV_CONSENSUS`
-  (container `params.utils_container ?: 'svcaller/utils:1.2'`) runs
+  (container `params.utils_container ?: 'svcaller/utils:1.3'`) runs
   `bin/cnv_consensus.py` → `${id}.cnv_consensus.bed` with columns
   `chrom,start,end,cn,svtype,caller_support,confidence,quality,sample`.
 * **Targeted depth tooling already present.** `modules/mosdepth/coverage.nf`
@@ -50,7 +50,7 @@ Key patterns observed:
   today; we add a `--by <bed>` targeted variant. `samtools:1.23.1` biocontainer
   also available.
 * **Per-sample HTML report** is produced by `subworkflows/report.nf` →
-  process `BUILD_HTML_REPORT` (container `svcaller/utils:1.2`), which runs
+  process `BUILD_HTML_REPORT` (container `svcaller/utils:1.3`), which runs
   `bin/html_report.py` with many optional `--flag` args guarded by
   `NO_*` sentinel filenames, then `publishDir "${params.outdir}/${meta.id}", pattern: "*.report.html"`.
   html_report.py: `argparse` in `main()` (~L1353), rendering in
@@ -166,7 +166,7 @@ Notes:
 ### 1.3 New subworkflow: `subworkflows/cnv_traits.nf` (workflow `CNV_TRAITS`)
 
 Runs `TRAIT_DEPTH` once, then four small interpreter processes (each a thin
-wrapper over a `bin/*.py`, container `svcaller/utils:1.2`). Each interpreter
+wrapper over a `bin/*.py`, container `svcaller/utils:1.3`). Each interpreter
 receives the depth bed AND the CNV consensus bed (for corroboration).
 
 ```groovy
@@ -204,7 +204,7 @@ Each interpreter process body follows the `CNV_CONSENSUS` shape, e.g.:
 ```groovy
 process RH_STATUS {
     tag "${meta.id}"; label 'process_single'
-    container params.utils_container ?: 'svcaller/utils:1.2'
+    container params.utils_container ?: 'svcaller/utils:1.3'
     publishDir "${params.outdir}/${meta.id}/bloodgroup", mode: 'copy', pattern: "*rh_status.tsv"
     input:  tuple val(meta), path(depth_bed), path(cnv_bed)
     output: tuple val(meta), path("${meta.id}.rh_status.tsv"), emit: tsv
@@ -249,7 +249,7 @@ Diploid single-copy baseline: `control_depth` reflects 2 gene copies. So
   `bin/rh_status.py`. Depends on `TRAIT_DEPTH` (primary) + `CNV_CALLING.out.cnv_bed`
   (corroboration).
 * **(b) Tool + container:** mosdepth (`TRAIT_DEPTH`, mosdepth:0.3.14) for depth;
-  interpreter in `svcaller/utils:1.2` (pure-Python stdlib, no pysam needed).
+  interpreter in `svcaller/utils:1.3` (pure-Python stdlib, no pysam needed).
 * **Method:** `RHD_copies = round(2 * depth(RHD) / control_median)`. The common
   Rh-negative haplotype is a homozygous whole-RHD deletion →
   `RHD_copies == 0` → `Rh_status = neg`; `>=1` → `pos`. Corroborate: if the CNV

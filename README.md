@@ -505,7 +505,7 @@ All tools run in pinned Docker containers. No local tool installation required b
 | SMNCopyNumberCaller | `svcaller/smncopynum:1.1` |
 | AnnotSV | `quay.io/biocontainers/annotsv:3.4.6--py313hdfd78af_0` |
 | truvari | `quay.io/biocontainers/truvari:4.3.1--pyhdfd78af_0` |
-| Python utils / report | `svcaller/utils:1.2` (local build) |
+| Python utils / report | `svcaller/utils:1.3` (local build) |
 
 ---
 

@@ -7,7 +7,7 @@ include { TRAIT_DEPTH } from '../modules/traits/depth'
 process RH_STATUS {
     tag "${meta.id}"
     label 'process_single'
-    container params.utils_container ?: 'svcaller/utils:1.2'
+    container params.utils_container ?: 'svcaller/utils:1.3'
     publishDir "${params.outdir}/${meta.id}/bloodgroup", mode: 'copy', pattern: "*.rh_status.tsv"
 
     input:
@@ -30,7 +30,7 @@ process RH_STATUS {
 process AMY1_CN {
     tag "${meta.id}"
     label 'process_single'
-    container params.utils_container ?: 'svcaller/utils:1.2'
+    container params.utils_container ?: 'svcaller/utils:1.3'
     publishDir "${params.outdir}/${meta.id}/cnv_traits", mode: 'copy', pattern: "*.amy1.tsv"
 
     input:
@@ -52,7 +52,7 @@ process AMY1_CN {
 process GST_NULL {
     tag "${meta.id}"
     label 'process_single'
-    container params.utils_container ?: 'svcaller/utils:1.2'
+    container params.utils_container ?: 'svcaller/utils:1.3'
     publishDir "${params.outdir}/${meta.id}/cnv_traits", mode: 'copy', pattern: "*.gst_null.tsv"
 
     input:
@@ -75,7 +75,7 @@ process GST_NULL {
 process LPA_KIV2 {
     tag "${meta.id}"
     label 'process_single'
-    container params.utils_container ?: 'svcaller/utils:1.2'
+    container params.utils_container ?: 'svcaller/utils:1.3'
     publishDir "${params.outdir}/${meta.id}/cnv_traits", mode: 'copy', pattern: "*.lpa_kiv2.tsv"
 
     input:

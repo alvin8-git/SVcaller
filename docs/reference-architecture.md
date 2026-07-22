@@ -157,10 +157,10 @@ Tool: SMNCopyNumberCaller. Runs from the full pre-filtered BAM (before canonical
 
 | Process | Container | Input | Output |
 |---------|-----------|-------|--------|
-| `CIRCOS_PLOT` | svcaller/utils:1.2 | sv_vcf, cnv_bed, str_vcf, depth_bed, annotsv_tsv, cytobands | SVG + PNG |
+| `CIRCOS_PLOT` | svcaller/utils:1.3 | sv_vcf, cnv_bed, str_vcf, depth_bed, annotsv_tsv, cytobands | SVG + PNG |
 | `TRUVARI_BENCH` | quay.io/.../truvari | sv_vcf, truth_vcf, truth_bed | summary.json + sizebin.json |
 | `MULTIQC` | quay.io/.../multiqc | QC files from M1 | HTML report |
-| `BUILD_HTML_REPORT` | svcaller/utils:1.2 | All above + coverage, metrics, smn_tsv | .report.html + .variants.xlsx |
+| `BUILD_HTML_REPORT` | svcaller/utils:1.3 | All above + coverage, metrics, smn_tsv | .report.html + .variants.xlsx |
 
 ### Circos Plot Ring Layout (outer → inner)
 
@@ -183,7 +183,7 @@ The `REPORT` workflow joins 9 mandatory channels with `join()` (inner join) and 
 
 ## Python Scripts (`bin/`)
 
-Scripts run inside `svcaller/utils:1.2`. The `export PATH=${projectDir}/bin:$PATH` override in process scripts ensures the host's `bin/` takes precedence over container-baked versions.
+Scripts run inside `svcaller/utils:1.3`. The `export PATH=${projectDir}/bin:$PATH` override in process scripts ensures the host's `bin/` takes precedence over container-baked versions.
 
 | Script | CLI entrypoint | Key logic |
 |--------|---------------|-----------|

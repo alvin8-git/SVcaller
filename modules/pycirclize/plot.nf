@@ -1,7 +1,7 @@
 process CIRCOS_PLOT {
     tag "${meta.id}"
     label 'process_single'
-    container 'svcaller/utils:1.2'
+    container params.utils_container ?: 'svcaller/utils:1.3'
     publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.circos.png"
 
     input:

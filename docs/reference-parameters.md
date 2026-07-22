@@ -21,7 +21,7 @@ Complete reference for all CLI parameters, samplesheet columns, and output files
 | `--min_depth` | Integer | 25 | Minimum mean coverage (mosdepth). Pipeline halts if the sample is below this threshold. |
 | `--outdir` | Path | `results` | Output directory. Per-sample subdirectories are created automatically. |
 | `--tmp_dir` | Path | `$TMPDIR` or `/tmp` | Host temp directory bind-mounted into Docker containers as `/tmp` and exported as `TMPDIR`. Defaults to the invoking shell's `$TMPDIR`, falling back to `/tmp`, so no host path is baked in. Override on machines with a dedicated scratch volume (e.g. `--tmp_dir /data/scratch/tmp`). |
-| `--utils_container` | String | `svcaller/utils:1.2` | Docker image for Python bin/ scripts. |
+| `--utils_container` | String | `svcaller/utils:1.3` | Docker image for Python bin/ scripts. |
 | `--auto_cleanup` | Boolean | false | Delete the run's `-work-dir` automatically on **successful** completion (via the `workflow.onComplete` hook). Off by default so intermediates survive for `-resume`. When false, the run prints a tip to run `bash bin/nf-cleanup.sh <sampleId>` instead. See [Storage & Cache Management](#storage--cache-management). |
 | `--max_cpus` | Integer | 64 | Upper bound on CPUs any single process may request (caps the `task.attempt` scaling). Lower it on small machines to prevent over-subscription. |
 | `--max_memory` | String | `120.GB` | Upper bound on memory any single process may request. Lower it on small machines so retries don't request more RAM than exists. |

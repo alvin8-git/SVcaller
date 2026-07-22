@@ -1,7 +1,7 @@
 process GRIDSS_CONVERT_BND {
     tag "${meta.id}"
     label 'process_single'
-    container 'svcaller/utils:1.2'
+    container params.utils_container ?: 'svcaller/utils:1.3'
 
     input:
     tuple val(meta), path(bnd_vcf), path(bnd_tbi)

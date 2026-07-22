@@ -117,6 +117,61 @@ def test_processes_calling_a_tool_get_an_image_that_has_it(tool, marker):
     assert not wrong, "\n  " + "\n  ".join(wrong)
 
 
+UTILS_RE = re.compile(r"svcaller/utils:[\d.]+")
+
+
+def test_utils_tag_is_consistent_everywhere():
+    """The utils tag is written in 14 places. They must all agree.
+
+    CLAUDE.md flagged this as a known hazard ("three modules hardcode it"), and
+    it is exactly the kind of drift nothing detects until a run pulls a stale
+    image. The authority is params.utils_container in nextflow.config; every
+    other occurrence is a fallback default and must match it.
+    """
+    conf = open(os.path.join(REPO, "nextflow.config")).read()
+    m = re.search(r"utils_container\s*=\s*'(svcaller/utils:[\d.]+)'", conf)
+    assert m, "params.utils_container not found in nextflow.config"
+    authority = m.group(1)
+
+    mismatches = []
+    for root, _, files in os.walk(REPO):
+        if any(p in root for p in ("/work_", "/results", "/.git", "__pycache__")):
+            continue
+        for f in files:
+            if not f.endswith((".nf", ".config")):
+                continue
+            path = os.path.join(root, f)
+            for i, line in enumerate(open(path), 1):
+                for tag in UTILS_RE.findall(line):
+                    if tag != authority:
+                        mismatches.append(
+                            f"{os.path.relpath(path, REPO)}:{i} has {tag}, "
+                            f"authority is {authority}")
+    assert not mismatches, "utils container tag drift:\n  " + "\n  ".join(mismatches)
+
+
+def test_utils_processes_honour_the_param():
+    """A hardcoded tag with no `params.utils_container ?:` fallback silently
+    ignores --utils_container. Three processes did exactly that (pycirclize,
+    gridss/convert_bnd, report) while the parameter was documented as working."""
+    offenders = []
+    for root, _, files in os.walk(REPO):
+        if any(p in root for p in ("/work_", "/results", "/.git", "__pycache__")):
+            continue
+        for f in files:
+            if not f.endswith(".nf"):
+                continue
+            path = os.path.join(root, f)
+            for i, line in enumerate(open(path), 1):
+                if not UTILS_RE.search(line) or "container" not in line:
+                    continue
+                if "params.utils_container" not in line:
+                    offenders.append(f"{os.path.relpath(path, REPO)}:{i}: {line.strip()}")
+    assert not offenders, (
+        "these hardcode the utils image and ignore --utils_container:\n  "
+        + "\n  ".join(offenders))
+
+
 def test_hba_depth_specifically_resolves_to_mosdepth():
     """The regression itself, pinned by name so the fix cannot be reverted quietly."""
     image = _resolve("HBA_DEPTH")
