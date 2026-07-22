@@ -1,0 +1,55 @@
+# Thalassemia truth table — alpha and beta globin
+#
+# Consumed by tests/test_thal_truth_table.py. Unlike smn_truth_table.tsv (which
+# nothing reads, and which the plan flags as a warning), every row here is
+# cross-checked against the committed panels, so a coordinate that drifts out of
+# assets/ fails the suite instead of rotting silently.
+#
+# ==================== READ THIS BEFORE USING IT AS TRUTH ====================
+#
+# NOTHING HERE IS ORTHOGONALLY CONFIRMED. Every genotype was derived from the
+# same reads or VCFs a caller would be validated against, so agreement measures
+# self-consistency, not accuracy. The `orthogonal` column is `no` on every row
+# and must stay that way until a gap-PCR / MLPA / Sanger result arrives.
+# Treat concordance against this table as a regression check, not as sensitivity.
+#
+# THAL1/THAL2 SAMPLE LABELS ARE REVERSED vs what the supplier described. The
+# genotypes below follow the SEQUENCE, not the filename. Unresolved with the
+# supplier as of 2026-07-22 — see the plan's "Sample identity" section.
+#
+# ============================================================================
+#
+# columns
+#   sample       sample id as it appears in the BAM/VCF filename
+#   locus        alpha | beta
+#   genotype     allele string. "|" INSIDE an allele = depth-degenerate group
+#                that this evidence cannot resolve (e.g. --SEA|--MED)
+#   alpha_genes  functional alpha-gene count 0-4, or NA for beta rows
+#   zygosity     het | hom | compound_het | none
+#   panel_ref    allele name or HGVS that MUST exist in the assets/ panel, or "-"
+#   method       how the genotype was established
+#   evidence     the actual measurement, so a reader can re-check it
+#   orthogonal   independent-assay confirmation: yes | no
+#   confidence   high | medium | low
+#   note
+#
+sample	locus	genotype	alpha_genes	zygosity	panel_ref	method	evidence	orthogonal	confidence	note
+THAL1	alpha	--SEA|--MED/aa	2	het	-	depth	1kb windows chr16:164000-186000 ratio 0.45-0.60; HBZ 1.00; flanks 1.05	no	high	Spares HBZ so --FIL/--THAI excluded. --SEA vs --MED NOT resolvable from depth; supplier described this material as --SEA. Extent or a junction read is needed to collapse the group.
+THAL1	beta	IVS-II-654/wt	NA	het	IVS-II-654	vcf	chr11:5225923 G>A GT=0/1 AD=9,10 VAF 0.53 (hc4 GATK VCF)	no	medium	Common Chinese beta+ allele. Depth 19 is modest and the variant is intronic (pathogenic via cryptic splicing). THAL1 is therefore a DOUBLE heterozygote, alpha and beta - not described at purchase.
+THAL2	alpha	aQSa/aa	4	het	Hb Quong Sze	pileup+vcf	chr16:173548 T>C pileup VAF 0.55 DP=23; VCF GT=0/1 QUAL=330 AD=12,13	no	high	No deletion: every diagnostic segment at ratio ~1.00. Zygosity is simple here ONLY because the alpha-gene count is 4; on a deletion background the same VAF would mean something different.
+THAL2	beta	wt/wt	NA	none	-	vcf	no panel allele found in HBB	no	low	Absence of a panel hit is NOT a negative - the panel is 12 curated alleles of ~280 known. Recorded to document what was checked.
+HG02379	beta	HbE/CD41-42	NA	compound_het	HbE	reads	HbE chr11:5226943 DP=23 C=10 T=13; CD41-42 chr11:5226762 DP=26 12 del events; 4/4 informative fragments place them in TRANS	no	medium	1000G CDX. Compound het = clinically HbE/beta-0, but PHENOTYPE IS UNKNOWN - 1000G subjects are nominally healthy and HbE/beta-0 severity varies. Do NOT record as affected. Phasing rests on 4 fragments across a 181 bp gap.
+HG02379	beta	CD41-42	NA	compound_het	CD41-42	reads	see above; second allele of the same compound genotype	no	medium	Recorded as its own row so a per-allele concordance check sees both.
+HG01797	beta	HbE/wt	NA	het	HbE	panel_genotype	1000G phased panel GT, chr11:5226943 C>T	no	medium	CDX, unrelated. Truth is another caller's output - circular if used to measure accuracy of a caller, acceptable as a regression fixture. HBB is not in a segdup so the call is reliable.
+HG00583	beta	CD41-42/wt	NA	het	CD41-42	panel_genotype	1000G phased panel GT, chr11:5226762 CAAAG>C	no	medium	CHS, unrelated. Same circularity caveat.
+#
+# DELIBERATELY ABSENT: GIAB HG001-HG007 are NOT recorded as alpha-negative.
+# Their alpha status is unknown - the pipeline has never produced a chr16 call
+# below 14.6 Mb, which is evidence of the caller's blindness, not of their
+# genotype. Recording them as negative would repeat the exact false-negative
+# this project exists to fix.
+#
+# NOT REPRESENTED, so sensitivity for these is UNMEASURED at launch:
+#   alpha  -a3.7 (commonest worldwide), -a4.2, --FIL, --THAI, anti-3.7 triplication,
+#          Hb Constant Spring, Hb Adana, and any compound het on a deletion background
+#   beta   ~270 of ~280 known alleles; no beta-only positive outside 1000G
