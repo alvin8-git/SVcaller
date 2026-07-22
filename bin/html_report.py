@@ -154,6 +154,43 @@ def _dedup_pathogenic(rows: list) -> list:
     return deduped
 
 
+# JASMINE_MERGE writes the core three into vcf_list.txt in a single unconditional
+# printf, so SUPP_VEC positions 1-3 are ALWAYS these, in this order.
+_CORE_CALLERS = ("Manta", "Delly", "GRIDSS")
+# These are appended ONLY when the caller produced calls, so whether they occupy
+# a bit at all varies per sample. That is what makes a fixed index->name table
+# wrong. Order here matches the order merge.nf appends them.
+_OPTIONAL_CALLERS = ("Scramble", "MELT")
+
+
+def _supp_vec_names(n_bits: int) -> list:
+    """Caller names for a SUPP_VEC of this width.
+
+    The previous version indexed a fixed six-name list by bit position. That
+    silently mislabels: a sample with no Scramble calls but MELT calls produces a
+    4-bit vector, and MELT lands on the Scramble slot — the report then names a
+    caller that contributed nothing to that variant.
+
+    Only the core three are positionally guaranteed. Beyond them:
+
+        3 bits      core only
+        3 + 2 bits  both optional callers merged, so their order IS unambiguous
+        3 + 1 bits  exactly one optional caller merged and SUPP_VEC cannot say
+                    which — so say so rather than guess
+
+    A wider vector (a caller added later) degrades to a positional label instead
+    of silently reusing a name.
+    """
+    n_opt = n_bits - len(_CORE_CALLERS)
+    if n_opt <= 0:
+        return list(_CORE_CALLERS[:n_bits])
+    if n_opt == 1:
+        return list(_CORE_CALLERS) + [" or ".join(_OPTIONAL_CALLERS)]
+    names = list(_CORE_CALLERS) + list(_OPTIONAL_CALLERS)
+    names += [f"caller {i + 1}" for i in range(len(names), n_bits)]
+    return names[:n_bits]
+
+
 def _parse_supp_vec(info_str: str) -> dict:
     """Extract SUPP, SUPP_VEC and caller breakdown from Jasmine INFO field."""
     info_d = dict(
@@ -162,11 +199,9 @@ def _parse_supp_vec(info_str: str) -> dict:
     )
     supp     = info_d.get("SUPP", "?")
     supp_vec = info_d.get("SUPP_VEC", "")
-    callers  = []
-    names    = ["Manta", "Delly", "GRIDSS", "Scramble", "MELT", "SvABA"]
-    for i, bit in enumerate(supp_vec):
-        if bit == "1" and i < len(names):
-            callers.append(names[i])
+    names    = _supp_vec_names(len(supp_vec))
+    callers  = [names[i] for i, bit in enumerate(supp_vec)
+                if bit == "1" and i < len(names)]
     return {"supp": supp, "supp_vec": supp_vec, "callers": "/".join(callers) or "?"}
 
 

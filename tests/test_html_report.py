@@ -126,3 +126,38 @@ def test_absent_cnv_sentinel_is_not_a_failure(tmp_path):
         out_path=str(out), pipeline_version="1.0.0",
     )
     assert out.exists() and "SENTINEL_TEST" in out.read_text()
+
+
+# ---- SUPP_VEC caller attribution must not name a caller it cannot identify ----
+# JASMINE_MERGE writes the core three unconditionally but appends Scramble and
+# MELT ONLY when each has calls. The old code indexed a fixed six-name list by bit
+# position, so a sample with no Scramble calls but MELT calls (a 4-bit vector) had
+# MELT reported as "Scramble" — the report named a caller that contributed nothing
+# to that variant. Found 2026-07-22 while wiring SvABA in.
+def test_supp_vec_never_misattributes_optional_callers():
+    from html_report import _parse_supp_vec, _supp_vec_names
+
+    # positions 1-3 are guaranteed by merge.nf's unconditional printf
+    assert _supp_vec_names(3) == ["Manta", "Delly", "GRIDSS"]
+
+    # 4 bits: exactly one optional caller merged, and SUPP_VEC cannot say which
+    four = _supp_vec_names(4)
+    assert four[:3] == ["Manta", "Delly", "GRIDSS"]
+    assert four[3] == "Scramble or MELT", (
+        f"a 4-bit vector names {four[3]!r}; it is unknowable which optional "
+        "caller occupies that bit, so it must not be claimed")
+
+    # 5 bits: both present, so the order IS unambiguous
+    assert _supp_vec_names(5) == ["Manta", "Delly", "GRIDSS", "Scramble", "MELT"]
+
+    # the specific regression: bit 4 alone must not read as "Scramble"
+    got = _parse_supp_vec("SUPP=1;SUPP_VEC=0001")["callers"]
+    assert got != "Scramble", "the original mislabel is back"
+    assert got == "Scramble or MELT"
+
+    # a wider vector degrades positionally rather than reusing a name
+    assert _supp_vec_names(6)[5].startswith("caller")
+
+    # degenerate input stays honest
+    assert _parse_supp_vec("SUPP=0;SUPP_VEC=000")["callers"] == "?"
+    assert _parse_supp_vec("")["callers"] == "?"
