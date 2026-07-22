@@ -13,7 +13,7 @@ Use this guide when your sample is a BAM file rather than paired FASTQs. Common 
 
 | Aspect | FASTQ input | BAM input |
 |--------|------------|-----------|
-| FILTER_CHROMS | Skipped (use `hg38.canonical.fa`) | Always runs (~25 min) |
+| FILTER_CHROMS | Skipped (use `hg38.canonical.fa`) | Always runs (~70 min, awk-bound) |
 | Reference FASTA | `hg38.canonical.fa` recommended | `hg38.canonical.fa` required (see note below) |
 | Alignment step | BWA-MEM2 + SAMTOOLS_SORT | Skipped |
 | @SQ header risk | None (canonical ref produces canonical headers) | Present — must be corrected by FILTER_CHROMS |

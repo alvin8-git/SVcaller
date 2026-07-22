@@ -88,7 +88,7 @@ executor >  local (1)
 
 ## Step 5: Check progress
 
-After ~25 min (FILTER_CHROMS for BAM input), then another ~30-45 min for the SV callers, the pipeline completes. Look for:
+After ~70 min (FILTER_CHROMS for BAM input), then another ~30-45 min for the SV callers, the pipeline completes. Look for:
 
 ```
 [xx/xxxxxx] SVC…:BUILD_HTML_REPORT (HG002) | 1 of 1 ✔

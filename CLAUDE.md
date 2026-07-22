@@ -42,7 +42,7 @@ export TMP=/path/to/tmp          # scratch + logs; keep off the small root parti
 
 ```bash
 # SV/CNV validation — HG002 only; Truvari benchmark against GIAB SV truth
-# Use hg38.canonical.fa (chr1-22+X+Y+M only) for FASTQ inputs — skips 25-min FILTER_CHROMS step
+# Use hg38.canonical.fa (chr1-22+X+Y+M only) for FASTQ inputs — skips FILTER_CHROMS (~70 min/sample)
 NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
   --input validation/validation_samplesheet.csv \
   --ref_fasta ${REF}/GRCh38/hg38.canonical.fa \
@@ -121,7 +121,7 @@ rm -rf ${PROJ}/work_SAMPLEID
 
 **PON location:** `${PROJ}/pon/pon/giab_cnv_pon.hdf5` (446 MB, built from HG001-HG007)
 
-**Canonical reference:** `${REF}/GRCh38/hg38.canonical.fa` (chr1-22+X+Y+M, 1.49 GB). Use for FASTQ inputs so aligned BAMs contain only canonical chromosomes. The pipeline automatically skips FILTER_CHROMS for FASTQ-derived BAMs (saves ~25 min/sample). BWA-MEM2 index at same path prefix. BAM inputs always run FILTER_CHROMS regardless of reference used.
+**Canonical reference:** `${REF}/GRCh38/hg38.canonical.fa` (chr1-22+X+Y+M, 1.49 GB). Use for FASTQ inputs so aligned BAMs contain only canonical chromosomes. The pipeline automatically skips FILTER_CHROMS for FASTQ-derived BAMs (saves ~70 min/sample on a ~30× BAM — measured, see the FILTER_CHROMS note below). BWA-MEM2 index at same path prefix. BAM inputs always run FILTER_CHROMS regardless of reference used.
 
 ## Python Tests
 
@@ -231,7 +231,53 @@ All run inside `svcaller/utils:1.3` (`params.utils_container`). Each is a standa
 
 Each module under `modules/<tool>/` follows: `input` tuple → `script` block → `output` tuple with named `emit`. Resource labels (`process_single`, `process_low`, `process_medium`, `process_high`, `process_gridss`) map to CPU/memory tiers in `conf/base.config` (single 1c/6G, low 4c/12G, medium 8c/36G, high 16c/32G, gridss 16c/32G — memory scales ×`task.attempt` on retry, clamped by `--max_*`). Retry on OOM exit codes (137, 143, 104, 134, 139) is automatic. `GRIDSS_CALL` has `maxRetries=3` (32→64→96 GB); `SVABA_CALL` pins CPUs at 16 (memory-bound).
 
-**storeDir caches** (survive `nextflow clean`, reused across samples against the same reference — do not delete between runs): `SAMTOOLS_FILTER_CHROMS` → `${outdir}/.cache/filter_chroms`, `GRIDSS_SETUP` → `${outdir}/cache/gridss_ref`, `GATK_PREPROCESS_INTERVALS` → `${outdir}/cache/gatk_preprocess`. **Pre-flight:** `VALIDATE_REF_BAM` (start of M2) fails fast if the reference has contigs the BAM lacks — catches the canonical-vs-full hg38 mismatch in seconds instead of a silent Manta crash ~4 h in.
+**storeDir caches** (survive `nextflow clean`, reused across samples against the same reference — do not delete between runs): `SAMTOOLS_FILTER_CHROMS` → `${outdir}/.cache/filter_chroms`, `GRIDSS_SETUP` → `${outdir}/cache/gridss_ref`, `GATK_PREPROCESS_INTERVALS` → `${outdir}/cache/gatk_preprocess`.
+
+### FILTER_CHROMS is slow, and it is awk-bound — measured 2026-07-22
+
+**~70 min for a 79 GB BAM, not the ~25 min this file used to claim.** Measured on
+THAL1 mid-run:
+
+| | |
+|---|---|
+| throughput | **19 MB/s** |
+| `awk` (canonical filter) | **99.7% CPU — one core, pinned** |
+| `samtools view -h -@ 8` (reader) | 24% |
+| `samtools view -@ 8 -b` (writer) | 116% |
+
+The two `samtools` stages have 8 threads each and sit mostly idle; the
+single-threaded `awk` in the middle sets the pace, so **`--max_cpus` does not
+help this step at all**. Budget ~70 min/sample for a ~30× BAM and scale roughly
+linearly with BAM size.
+
+It is paid once per (sample, reference) thanks to the storeDir cache, and FASTQ
+inputs skip it entirely — that is the main reason to prefer `hg38.canonical.fa`
+for FASTQ.
+
+**If you optimise it, parallelise by chromosome — nothing else moves the needle.**
+Two plausible fixes were measured and rejected:
+
+- `LC_ALL=C` — no effect. 2.10 s vs 2.08 s on a 400 k-line benchmark.
+- switching to `mawk` — already done. The samtools biocontainer's `/usr/bin/awk`
+  *is* mawk (it rejects `--version`), so the usual "use mawk" advice is spent.
+
+What remains is structural. The awk does four things — rewrite the `@SQ` header,
+strip non-canonical entries from `SA:Z` tags, drop reads whose mate is on a
+non-canonical contig, and zero `PNEXT` when `RNEXT` is `*` — and **all four are
+per-read or header-only, so they parallelise cleanly by chromosome**:
+
+1. build the corrected header once from `samtools view -H`;
+2. fan out over the 24 canonical chromosomes with `xargs -P`, each running
+   `samtools view <bam> chrN | awk '<per-read part>' | samtools view -b`;
+3. `samtools cat` the parts in canonical order (concatenates without
+   recompressing) and index.
+
+Ceiling is set by the largest chromosome: chr1 is ~8% of the genome, so ~12×
+theoretical, realistically **8–10× → roughly 7–9 min/sample**. Requires the
+per-chromosome parts to share one header, which step 1 gives you.
+
+Do not change this while a run is in flight — it alters the task hash and
+invalidates the storeDir cache, re-costing an hour per sample. **Pre-flight:** `VALIDATE_REF_BAM` (start of M2) fails fast if the reference has contigs the BAM lacks — catches the canonical-vs-full hg38 mismatch in seconds instead of a silent Manta crash ~4 h in.
 
 **Storage/optimization:** MOSDEPTH runs `--no-per-base` (skips the unused ~4.5 GB/sample per-base BED; only `regions.bed.gz` is consumed). Reclaim orphaned work dirs from failed/superseded runs with `bash bin/nf-cleanup.sh --reclaim` (dry-run; `--force` to delete) — keeps the latest successful run for `-resume`, refuses while a run is active. Scatter-gather is safe only for depth/per-locus tools (Delly already internal; GATK counts/CNVpytor/EH shardable); Manta/GRIDSS/SvABA need whole-genome context — do not chunk. Do NOT `docker rmi`/`prune -a` the locally-built `svcaller/{melt:2.2.2,utils,smncopynum}` images (not re-pullable; `prune -f` dangling-only is safe).
 

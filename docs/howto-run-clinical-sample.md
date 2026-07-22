@@ -48,7 +48,7 @@ echo "PID: $!"
 
 Key points:
 - Use a dedicated work directory per sample (`work_SAMPLEID`). Never share work dirs across samples.
-- Use `hg38.canonical.fa` for FASTQ inputs — the pipeline skips the 25-minute FILTER_CHROMS step.
+- Use `hg38.canonical.fa` for FASTQ inputs — the pipeline skips FILTER_CHROMS, which takes ~70 min/sample on a ~30× BAM.
 - BAM inputs always run FILTER_CHROMS regardless of reference.
 - The pipeline runs MELT by default (~2 h). Add `--skip_melt true` if the `svcaller/melt:2.2.2` container is unavailable.
 
@@ -62,7 +62,7 @@ Expected timeline for a 30× WGS sample with BAM input:
 
 | Step | Time |
 |------|------|
-| FILTER_CHROMS | ~25 min |
+| FILTER_CHROMS | ~70 min (awk-bound; more cores do not help) |
 | Manta | ~45 min |
 | Delly | ~90 min |
 | GRIDSS | ~4-6 h |

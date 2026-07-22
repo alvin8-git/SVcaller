@@ -46,7 +46,7 @@ Why the pipeline is built the way it is. Each section covers a non-obvious choic
 
 **The problem.** Standard GRCh38 FASTA files contain ALT contigs, decoy sequences, HLA variants, and unplaced scaffolds. Aligners place reads on these contigs, and SV callers emit calls on `chrUn_*`, `HLA-*`, and `*_alt` contigs. Downstream tools (Jasmine, Truvari, GRIDSS) have inconsistent handling of non-canonical chromosomes and may crash or produce unexpected output.
 
-**The approach.** FILTER_CHROMS (`modules/samtools/filter_chroms.nf`) strips non-canonical contigs from BAM files. For FASTQ inputs, aligning directly to `hg38.canonical.fa` (chr1-22+X+Y+M only) means the aligned BAM never contains non-canonical contigs, and FILTER_CHROMS can be skipped entirely (saves ~25 min/sample). Pre-aligned BAM inputs always run FILTER_CHROMS because their alignment reference is unknown.
+**The approach.** FILTER_CHROMS (`modules/samtools/filter_chroms.nf`) strips non-canonical contigs from BAM files. For FASTQ inputs, aligning directly to `hg38.canonical.fa` (chr1-22+X+Y+M only) means the aligned BAM never contains non-canonical contigs, and FILTER_CHROMS can be skipped entirely (saves ~70 min/sample on a ~30× BAM — measured; see CLAUDE.md "FILTER_CHROMS is slow"). Pre-aligned BAM inputs always run FILTER_CHROMS because their alignment reference is unknown.
 
 **Trade-off.** Variants on unplaced scaffolds and ALT contigs are silently dropped. For germline WGS of canonical chromosomes this is acceptable. For studies targeting HLA diversity or structural variation on ALT contigs, this pipeline is not appropriate.
 

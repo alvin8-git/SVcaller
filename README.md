@@ -166,7 +166,7 @@ NXF_ANSI_LOG=false nohup nextflow run main.nf \
     > /tmp/SAMPLEID_run1.log 2>&1 &
 ```
 
-> **Note:** Use `hg38.canonical.fa` (chr1-22+X+Y+M only) for FASTQ inputs — this skips the 25-minute FILTER_CHROMS step. Use `NXF_ANSI_LOG=false` for all background runs; without it, Nextflow's ANSI renderer deadlocks the JVM when there's no TTY.
+> **Note:** Use `hg38.canonical.fa` (chr1-22+X+Y+M only) for FASTQ inputs — this skips FILTER_CHROMS (~70 min/sample on a ~30× BAM). Use `NXF_ANSI_LOG=false` for all background runs; without it, Nextflow's ANSI renderer deadlocks the JVM when there's no TTY.
 
 ### BAM input (skip alignment)
 

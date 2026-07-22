@@ -51,7 +51,7 @@ HG003,,,/path/HG003.bam
 | `bam` | If no FASTQ | Path to pre-aligned, sorted, duplicate-marked BAM. Must have a `.bai` index at the same path. |
 
 **FASTQ vs BAM behaviour:**
-- FASTQ samples aligned to `hg38.canonical.fa` skip the FILTER_CHROMS step (saves ~25 min/sample). The canonical reference contains only chr1-22+X+Y+M.
+- FASTQ samples aligned to `hg38.canonical.fa` skip the FILTER_CHROMS step (saves ~70 min/sample on a ~30× BAM — measured; see CLAUDE.md "FILTER_CHROMS is slow"). The canonical reference contains only chr1-22+X+Y+M.
 - BAM samples always run FILTER_CHROMS regardless of reference, because pre-aligned BAMs may contain ALT/decoy contigs.
 
 ## Output Files
