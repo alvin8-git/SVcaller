@@ -443,8 +443,27 @@ def main(argv=None):
     ap.add_argument("--sites", help="<S>.alpha_sites.tsv (channel 4)")
     ap.add_argument("--alleles", default=default_alleles)
     ap.add_argument("--panel", help="assets/hba_pathogenic_sites.tsv (for the hash)")
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--out")
+    ap.add_argument("--print-alpha-genes", action="store_true",
+                    help="Print ONLY alpha_genes_called (from --depth) and exit. "
+                         "Channel 4 needs the alpha-gene count before it can turn "
+                         "a VAF into a zygosity, but that count is produced by "
+                         "channel 2 -- which lives here. This mode lets the "
+                         "subworkflow get it without duplicating the allele "
+                         "matcher, and without a two-pass run.")
     a = ap.parse_args(argv)
+
+    if a.print_alpha_genes:
+        rows = read_tsv(a.depth, "alpha depth (channel 1)")
+        if rows is None:
+            print("NA")
+            return 0
+        _, genes, _ = name_alleles(observed_copies(rows), parse_alleles(a.alleles))
+        print(genes)
+        return 0
+
+    if not a.out:
+        ap.error("--out is required unless --print-alpha-genes is given")
 
     depth_rows = read_tsv(a.depth, "alpha depth (channel 1)")
     junction_rows = read_tsv(a.junction, "alpha junction (channel 3)")
