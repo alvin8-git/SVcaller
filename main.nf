@@ -73,11 +73,21 @@ or run without SvABA:   --skip_svaba"""
     ch_catalog   = Channel.value(file(params.eh_catalog, checkIfExists: true))
     ch_trait_regions = Channel.value(file("${projectDir}/assets/cnv_trait_regions.bed",
                                           checkIfExists: true))
+    // M8 alpha-globin assets. All three are GENERATED (bin/make_globin_panels.py,
+    // bin/make_hba_deletion_alleles.py) — change the generator and re-run, never
+    // hand-edit. Value channels for the reason above.
+    ch_hba_segments = Channel.value(file("${projectDir}/assets/hba_segments.bed",
+                                         checkIfExists: true))
+    ch_hba_panel    = Channel.value(file("${projectDir}/assets/hba_pathogenic_sites.tsv",
+                                         checkIfExists: true))
+    ch_hba_alleles  = Channel.value(file("${projectDir}/assets/hba_deletion_alleles.tsv",
+                                         checkIfExists: true))
 
     SVCALLER(
         ch_input, ch_fasta, ch_fai, ch_bwt_index, ch_bwa_index,
         ch_dict, ch_pon, ch_intervals, ch_annotsv,
         ch_cytobands, ch_catalog, ch_trait_regions,
+        ch_hba_segments, ch_hba_panel, ch_hba_alleles,
     )
 }
 

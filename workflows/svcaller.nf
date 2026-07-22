@@ -3,6 +3,7 @@ include { SV_CALLING      } from '../subworkflows/sv_calling'
 include { CNV_CALLING     } from '../subworkflows/cnv_calling'
 include { CNV_TRAITS      } from '../subworkflows/cnv_traits'
 include { SMN_CALLING     } from '../subworkflows/smn_calling'
+include { ALPHA_GLOBIN    } from '../subworkflows/alpha_globin'
 include { ANNOTATE        } from '../subworkflows/annotate'
 include { REPORT          } from '../subworkflows/report'
 include { SV_PON_ANNOTATE } from '../modules/sv_pon/annotate'
@@ -21,6 +22,9 @@ workflow SVCALLER {
     ch_cytobands
     ch_eh_catalog
     ch_trait_regions
+    ch_hba_segments
+    ch_hba_panel
+    ch_hba_alleles
 
     main:
     // M1: Preprocess
@@ -36,6 +40,20 @@ workflow SVCALLER {
     // Copy-number / blood-group traits: targeted normalized read depth + consensus
     // corroboration → per-sample OmniGen contract files (Rh/RHD, AMY1, GST-null, LPA KIV-2)
     CNV_TRAITS(ch_bam, ch_trait_regions, CNV_CALLING.out.cnv_bed)
+
+    // M8: alpha-globin (HBA1/HBA2). Runs on the same BAM as M2/M3/M4 and depends
+    // on none of them. It MEASURES: alpha-gene dosage, deletion alleles, targeted
+    // site genotypes and the scope of what was screened. It does not interpret —
+    // no thalassemia classification, no couple-level risk. That is OmniGen's,
+    // which discovers the contract by path convention at
+    // results/<S>/alpha_globin/<S>.alpha_globin.tsv.
+    if (!params.skip_alpha_globin) {
+        ALPHA_GLOBIN(ch_bam, ch_hba_segments, ch_trait_regions, ch_hba_panel,
+                     ch_hba_alleles, ch_fasta, ch_fai)
+        ch_alpha_globin = ALPHA_GLOBIN.out.tsv
+    } else {
+        ch_alpha_globin = Channel.empty()
+    }
 
     // P3: Optional GIAB SV PON annotation — annotates Jasmine VCF with SV_PON=1
     // before AnnotSV so the flag is preserved in the TSV INFO column.
@@ -102,6 +120,7 @@ workflow SVCALLER {
     )
 
     emit:
+    alpha_globin = ch_alpha_globin
     sv_vcf   = SV_CALLING.out.sv_vcf
     str_vcf  = SV_CALLING.out.str_vcf
     cnv_bed  = CNV_CALLING.out.cnv_bed
