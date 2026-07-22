@@ -206,19 +206,69 @@ def test_segments_declare_reliability():
                  out the real deletion at 164000-172875, averaging to 0.99 -
                  reporting 'intact' while containing half a --SEA deletion.
     """
+    seg = _segments()
+    assert seg["HBZ"]["reliability"] == "needs_own_baseline"
+    assert seg["INTER_Z_A"]["reliability"] == "do_not_average"
+    # HBA2 was initially mislabelled 'good' because the RAW ratio separates
+    # THAL1 from THAL2. It does — but intact HBA2 sits at 0.750 across six GIAB
+    # normals, so a naive 0.8 cutoff on the raw ratio calls het loss on all of
+    # them. Separating two samples is not the same as being correctly scaled.
+    assert seg["HBA2"]["reliability"] == "needs_own_baseline"
+    assert seg["HBA1"]["reliability"] == "good"
+
+
+def _segments():
     path = os.path.join(REPO, "assets", "hba_segments.bed")
-    rel = {}
+    out = {}
     with open(path) as fh:
         for l in fh:
             if l.startswith("#") or not l.strip():
                 continue
             f = l.split("\t")
-            assert len(f) >= 5, f"segment row missing the reliability column: {l[:60]}"
-            rel[f[3]] = f[4]
-    assert rel["HBZ"] == "needs_own_baseline"
-    assert rel["INTER_Z_A"] == "do_not_average"
-    for seg in ("HBA2", "INTER_A2_A1", "HBA1"):
-        assert rel[seg] == "good", f"{seg} should be a clean diagnostic segment"
+            assert len(f) >= 6, f"segment row missing baseline/reliability: {l[:60]}"
+            out[f[3]] = {"chrom": f[0], "start": int(f[1]), "end": int(f[2]),
+                         "baseline": f[4], "reliability": f[5]}
+    return out
+
+
+def test_baselines_present_where_claimed_usable():
+    """A segment you are allowed to threshold must carry the number you divide
+    by. 'needs_own_baseline' without a baseline is a trap, not a warning."""
+    for name, s in _segments().items():
+        if s["reliability"] in ("good", "needs_own_baseline"):
+            assert s["baseline"] != "NA", f"{name}: usable but has no baseline"
+            b = float(s["baseline"])
+            assert 0.3 < b <= 1.3, f"{name}: implausible baseline {b}"
+        else:
+            assert s["baseline"] == "NA", \
+                f"{name}: flagged {s['reliability']} but carries a baseline — misleading"
+
+
+def test_intact_depth_is_not_one():
+    """The whole point of the GIAB run. If a future edit resets these to ~1.0,
+    the caller silently regains the false-positive behaviour."""
+    seg = _segments()
+    assert float(seg["HBA2"]["baseline"]) < 0.85, \
+        "HBA2 intact depth is ~0.75, not ~1.0 — see the GIAB baseline run"
+    assert float(seg["HBZ"]["baseline"]) < 0.85, \
+        "HBZ intact depth is ~0.76, not ~1.0"
+
+
+def test_thal_samples_score_correctly_against_baselines():
+    """End-to-end check of the calibration, using measurements recorded in
+    validation/giab_alpha_baseline.tsv and the plan. THAL1 is a --SEA het;
+    THAL2 has no deletion. Raw ratios would misclassify THAL2's HBZ and HBA2."""
+    seg = _segments()
+    raw = {  # segment: (THAL1, THAL2) raw ratio vs a chr2 control
+        "HBZ": (0.86, 0.71), "HBA2": (0.37, 0.81), "HBA1": (0.40, 0.90)}
+    for name, (t1, t2) in raw.items():
+        b = float(seg[name]["baseline"])
+        s1, s2 = t1 / b, t2 / b
+        if name == "HBZ":
+            assert s1 > 0.75, f"THAL1 HBZ should score intact, got {s1:.2f}"
+        else:
+            assert 0.3 < s1 < 0.75, f"THAL1 {name} should score het loss, got {s1:.2f}"
+        assert s2 > 0.75, f"THAL2 {name} has no deletion but scores {s2:.2f}"
 
 
 def test_hbz_dependent_discrimination_is_flagged():

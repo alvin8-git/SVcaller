@@ -1,0 +1,34 @@
+# GIAB alpha-globin depth baseline — the raw measurement behind the
+# `baseline` column in assets/hba_segments.bed. Committed so the calibration is
+# auditable and reproducible rather than a magic number in a script.
+#
+# Measured 2026-07-22. Each value is mean depth over the region; *_r columns are
+# that depth / the chr2:100000000-100020000 control depth.
+#   HBZ   chr16:152644-154503
+#   HBA2  chr16:172876-173710
+#   HBA1  chr16:176680-177522
+#
+# BASELINE = median of HG002-HG007 (n=6):  HBZ 0.760 · HBA2 0.750 · HBA1 0.964
+#
+# HG001 IS EXCLUDED. It reads low across all three segments (0.286/0.503/0.548)
+# while its control is normal at 30.87. Against the n=6 baseline that is
+# 0.38/0.67/0.57, which matches NO allele — a --FIL/--THAI het would give ~0.5
+# on all three. Most likely GC dropout in this GC-rich subtelomeric region from
+# HG001's library chemistry, but depth alone cannot separate that from a real
+# deletion. STATUS UNRESOLVED: do not use HG001 as an alpha normal, and do not
+# record it as a carrier either.
+#
+# CAVEAT: these six are assumed alpha-normal because nothing says otherwise, not
+# because they were typed. -a3.7 is common worldwide and HG005/6/7 are Han
+# Chinese, where --SEA and -a3.7 both occur. A silent carrier among them would
+# drag the baseline down and make the caller UNDER-call deletions. Orthogonal
+# typing (gap-PCR/MLPA) would settle it.
+#
+sample	ctrl	HBZ	HBA2	HBA1	HBZ_r	HBA2_r	HBA1_r
+HG001	30.87	8.82	15.54	16.91	0.286	0.503	0.548
+HG002	32.35	24.90	22.50	27.84	0.770	0.696	0.861
+HG003	29.70	21.54	23.49	27.97	0.725	0.791	0.942
+HG004	32.33	20.29	21.51	29.82	0.628	0.665	0.922
+HG005	32.12	29.03	23.58	36.33	0.904	0.734	1.131
+HG006	32.18	28.04	25.42	36.14	0.871	0.790	1.123
+HG007	30.36	22.73	23.24	29.97	0.749	0.765	0.987

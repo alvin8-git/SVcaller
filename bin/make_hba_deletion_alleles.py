@@ -35,32 +35,56 @@ from hgvs_map import load_models, DEFAULT_BED  # noqa: E402
 # Diagnostic segments. Boundaries are derived from the gene models below; the
 # inter-genic segments are what distinguish a 2-gene deletion that spares HBZ
 # (--SEA) from one that does not (--FIL/--THAI).
-#                                              reliability, measured 2026-07-22
+# Intact-depth BASELINES, measured on GIAB HG002-HG007 (n=6) 2026-07-22 as the
+# median segment-depth / chr2:100000000-100020000 control ratio.
+#
+# THE HEADLINE: intact depth is NOT 1.0 for most of this locus. Thresholding a
+# raw control ratio at 0.8 calls a het loss on HBA2 in EVERY GIAB sample. Divide
+# by the segment's own baseline first, then threshold.
+#
+# HG001 is EXCLUDED - see HG001_NOTE.
+#                       baseline  reliability
 SEGMENTS = [
-    ("HBZ",        "HBZ",  "needs_own_baseline",
+    ("HBZ",        "HBZ",  0.760, "needs_own_baseline",
      "zeta-globin; spared by --SEA/--MED, lost in --FIL/--THAI. GC-rich and "
-     "subtelomeric, so depth runs LOW even when intact: measured 0.86 (THAL1) "
-     "and 0.71 (THAL2) against a chr2 control, and THAL2 has NO deletion. A "
-     "global 0.8 threshold FALSE-POSITIVES here. Needs a per-segment baseline "
-     "from known-normal samples, never the genome-wide control ratio."),
+     "subtelomeric: intact baseline is 0.760 (GIAB n=6, range 0.628-0.904), not "
+     "1.0. THAL2 reads 0.71 raw and has NO deletion, so a global 0.8 threshold "
+     "false-positives; against the baseline it is 0.93 = intact."),
 
-    ("INTER_Z_A",  None,   "do_not_average",
+    ("INTER_Z_A",  None,   None,  "do_not_average",
      "between HBZ and HBA2. DO NOT use as a single averaged segment. It spans "
      "18 kb of partly-duplicated sequence where mapping piles up: 1 kb windows "
      "in THAL1 read 1.4-1.9 across chr16:155000-162000, which offsets the real "
      "deletion over 164000-172875 and averages to 0.99 - i.e. it reports "
      "'intact' while CONTAINING half of a --SEA deletion. Use mappable "
-     "sub-windows or exclude it."),
+     "sub-windows or exclude it. No baseline given: the mean is meaningless."),
 
-    ("HBA2",       "HBA2", "good",
-     "alpha-2. Measured 0.37 (THAL1, het loss) vs 0.81 (THAL2, intact)."),
+    ("HBA2",       "HBA2", 0.750, "needs_own_baseline",
+     "alpha-2. Intact baseline 0.750 (GIAB n=6, range 0.665-0.791) - NOT 1.0. "
+     "A naive 0.8 cutoff on the raw ratio calls het loss in all six normals. "
+     "Against the baseline: THAL1 0.49 (het loss), THAL2 1.08 (intact)."),
 
-    ("INTER_A2_A1", None,  "good",
-     "between HBA2 and HBA1; deleted in -a3.7. Measured 0.50 (THAL1) vs 0.99 (THAL2)."),
+    ("INTER_A2_A1", None,  None,  "no_baseline_yet",
+     "between HBA2 and HBA1; the diagnostic segment for -a3.7. Measured 0.50 "
+     "(THAL1) vs 0.99 (THAL2) but NOT yet baselined on GIAB, so -a3.7 calling "
+     "is uncalibrated. Same GIAB run would supply it."),
 
-    ("HBA1",       "HBA1", "good",
-     "alpha-1. Measured 0.40 (THAL1, het loss) vs 0.90 (THAL2, intact)."),
+    ("HBA1",       "HBA1", 0.964, "good",
+     "alpha-1. The only segment whose intact depth is near 1.0: baseline 0.964 "
+     "(GIAB n=6, range 0.861-1.131). Against it: THAL1 0.41 (het loss), "
+     "THAL2 0.93 (intact)."),
 ]
+
+HG001_NOTE = (
+    "HG001 excluded from the baseline: it reads LOW across all three measured "
+    "segments (HBZ 0.286, HBA2 0.503, HBA1 0.548) while its chr2 control is "
+    "normal at 30.87. Against the n=6 baseline that is 0.38 / 0.67 / 0.57 - "
+    "which matches NO allele in the table (a --FIL/--THAI het would give ~0.5 "
+    "on all three). Most likely GC dropout in this GC-rich subtelomeric region "
+    "from HG001's library chemistry, but depth alone CANNOT separate that from a "
+    "real deletion. Status UNRESOLVED. Do not use HG001 as an alpha normal, and "
+    "do not record it as a carrier either."
+)
 
 # allele, class, approx size, (HBZ, HBA2, HBA1) copy change on the affected
 # chromosome, net functional alpha genes lost, populations, basis, note.
@@ -112,14 +136,14 @@ def build_segments(models):
          "HBA2": (a2.tx_start + 1, a2.tx_end),
          "HBA1": (a1.tx_start + 1, a1.tx_end)}
     rows = []
-    for name, gene, reliability, note in SEGMENTS:
+    for name, gene, baseline, reliability, note in SEGMENTS:
         if gene:
             s, e = g[gene]
         elif name == "INTER_Z_A":
             s, e = g["HBZ"][1] + 1, g["HBA2"][0] - 1
         elif name == "INTER_A2_A1":
             s, e = g["HBA2"][1] + 1, g["HBA1"][0] - 1
-        rows.append((z.chrom, s, e, name, reliability, note))
+        rows.append((z.chrom, s, e, name, baseline, reliability, note))
     return sorted(rows, key=lambda r: r[1])
 
 
@@ -142,7 +166,7 @@ def main():
     models = load_models(a.bed, {"HBZ", "HBA1", "HBA2"})
     segs = build_segments(models)
 
-    for chrom, s, e, name, _, _ in segs:
+    for chrom, s, e, name, _, _, _ in segs:
         if e <= s:
             raise SystemExit(f"FATAL: segment {name} is empty or inverted ({s}-{e})")
 
@@ -152,18 +176,32 @@ def main():
         fh.write("# GENERATED by bin/make_hba_deletion_alleles.py; boundaries DERIVED from\n")
         fh.write("# RefSeq gene models (AnnotSV bundle). Do not hand-edit.\n")
         fh.write("#\n")
-        fh.write("# col5 = reliability. NOT ALL SEGMENTS ARE USABLE THE SAME WAY — measured\n")
-        fh.write("# on THAL1 (--SEA het) and THAL2 (no deletion) 2026-07-22:\n")
-        fh.write("#   good               ratio vs a genome-wide control separates het loss cleanly\n")
-        fh.write("#   needs_own_baseline intact depth is systematically below 1.0; a global\n")
-        fh.write("#                      threshold false-positives. Calibrate per segment.\n")
-        fh.write("#   do_not_average     averaging the whole segment is misleading; mapping\n")
-        fh.write("#                      inflation can cancel a real deletion out.\n")
+        fh.write("# HOW TO USE THIS — read before writing the caller.\n")
         fh.write("#\n")
-        fh.write("# A caller that treats all five identically WILL emit wrong calls. See the\n")
-        fh.write("# per-segment notes.\n")
-        for chrom, s, e, name, reliability, note in segs:
-            fh.write(f"{chrom}\t{s-1}\t{e}\t{name}\t{reliability}\t# {note}\n")
+        fh.write("#   ratio    = segment_depth / control_depth\n")
+        fh.write("#   score    = ratio / baseline        <-- threshold on THIS, not on ratio\n")
+        fh.write("#   score ~1.0 intact · ~0.5 het loss · ~0 homozygous loss\n")
+        fh.write("#\n")
+        fh.write("# INTACT DEPTH IS NOT 1.0 FOR MOST OF THIS LOCUS. Thresholding a raw ratio\n")
+        fh.write("# at 0.8 calls a het loss on HBA2 in EVERY GIAB normal (range 0.665-0.791).\n")
+        fh.write("# Baselines are the median ratio over GIAB HG002-HG007, n=6, 2026-07-22.\n")
+        fh.write("#\n")
+        fh.write("# col5 = baseline (NA where none can be given)\n")
+        fh.write("# col6 = reliability:\n")
+        fh.write("#   good               baseline near 1.0; behaves as naive intuition expects\n")
+        fh.write("#   needs_own_baseline intact depth well below 1.0 — divide by col5 or you\n")
+        fh.write("#                      will false-positive on normal samples\n")
+        fh.write("#   no_baseline_yet    not measured on GIAB; calls here are UNCALIBRATED\n")
+        fh.write("#   do_not_average     the segment mean is meaningless; mapping inflation\n")
+        fh.write("#                      can cancel a real deletion out\n")
+        fh.write("#\n")
+        for line in HG001_NOTE.split(". "):
+            if line.strip():
+                fh.write(f"# {line.strip().rstrip('.')}.\n")
+        fh.write("#\n")
+        for chrom, s, e, name, baseline, reliability, note in segs:
+            b = "NA" if baseline is None else f"{baseline:.3f}"
+            fh.write(f"{chrom}\t{s-1}\t{e}\t{name}\t{b}\t{reliability}\t# {note}\n")
 
     dist = distinguishability()
     tsv = os.path.join(a.outdir, "hba_deletion_alleles.tsv")
@@ -195,9 +233,10 @@ def main():
                                 str(lost), pop, basis, dist[allele], note]) + "\n")
 
     print(f"hba_segments.bed          {len(segs)} segments (derived)")
-    for chrom, s, e, name, rel, _ in segs:
+    for chrom, s, e, name, baseline, rel, _ in segs:
+        b = "  baseline=NA   " if baseline is None else f"  baseline={baseline:.3f}"
         flag = "" if rel == "good" else f"   <-- {rel}"
-        print(f"  {name:<12} {chrom}:{s}-{e}  ({e-s+1:,} bp){flag}")
+        print(f"  {name:<12} {chrom}:{s}-{e}  ({e-s+1:,} bp){b}{flag}")
     print(f"\nhba_deletion_alleles.tsv  {len(ALLELES)} alleles")
     degenerate = sorted({v for v in dist.values() if v.startswith("no:")})
     print(f"  depth-degenerate groups: {len(degenerate)}")

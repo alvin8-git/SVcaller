@@ -867,6 +867,60 @@ marking HBZ `good` without doing the calibration fails the suite.
 
 This is why channel 2 was not ready despite the definitions existing.
 
+### The GIAB baseline run fixed it — and found a third defect (2026-07-22)
+
+Measured HBZ/HBA2/HBA1 across GIAB HG001–HG007 against the same chr2 control.
+Raw ratios, baseline = median of HG002–HG007 (n=6):
+
+| Segment | baseline | range | reliability |
+|---|---|---|---|
+| HBZ | **0.760** | 0.628–0.904 | needs_own_baseline |
+| HBA2 | **0.750** | 0.665–0.791 | needs_own_baseline |
+| HBA1 | **0.964** | 0.861–1.131 | good |
+
+**Intact depth is not 1.0 across most of this locus.** Only HBA1 behaves as
+naive intuition expects. That exposes a defect I had missed: I labelled HBA2
+`good` because its raw ratio separates THAL1 (0.37) from THAL2 (0.81) — which it
+does — but intact HBA2 sits at 0.750, so **a naive 0.8 cutoff calls a het loss in
+all six GIAB normals**. Separating two samples is not the same as being
+correctly scaled.
+
+The rule the caller must follow is now in the BED header:
+
+```
+ratio = segment_depth / control_depth
+score = ratio / baseline          <-- threshold on THIS
+score ~1.0 intact · ~0.5 het loss · ~0 homozygous loss
+```
+
+Re-scored, both samples call correctly and the earlier false positive is gone:
+
+| | HBZ | HBA2 | HBA1 | call |
+|---|---|---|---|---|
+| THAL1 | 1.13 intact | 0.49 het loss | 0.41 het loss | `--SEA\|--MED` ✓ |
+| THAL2 | 0.93 intact | 1.08 intact | 0.93 intact | no deletion ✓ |
+
+So **HBZ is now calibrated and the group discrimination is unblocked.**
+
+**HG001 is excluded and unresolved.** It reads low across all three segments
+(0.286 / 0.503 / 0.548) with a normal control (30.87). Against the baseline that
+is 0.38 / 0.67 / 0.57 — matching **no** allele, since a `--FIL`/`--THAI` het
+would give ~0.5 on all three. Most likely GC dropout from HG001's library
+chemistry in this GC-rich subtelomeric region, but depth alone cannot separate
+that from a real deletion. Do not use it as a normal; do not record it as a
+carrier.
+
+Raw measurements are committed at `validation/giab_alpha_baseline.tsv` so the
+calibration is auditable rather than a magic number.
+
+**Two caveats on the baseline itself.** The six are assumed α-normal because
+nothing says otherwise, not because they were typed — and `-α3.7` is common
+worldwide, with HG005/6/7 being Han Chinese where `--SEA` and `-α3.7` both
+occur. A silent carrier among them would drag the baseline down and make the
+caller *under*-call. And `INTER_A2_A1` was not measured, so `-α3.7` — the
+commonest allele worldwide — remains uncalibrated; the same GIAB run would
+supply it.
+
 **Two decisions that were genuinely ambiguous** (details in the contract):
 
 1. **Discovery is by path convention**, not manifest key. OmniGen does it both
