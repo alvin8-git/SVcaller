@@ -774,11 +774,24 @@ Still open:
    OmniGen's panel content actually recognises the common β-thal alleles, and
    what it renders when it finds none. Blocked on annotation — no ClinVar VCF on
    disk and VEP has no cache.
-3. **Research-use or clinical?** With n=2 the evidence base does not support
-   couples screening (§ The validation set…). Decide which, because it
-   determines the report wording and whether the GIAB orthogonal-typing work is
-   a prerequisite or a nice-to-have. β makes this sharper, not easier: it is
-   n=0.
+3. ~~**Research-use or clinical?**~~ **RESOLVED 2026-07-22: research-use.** The
+   consumer is OmniGen, a **RUO / educational DTC** report — its README states
+   *"Nothing it produces is medical advice or a diagnosis"* and everything is
+   graded A–D with caveats. This substantially relaxes § The validation set does
+   not support the stated intended use: that section was written against
+   "couples carrier screening" driving reproductive decisions, and n=1 per
+   channel *is* acceptable for a graded educational report that states its own
+   confidence.
+
+   **It does not relax the false-negative obligation, and DTC sharpens it.**
+   Two different risks were being conflated:
+
+   - *insufficient evidence for a clinical claim* — relaxed; grade it C/D and say so.
+   - *reporting "Alpha Thalassemia — negative" when the caller structurally
+     cannot see the deletion* — *not* relaxed. That is a false statement, not an
+     ungraded one, and in DTC there is no clinician mediating it. P0 stands.
+
+   See `docs/what-a-30x-bam-yields.md` for the full scoping note.
 4. **Freeze the site panels' CONTENT.** Coordinates are settled (phase 0 —
    derived and FASTA-checked), but the *allele list* is curated and incomplete:
    4 α sites, 12 β sites. Review against HbVar/IthaGenes and decide what a
