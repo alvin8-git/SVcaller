@@ -1,0 +1,48 @@
+# Candidate beta-globin validation samples from 1000G 30x (3202-sample phased panel)
+# Queried 2026-07-22. GRCh38. Source: 1kGP_high_coverage_Illumina.chr11.filtered.SNV_INDEL_SV_phased_panel.vcf.gz
+# Coordinates confirmed by POPULATION DISTRIBUTION, not rsID (panel carries no rsIDs).
+#   HbE      chr11:5226943 C>T  AC=18  EAS 0.0077 / SAS 0.0075, absent AFR+EUR -> matches the HbE belt
+#   CD41-42  chr11:5226762 CAAAG>C AC=5  EAS-exclusive -> matches commonest S-Chinese beta-0 allele
+#   control  chr11:5227002 T>A  AC=184 AF_AFR=0.100 -> textbook HbS/rs334, validates the coordinate frame
+#
+# READ-LEVEL CONFIRMATION (2026-07-22, remote CRAM slice, no download):
+#   HG02379 CD41-42 chr11:5226762  DP=26, 12 deletion events        -> het 4bp del
+#   HG02379 HbE     chr11:5226943  DP=23, C=10 T=13 (VAF 0.57)      -> het C>T
+#   HG02379 PHASE: 4 fragments span both sites; 1x (HbE=ref,CD41-42=DEL), 3x (HbE=alt,CD41-42=ref)
+#     -> TRANS. Genuine HbE/beta-0 compound heterozygote, confirmed independently of panel phasing.
+#     CAVEAT n=4 fragments is thin. Phenotype UNKNOWN - 1000G subjects are nominally healthy and
+#     HbE/beta-0 severity is variable. Do NOT record as 'affected' without clinical data.
+#
+# Remote slicing works - downloading whole CRAMs is usually unnecessary:
+#   export REF_PATH='https://www.ebi.ac.uk/ena/cram/md5/%s'
+#   samtools view -b -o out.bam "$cram_url" chr11:5200000-5300000
+#   REF_PATH is REQUIRED: local hg38.fa MD5s do not match the 1000G analysis set.
+#
+# Related pairs - use only ONE of each: SH068(HG00625,HG00627) BD01(HG03007,HG03008) BD17(HG03800,HG03801)
+# NOTE: 4 carriers (HG00627 HG03008 HG03801 HG03929) live in the 698-RELATED collection,
+#   indexed separately at .../1000G_2504_high_coverage/1000G_698_related_high_coverage.sequence.index
+#
+sample	allele	hgvs	chrom_pos	ref_alt	genotype	family	superpop	pop	cram_url
+HG00625	HbE	HBB:c.79G>A	chr11:5226943	C>T	0|1	SH068	EAS	CHS	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3241721/HG00625.final.cram
+HG00627	HbE	HBB:c.79G>A	chr11:5226943	C>T	1|0	SH068	EAS	CHS	https://ftp.sra.ebi.ac.uk/vol1/run/ERR398/ERR3988804/HG00627.final.cram
+HG01597	HbE	HBB:c.79G>A	chr11:5226943	C>T	0|1	VN003	EAS	KHV	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242064/HG01597.final.cram
+HG01797	HbE	HBB:c.79G>A	chr11:5226943	C>T	1|0	HG01797	EAS	CDX	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242146/HG01797.final.cram
+HG01873	HbE	HBB:c.79G>A	chr11:5226943	C>T	0|1	VN040	EAS	KHV	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242098/HG01873.final.cram
+HG02113	HbE	HBB:c.79G>A	chr11:5226943	C>T	0|1	VN073	EAS	KHV	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242208/HG02113.final.cram
+HG02188	HbE	HBB:c.79G>A	chr11:5226943	C>T	1|0	HG02188	EAS	CDX	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242183/HG02188.final.cram
+HG02367	HbE	HBB:c.79G>A	chr11:5226943	C>T	1|0	HG02367	EAS	CDX	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242267/HG02367.final.cram
+HG02379	HbE	HBB:c.79G>A	chr11:5226943	C>T	1|0	HG02379	EAS	CDX	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242271/HG02379.final.cram
+HG03007	HbE	HBB:c.79G>A	chr11:5226943	C>T	0|1	BD01	SAS	BEB	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242643/HG03007.final.cram
+HG03008	HbE	HBB:c.79G>A	chr11:5226943	C>T	0|1	BD01	SAS	BEB	https://ftp.sra.ebi.ac.uk/vol1/run/ERR398/ERR3989107/HG03008.final.cram
+HG03745	HbE	HBB:c.79G>A	chr11:5226943	C>T	0|1	ST049	SAS	STU	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242890/HG03745.final.cram
+HG03800	HbE	HBB:c.79G>A	chr11:5226943	C>T	0|1	BD17	SAS	BEB	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242648/HG03800.final.cram
+HG03801	HbE	HBB:c.79G>A	chr11:5226943	C>T	1|0	BD17	SAS	BEB	https://ftp.sra.ebi.ac.uk/vol1/run/ERR398/ERR3989218/HG03801.final.cram
+HG03815	HbE	HBB:c.79G>A	chr11:5226943	C>T	1|0	BD22	SAS	BEB	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242651/HG03815.final.cram
+HG03823	HbE	HBB:c.79G>A	chr11:5226943	C>T	1|0	BD25	SAS	BEB	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242654/HG03823.final.cram
+HG03826	HbE	HBB:c.79G>A	chr11:5226943	C>T	1|0	BD26	SAS	BEB	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242655/HG03826.final.cram
+HG03929	HbE	HBB:c.79G>A	chr11:5226943	C>T	0|1	BD38	SAS	BEB	https://ftp.sra.ebi.ac.uk/vol1/run/ERR398/ERR3989231/HG03929.final.cram
+HG00583	CD41-42	HBB:c.126_129delCTTT	chr11:5226762	CAAAG>C	1|0	SH054	EAS	CHS	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3241705/HG00583.final.cram
+HG01796	CD41-42	HBB:c.126_129delCTTT	chr11:5226762	CAAAG>C	0|1	HG01796	EAS	CDX	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242145/HG01796.final.cram
+HG01815	CD41-42	HBB:c.126_129delCTTT	chr11:5226762	CAAAG>C	0|1	HG01815	EAS	CDX	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242163/HG01815.final.cram
+HG02155	CD41-42	HBB:c.126_129delCTTT	chr11:5226762	CAAAG>C	0|1	HG02155	EAS	CDX	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242169/HG02155.final.cram
+HG02379	CD41-42	HBB:c.126_129delCTTT	chr11:5226762	CAAAG>C	0|1	HG02379	EAS	CDX	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242271/HG02379.final.cram

@@ -1,0 +1,31 @@
+# Matched non-carrier controls for the beta-globin validation set (1000G 30x).
+# Generated 2026-07-22. Non-reference at NEITHER chr11:5226943 (HbE) NOR chr11:5226762 (CD41-42).
+# 5 per population across the same populations as the carriers. Specificity half of the set:
+# a caller that flags everyone scores perfectly on carriers alone.
+#
+sample	allele	hgvs	chrom_pos	ref_alt	genotype	family	superpop	pop	cram_url
+HG03006	none	-	-	-	0|0	BD01	SAS	BEB	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242642/HG03006.final.cram
+HG03009	none	-	-	-	0|0	HG03009	SAS	BEB	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242842/HG03009.final.cram
+HG03012	none	-	-	-	0|0	BD3	SAS	BEB	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242846/HG03012.final.cram
+HG03585	none	-	-	-	0|0	BD4	SAS	BEB	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242854/HG03585.final.cram
+HG03589	none	-	-	-	0|0	BD05	SAS	BEB	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242858/HG03589.final.cram
+HG00759	none	-	-	-	0|0	HG00759	EAS	CDX	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242128/HG00759.final.cram
+HG00766	none	-	-	-	0|0	HG00766	EAS	CDX	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242129/HG00766.final.cram
+HG00844	none	-	-	-	0|0	HG00844	EAS	CDX	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242130/HG00844.final.cram
+HG00851	none	-	-	-	0|0	HG00851	EAS	CDX	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242131/HG00851.final.cram
+HG00864	none	-	-	-	0|0	HG00864	EAS	CDX	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242132/HG00864.final.cram
+HG00403	none	-	-	-	0|0	SH001	EAS	CHS	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3241665/HG00403.final.cram
+HG00404	none	-	-	-	0|0	SH001	EAS	CHS	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3241666/HG00404.final.cram
+HG00405	none	-	-	-	0|0	SH001	EAS	CHS	https://ftp.sra.ebi.ac.uk/vol1/run/ERR398/ERR3988761/HG00405.final.cram
+HG00406	none	-	-	-	0|0	SH002	EAS	CHS	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3241667/HG00406.final.cram
+HG00407	none	-	-	-	0|0	SH002	EAS	CHS	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3241668/HG00407.final.cram
+HG01595	none	-	-	-	0|0	VN001	EAS	KHV	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242062/HG01595.final.cram
+HG01596	none	-	-	-	0|0	VN002	EAS	KHV	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242063/HG01596.final.cram
+HG01598	none	-	-	-	0|0	VN004	EAS	KHV	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242065/HG01598.final.cram
+HG01599	none	-	-	-	0|0	VN005	EAS	KHV	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242066/HG01599.final.cram
+HG01600	none	-	-	-	0|0	VN006	EAS	KHV	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242067/HG01600.final.cram
+HG03642	none	-	-	-	0|0	ST006	SAS	STU	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242669/HG03642.final.cram
+HG03643	none	-	-	-	0|0	ST004	SAS	STU	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242667/HG03643.final.cram
+HG03644	none	-	-	-	0|0	ST004	SAS	STU	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242666/HG03644.final.cram
+HG03645	none	-	-	-	0|0	ST002	SAS	STU	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242869/HG03645.final.cram
+HG03646	none	-	-	-	0|0	ST001	SAS	STU	https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3242868/HG03646.final.cram
