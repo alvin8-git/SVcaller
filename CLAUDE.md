@@ -233,6 +233,49 @@ Each module under `modules/<tool>/` follows: `input` tuple → `script` block �
 
 **storeDir caches** (survive `nextflow clean`, reused across samples against the same reference — do not delete between runs): `SAMTOOLS_FILTER_CHROMS` → `${outdir}/.cache/filter_chroms`, `GRIDSS_SETUP` → `${outdir}/cache/gridss_ref`, `GATK_PREPROCESS_INTERVALS` → `${outdir}/cache/gatk_preprocess`.
 
+### Checking on a running pipeline — use `bin/nf-status.sh`, not ad-hoc greps
+
+```bash
+bin/nf-status.sh <pidfile> <workdir> [failure-baseline] [runlog]
+```
+
+Record the PID at launch (`echo $! > /data/alvin/tmp/<run>.pid`). The script
+reports liveness from `kill -0` and per-task state from `.exitcode` files, and
+with a baseline file it reports only *new* failures, resolving each to its
+process name and stderr.
+
+**Every ad-hoc alternative has a failure mode that reports something FALSE**,
+which is worse than reporting nothing — a wrong status looks like a finding and
+gets acted on. All of these happened here on 2026-07-22, each producing a
+confident wrong answer about the pipeline:
+
+| Check | What actually happened |
+|---|---|
+| `pgrep -f "<pattern>"` | matches the **checking command's own command line**. Reported a finished `docker build` as still running, and SvABA as running when it was not |
+| `pkill -f "<script>"` | same, and it killed its own shell |
+| `pgrep -x java` | no self-match, but matches **any** java. An unrelated Cromwell server on this box blocked a pipeline resume for 17 min |
+| `grep -c ERROR <log>` | the run log is **appended across runs**, so a stale failure from the previous run re-alerts as new |
+| `grep -o <pat> \| wc -l` | counts **string matches, not processes** — reported 3 nextflow instances when there was 1 |
+| `$?` from `nextflow --help` | non-zero because a param was missing, **not** because compilation failed. Use `-preview` to check the DAG |
+| `git check-ignore -v` | exits **0 for a negation match too** — reads as "ignored" when the file is not ignored |
+
+Two rules that would have prevented all of them:
+
+1. **Never pattern-match process lists for control flow.** Use a recorded PID and
+   `kill -0`. It cannot match the observer and cannot catch an unrelated process.
+2. **Never count events in an accumulating artifact without a baseline.** Record
+   the state when you start watching and report only the delta.
+
+And one habit: **when a check reports something alarming, confirm it by an
+independent method before acting.** Several of the above were reported as
+pipeline defects when the defect was in the check.
+
+`.exitcode` files have **no trailing newline** (`127` is 3 bytes). `read -r c <
+f || continue` therefore skips every task and reports zero of everything —
+`read` returns non-zero at EOF-without-newline *even though it set the variable*.
+The first draft of `nf-status.sh` had exactly this bug. Guarded by
+`tests/test_nf_status.py`, which writes fixtures without trailing newlines.
+
 ### FILTER_CHROMS is slow, and it is awk-bound — measured 2026-07-22
 
 **~70 min for a 79 GB BAM, not the ~25 min this file used to claim.** Measured on

@@ -68,12 +68,37 @@ def _selectors():
     return sels
 
 
+def _matching_selectors(name):
+    """Every conf/ selector that matches this process name."""
+    return [(p, img) for p, img in _selectors() if re.fullmatch(p, name)]
+
+
 def _resolve(name):
-    """The container a process gets from conf/, or None."""
-    for pattern, image in _selectors():
-        if re.fullmatch(pattern, name):
-            return image
-    return None
+    """The container a process gets from conf/, or None.
+
+    Returns the LAST match. An earlier draft returned the first, which is not
+    what Nextflow does — later config settings take precedence — so a process
+    matching two selectors would have been reported with the wrong image while
+    the test passed. Rather than rely on getting that precedence right,
+    test_no_process_matches_two_selectors makes the ambiguity itself a failure,
+    so which one wins never has to be reasoned about.
+    """
+    hits = _matching_selectors(name)
+    return hits[-1][1] if hits else None
+
+
+def test_no_process_matches_two_selectors():
+    """Overlapping withName selectors are a config smell regardless of which
+    Nextflow applies: a human reading conf/ cannot tell which image a process
+    gets. Ambiguity here is exactly how HBA_DEPTH would have been mis-resolved."""
+    ambiguous = []
+    for name, body, _ in _processes():
+        if re.search(r"^\s*container\s", body, re.M):
+            continue
+        hits = _matching_selectors(name)
+        if len(hits) > 1:
+            ambiguous.append(f"{name}: matched by {[p for p, _ in hits]}")
+    assert not ambiguous, "overlapping container selectors:\n  " + "\n  ".join(ambiguous)
 
 
 def test_every_process_has_a_container():
