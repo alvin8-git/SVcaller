@@ -215,6 +215,7 @@ def test_segments_declare_reliability():
     # them. Separating two samples is not the same as being correctly scaled.
     assert seg["HBA2"]["reliability"] == "needs_own_baseline"
     assert seg["HBA1"]["reliability"] == "good"
+    assert seg["INTER_A2_A1"]["reliability"] == "good"
 
 
 def _segments():
@@ -260,7 +261,8 @@ def test_thal_samples_score_correctly_against_baselines():
     THAL2 has no deletion. Raw ratios would misclassify THAL2's HBZ and HBA2."""
     seg = _segments()
     raw = {  # segment: (THAL1, THAL2) raw ratio vs a chr2 control
-        "HBZ": (0.86, 0.71), "HBA2": (0.37, 0.81), "HBA1": (0.40, 0.90)}
+        "HBZ": (0.86, 0.71), "HBA2": (0.37, 0.81), "HBA1": (0.40, 0.90),
+        "INTER_A2_A1": (0.50, 0.99)}
     for name, (t1, t2) in raw.items():
         b = float(seg[name]["baseline"])
         s1, s2 = t1 / b, t2 / b

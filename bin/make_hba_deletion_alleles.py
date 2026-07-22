@@ -64,10 +64,12 @@ SEGMENTS = [
      "A naive 0.8 cutoff on the raw ratio calls het loss in all six normals. "
      "Against the baseline: THAL1 0.49 (het loss), THAL2 1.08 (intact)."),
 
-    ("INTER_A2_A1", None,  None,  "no_baseline_yet",
-     "between HBA2 and HBA1; the diagnostic segment for -a3.7. Measured 0.50 "
-     "(THAL1) vs 0.99 (THAL2) but NOT yet baselined on GIAB, so -a3.7 calling "
-     "is uncalibrated. Same GIAB run would supply it."),
+    ("INTER_A2_A1", None,  1.001, "good",
+     "between HBA2 and HBA1; the diagnostic segment for -a3.7, the commonest "
+     "alpha-thal allele worldwide. Baseline 1.001 (GIAB n=6, range 0.974-1.151) "
+     "and the TIGHTEST segment in the locus (sd 0.06 vs HBZ's 0.09). Against it: "
+     "THAL1 0.50 (het loss), THAL2 0.99 (intact). No GIAB normal shows loss "
+     "here, so none of HG002-HG007 carries -a3.7."),
 
     ("HBA1",       "HBA1", 0.964, "good",
      "alpha-1. The only segment whose intact depth is near 1.0: baseline 0.964 "
@@ -76,14 +78,17 @@ SEGMENTS = [
 ]
 
 HG001_NOTE = (
-    "HG001 excluded from the baseline: it reads LOW across all three measured "
-    "segments (HBZ 0.286, HBA2 0.503, HBA1 0.548) while its chr2 control is "
-    "normal at 30.87. Against the n=6 baseline that is 0.38 / 0.67 / 0.57 - "
-    "which matches NO allele in the table (a --FIL/--THAI het would give ~0.5 "
-    "on all three). Most likely GC dropout in this GC-rich subtelomeric region "
-    "from HG001's library chemistry, but depth alone CANNOT separate that from a "
-    "real deletion. Status UNRESOLVED. Do not use HG001 as an alpha normal, and "
-    "do not record it as a carrier either."
+    "HG001 excluded from the baseline: it reads LOW across the whole locus "
+    "(HBZ 0.286, HBA2 0.503, INTER_A2_A1 0.833, HBA1 0.548) while its chr2 "
+    "control is normal at 30.87. Scored against the n=6 baselines that is "
+    "0.38 / 0.67 / 0.83 / 0.57. This is very unlikely to be a deletion: "
+    "INTER_A2_A1 lies BETWEEN HBA2 and HBA1, so any contiguous deletion "
+    "removing both flanks must remove it too - yet it is the LEAST depressed "
+    "segment of the four. Non-contiguous depression like this is the signature "
+    "of technical dropout, not of a deletion. Most likely GC bias in this "
+    "GC-rich subtelomeric region from HG001's library chemistry. Still not "
+    "formally excluded by depth alone, so: do not use HG001 as an alpha normal, "
+    "and do not record it as a carrier either."
 )
 
 # allele, class, approx size, (HBZ, HBA2, HBA1) copy change on the affected

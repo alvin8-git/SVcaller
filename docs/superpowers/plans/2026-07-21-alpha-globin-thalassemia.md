@@ -913,13 +913,39 @@ carrier.
 Raw measurements are committed at `validation/giab_alpha_baseline.tsv` so the
 calibration is auditable rather than a magic number.
 
-**Two caveats on the baseline itself.** The six are assumed α-normal because
+**One caveat on the baseline itself.** The six are assumed α-normal because
 nothing says otherwise, not because they were typed — and `-α3.7` is common
 worldwide, with HG005/6/7 being Han Chinese where `--SEA` and `-α3.7` both
 occur. A silent carrier among them would drag the baseline down and make the
-caller *under*-call. And `INTER_A2_A1` was not measured, so `-α3.7` — the
-commonest allele worldwide — remains uncalibrated; the same GIAB run would
-supply it.
+caller *under*-call. Orthogonal typing would settle it.
+
+### INTER_A2_A1 extended (2026-07-22) — `-α3.7` now calibrated
+
+| Segment | baseline | range | sd | reliability |
+|---|---|---|---|---|
+| INTER_A2_A1 | **1.001** | 0.974–1.151 | 0.06 | good |
+
+The `-α3.7` diagnostic segment turns out to be the **best-behaved in the locus**
+— baseline 1.00 and the tightest spread of any segment. Against it THAL1 scores
+0.50 (het loss) and THAL2 0.99 (intact). All four measured segments are now
+calibrated; only `INTER_Z_A` remains unusable, and that is intrinsic rather than
+a missing measurement.
+
+Two by-products worth recording:
+
+**No GIAB normal carries `-α3.7`.** All six sit at ~1.0, so the assumed-normal
+caveat above is now partly discharged for the commonest allele — though it says
+nothing about `--SEA` in the same samples.
+
+**HG001 is very probably technical, not a deletion.** Adding this segment gives
+0.38 / 0.67 / **0.83** / 0.57 across HBZ / HBA2 / INTER_A2_A1 / HBA1. That
+pattern effectively rules a deletion out: `INTER_A2_A1` lies *between* HBA2 and
+HBA1, so any contiguous deletion taking both flanks must take it too — yet it is
+the **least** depressed of the four. Non-contiguous depression is the signature
+of technical dropout, most likely GC bias from HG001's library chemistry.
+Depth alone still cannot formally exclude a deletion, so HG001 stays out of the
+baseline and remains unrecorded as a carrier — but the balance of evidence is now
+clearly on the technical side.
 
 **Two decisions that were genuinely ambiguous** (details in the contract):
 

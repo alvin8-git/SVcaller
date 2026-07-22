@@ -21,14 +21,15 @@
 #   do_not_average     the segment mean is meaningless; mapping inflation
 #                      can cancel a real deletion out
 #
-# HG001 excluded from the baseline: it reads LOW across all three measured segments (HBZ 0.286, HBA2 0.503, HBA1 0.548) while its chr2 control is normal at 30.87.
-# Against the n=6 baseline that is 0.38 / 0.67 / 0.57 - which matches NO allele in the table (a --FIL/--THAI het would give ~0.5 on all three).
-# Most likely GC dropout in this GC-rich subtelomeric region from HG001's library chemistry, but depth alone CANNOT separate that from a real deletion.
-# Status UNRESOLVED.
-# Do not use HG001 as an alpha normal, and do not record it as a carrier either.
+# HG001 excluded from the baseline: it reads LOW across the whole locus (HBZ 0.286, HBA2 0.503, INTER_A2_A1 0.833, HBA1 0.548) while its chr2 control is normal at 30.87.
+# Scored against the n=6 baselines that is 0.38 / 0.67 / 0.83 / 0.57.
+# This is very unlikely to be a deletion: INTER_A2_A1 lies BETWEEN HBA2 and HBA1, so any contiguous deletion removing both flanks must remove it too - yet it is the LEAST depressed segment of the four.
+# Non-contiguous depression like this is the signature of technical dropout, not of a deletion.
+# Most likely GC bias in this GC-rich subtelomeric region from HG001's library chemistry.
+# Still not formally excluded by depth alone, so: do not use HG001 as an alpha normal, and do not record it as a carrier either.
 #
 chr16	152643	154503	HBZ	0.760	needs_own_baseline	# zeta-globin; spared by --SEA/--MED, lost in --FIL/--THAI. GC-rich and subtelomeric: intact baseline is 0.760 (GIAB n=6, range 0.628-0.904), not 1.0. THAL2 reads 0.71 raw and has NO deletion, so a global 0.8 threshold false-positives; against the baseline it is 0.93 = intact.
 chr16	154503	172875	INTER_Z_A	NA	do_not_average	# between HBZ and HBA2. DO NOT use as a single averaged segment. It spans 18 kb of partly-duplicated sequence where mapping piles up: 1 kb windows in THAL1 read 1.4-1.9 across chr16:155000-162000, which offsets the real deletion over 164000-172875 and averages to 0.99 - i.e. it reports 'intact' while CONTAINING half of a --SEA deletion. Use mappable sub-windows or exclude it. No baseline given: the mean is meaningless.
 chr16	172875	173710	HBA2	0.750	needs_own_baseline	# alpha-2. Intact baseline 0.750 (GIAB n=6, range 0.665-0.791) - NOT 1.0. A naive 0.8 cutoff on the raw ratio calls het loss in all six normals. Against the baseline: THAL1 0.49 (het loss), THAL2 1.08 (intact).
-chr16	173710	176679	INTER_A2_A1	NA	no_baseline_yet	# between HBA2 and HBA1; the diagnostic segment for -a3.7. Measured 0.50 (THAL1) vs 0.99 (THAL2) but NOT yet baselined on GIAB, so -a3.7 calling is uncalibrated. Same GIAB run would supply it.
+chr16	173710	176679	INTER_A2_A1	1.001	good	# between HBA2 and HBA1; the diagnostic segment for -a3.7, the commonest alpha-thal allele worldwide. Baseline 1.001 (GIAB n=6, range 0.974-1.151) and the TIGHTEST segment in the locus (sd 0.06 vs HBZ's 0.09). Against it: THAL1 0.50 (het loss), THAL2 0.99 (intact). No GIAB normal shows loss here, so none of HG002-HG007 carries -a3.7.
 chr16	176679	177522	HBA1	0.964	good	# alpha-1. The only segment whose intact depth is near 1.0: baseline 0.964 (GIAB n=6, range 0.861-1.131). Against it: THAL1 0.41 (het loss), THAL2 0.93 (intact).
