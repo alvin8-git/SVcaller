@@ -14,7 +14,71 @@ sample as truth.
 
 ---
 
-## P0 — check this before any build work
+## P0 — CONFIRMED 2026-07-22. This is a live false negative.
+
+**Ran it. Alpha Thalassemia reports negative for a confirmed `--SEA` carrier.**
+
+`report_carrier_panel.py:111-115` renders a row negative whenever the
+genome-wide ClinVar P/LP **variant** scan returns nothing for that gene:
+
+```python
+recs = by_gene.get(gene)
+if not recs:
+    lines.append(f"  [PANEL neg] {cond} | {gene} |  | {d}")
+```
+
+THAL1 carries a heterozygous ~20 kb `--SEA` deletion of HBA1+HBA2 (verified from
+its reads, § Sample identity). Its VCF holds 6 variants across HBA1/HBA2, all
+common polymorphisms; the deletion appears nowhere, because deleting a gene
+*removes* variants rather than adding one. The panel therefore prints:
+
+```
+[PANEL neg] Alpha Thalassemia | HBA1 |  | 138
+[PANEL neg] Alpha Thalassemia | HBA2 |  | 167
+```
+
+**The trailing counts make it worse.** 138 and 167 are the P/LP variants
+screened per gene — the report tells the reader 305 α-globin variants were
+examined and none was found. That reads as thoroughness. What it cannot say is
+that ~80–90% of α-thalassemia is deletional and none of those 305 records
+describes a deletion. The generic footnote (*"negative = no known P/LP variant
+found … not a guarantee"*) is true for the other 163 panel rows, where SNV
+scanning is the right method; for α-globin the dominant disease mechanism is
+structurally invisible, and the footnote does not distinguish those cases.
+
+### The same sample proves the beta path already works
+
+THAL1 also carries IVS-II-654 (§ THAL1 also carries a beta-thalassemia allele).
+That variant **is** in the evidence catalog — `chr11:5225923 G>A, rs34451549,
+classification P` — so the existing scan would flag
+`Beta Chain-Related Hemoglobinopathy` as a carrier hit.
+
+One sample, one report, both outcomes:
+
+| | Mechanism | Catalog | Result |
+|---|---|---|---|
+| β — IVS-II-654 | SNV | in ClinVar as P | **caught** |
+| α — `--SEA` | 20 kb deletion | not representable | **missed, rendered negative** |
+
+That is the architecture split of this plan, demonstrated rather than argued:
+β is a VCF lookup OmniGen already does correctly; α needs reads and needs the
+module below.
+
+(Caveat on the β half: THAL1 is not wired into OmniGen's sample config, so the
+scan was not executed end-to-end. The catalog entry and THAL1's genotype match
+on chromosome, position and both alleles, so a position-matching scan hits — but
+that is inference, not a run.)
+
+### Mitigate now, independently of building anything
+
+The module is weeks away; the false negative is live today. Either suppress the
+two Alpha Thalassemia rows or mark them not-covered, stating that deletional
+α-thal is not assessed from a variant scan. That is a small change to
+`report_carrier_panel.py` and does not wait on any of the work below.
+
+---
+
+## Original P0 note — check this before any build work
 
 `OmniGen/prototype/carrier_panel.tsv:13-14` already lists **Alpha Thalassemia →
 HBA1, HBA2** as a screened condition, alongside Beta Chain-Related
@@ -766,9 +830,10 @@ independently of this plan (§ β-globin).
 
 Still open:
 
-1. **P0 — does OmniGen currently report Alpha Thalassemia as negative?** Trace
-   the producer of the `[PANEL …]` lines and run THAL1 (the `--SEA` carrier)
-   through it. See top.
+1. ~~**P0 — does OmniGen currently report Alpha Thalassemia as negative?**~~
+   **RESOLVED 2026-07-22: yes, it does.** Confirmed by running
+   `report_carrier_panel.py`. Producer traced to `report_carrier_panel.py:111-115`.
+   See top — the remaining action is the mitigation, not the investigation.
 2. **Does OmniGen's HBB panel row detect the common β alleles?** The *input* is
    now confirmed present and callable (§ β-globin); what remains is whether
    OmniGen's panel content actually recognises the common β-thal alleles, and
