@@ -73,7 +73,7 @@ process MELT_CALL {
             \${n_arg} \\
             -w       melt_tmp/\${me} \\
             -c       ${params.min_depth} \\
-            -reads   ${params.melt_min_reads} \\
+            -sr      ${params.melt_min_reads} \\
             2>&1; then
             failed_types="\${failed_types} \${me}"
         fi

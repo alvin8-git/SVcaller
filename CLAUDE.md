@@ -392,7 +392,7 @@ validation/giab_samplesheet.csv
 | `--skip_alpha_globin` | false | Skip M8 alpha-globin measurement (targeted; minutes, not hours) |
 | `--hba_region` | `chr16:1-250000` | Window channel 3 scans for alpha-cluster junctions |
 | `--melt_refs` | null | Path to MELT me_refs dir (auto-detected from container if unset) |
-| `--melt_min_reads` | 3 | Min split-read support for a MELT call (MELT default is 5; lowered for recall) |
+| `--melt_min_reads` | 3 | Passed as MELT's `-sr`: filter sites with fewer than N split reads. **MELT's own default is 0 (no filtering), not 5** — so 3 is MORE stringent than stock MELT, not "lowered for recall" as this table claimed until 2026-07-22. Set 0 to actually maximise recall. |
 | `--tra_window` | 1000 | Breakend-proximity window (bp) for cross-caller translocation consensus (TRA_CONSENSUS) |
 | `--min_depth` | 25 | Mosdepth coverage threshold (also MELT's `-c`) |
 | `--outdir` | results | Output directory |
