@@ -782,9 +782,56 @@ both consume the same artifacts and would otherwise each invent their own.
 | `validation/examples/SAMPLE.alpha_globin.tsv` | canonical fixture both sides test against |
 | `assets/hba_pathogenic_sites.tsv` | 4 α sites |
 | `assets/hbb_pathogenic_sites.tsv` | 12 β sites |
+| `assets/hba_segments.bed` | 5 diagnostic segments, derived from gene models |
+| `assets/hba_deletion_alleles.tsv` | 7 deletion/triplication alleles by CN signature |
 | `bin/hgvs_map.py` | HGVS c. → GRCh38, with self-test |
-| `bin/make_globin_panels.py` | regenerates both panels; refuses to emit a bad row |
-| `tests/test_globin_panels.py` | 13 tests; suite now 92 |
+| `bin/make_globin_panels.py` | regenerates both site panels; refuses to emit a bad row |
+| `bin/make_hba_deletion_alleles.py` | regenerates the segments + allele signatures |
+| `tests/test_globin_panels.py` | 28 tests; suite now 107 |
+
+**The β site panel turned out to be largely redundant.** OmniGen's evidence DB
+already holds 431 HBB P/LP variants, and **11 of the 12 curated sites are
+already there with canonical rsIDs** (HbE `rs33950507`, IVS-I-5 `rs33915217`,
+IVS-II-654 `rs34451549`, CD39 `rs11549407`, CD41-42 `rs36029927`, −28
+`rs33931746`, …); only CD71-72 is absent. So OmniGen's β path works as-is and
+that track is much smaller than first scoped. The panel's residual value is that
+it records *which* alleles matter by population — which a flat 431-row list does
+not — and its coordinates are what found IVS-II-654 in THAL1. Those rsIDs also
+confirm the derived coordinates a third time, independently of population
+structure and the FASTA check.
+
+### Deletion alleles are defined by signature, not by breakpoint
+
+The site panel covers only point mutations. The deletional alleles — 80–90% of
+α-thal, and the module's primary job — had **no definition anywhere**, which
+blocked channels 2 and 3.
+
+They are not derivable the way sites are: α-cluster NAHR breakpoints sit inside
+near-identical homology boxes, are published against varying builds, and are not
+even single-valued for a given allele. Hand-typing GRCh38 coordinates would be
+precisely the failure the site generator exists to prevent.
+
+So `hba_deletion_alleles.tsv` defines each allele by **which diagnostic segments
+it removes** — what a depth caller measures anyway — over the five segments in
+`hba_segments.bed`, whose boundaries *are* derived from the RefSeq models.
+`approx_size` is documentary and a test asserts it can never be mistaken for a
+coordinate.
+
+**Two degenerate groups fall out, and they change the contract:**
+
+```
+--SEA | --MED     remove HBA1+HBA2, spare HBZ
+--FIL | --THAI    remove HBA1+HBA2 and HBZ
+```
+
+Depth cannot separate members of a group. A caller emitting `--SEA` from depth
+alone is inventing precision — and choosing `--SEA` over `--MED` is a population
+inference, which would look correct in SE Asian samples and be wrong elsewhere.
+The contract now requires the group form (`--SEA|--MED/aa`), collapsing only on
+a junction read or an extent that excludes the alternative.
+
+`anti-3.7` (triplication) is included deliberately: a caller written to look
+only for losses would never report it, and it modifies β-thal severity.
 
 **Two decisions that were genuinely ambiguous** (details in the contract):
 

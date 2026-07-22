@@ -60,7 +60,7 @@ run rather than silently mis-rendering.
 | `sample` | string | sample id, matches `meta.id` |
 | `alpha_genes_called` | int 0–4, or `NA` | functional α-gene count |
 | `alpha_genes_confidence` | `high`\|`medium`\|`low` | depth+junction agree / depth only / marginal |
-| `deletion_alleles` | string | e.g. `--SEA/aa`, `none`, `NA`. `/`-separated, `a` = intact α |
+| `deletion_alleles` | string | e.g. `--SEA\|--MED/aa`, `none`, `NA`. `/`-separated haplotypes, `a` = intact α. **`\|` inside a haplotype means an unresolved degenerate group — see below** |
 | `deletion_evidence` | `depth`\|`junction`\|`both`\|`none` | which channels supported the call |
 | `site_genotypes` | string | `;`-joined `GENE:HGVS:zygosity`, or `none` |
 | `site_panel_version` | string | `hba_pathogenic_sites.tsv@<sha1>` — the panel actually used |
@@ -68,6 +68,28 @@ run rather than silently mis-rendering.
 | `screened` | string | `,`-joined tier ids actually run |
 | `not_screened` | string | `,`-joined tier ids explicitly NOT run |
 | `interpretation_complete` | `false` | always false from SVcaller; it measures, it does not interpret |
+
+### Depth cannot name every allele — report the group, never pick one
+
+`assets/hba_deletion_alleles.tsv` carries a `depth_distinguishable` column, and
+two groups are flagged `no:`
+
+```
+--SEA | --MED     both remove HBA1+HBA2 and spare HBZ
+--FIL | --THAI    both remove HBA1+HBA2 and HBZ
+```
+
+Within a group the copy-number signature is **identical**, so depth alone cannot
+choose between them. A caller that emits `--SEA` from depth is inventing
+precision it does not have — and `--SEA` vs `--MED` is a population inference,
+not a measurement, so guessing it will look right in SE Asian samples and be
+wrong elsewhere.
+
+Emit the group: `--SEA|--MED/aa`. Collapse to a single allele **only** when
+channel 3 supplies a junction read or the measured extent excludes the
+alternative, and record which in `deletion_evidence`.
+
+OmniGen must render the group as-is. Do not silently display the first member.
 
 ### Zygosity is copy-number dependent — do not drop the raw VAF
 

@@ -169,6 +169,76 @@ def test_minus_strand_bases_are_complemented():
     assert checked >= 8, "expected most HBB sites to be SNVs"
 
 
+def _tsv(name):
+    path = os.path.join(REPO, "assets", name)
+    with open(path) as fh:
+        lines = [l.rstrip("\n") for l in fh if not l.startswith("#") and l.strip()]
+    header = lines[0].split("\t")
+    return [dict(zip(header, l.split("\t"))) for l in lines[1:]]
+
+
+def test_hba_segments_are_contiguous_and_ordered():
+    """Segments tile the cluster; a gap or overlap would double-count or lose depth."""
+    path = os.path.join(REPO, "assets", "hba_segments.bed")
+    rows = []
+    with open(path) as fh:
+        for l in fh:
+            if l.startswith("#") or not l.strip():
+                continue
+            f = l.split("\t")
+            rows.append((f[0], int(f[1]), int(f[2]), f[3]))
+    assert len(rows) == 5, "expected HBZ, INTER_Z_A, HBA2, INTER_A2_A1, HBA1"
+    for i in range(1, len(rows)):
+        prev_end, start = rows[i - 1][2], rows[i][1]
+        assert start == prev_end, f"segments not contiguous at {rows[i][3]}: {prev_end} -> {start}"
+    for _, s, e, name in rows:
+        assert e > s, f"{name} is empty or inverted"
+
+
+def test_deletion_alleles_declare_degeneracy():
+    """Depth alone cannot separate --SEA from --MED, nor --FIL from --THAI. A
+    caller that names one of them from depth is overclaiming, so the file must
+    say so and the agent must gate on it."""
+    rows = _tsv("hba_deletion_alleles.tsv")
+    by = {r["allele"]: r for r in rows}
+    for pair in (("--SEA", "--MED"), ("--FIL", "--THAI")):
+        for a in pair:
+            assert a in by, f"{a} missing from the allele table"
+            val = by[a]["depth_distinguishable"]
+            assert val.startswith("no:"), f"{a} should be flagged depth-degenerate, got {val!r}"
+            assert all(p in val for p in pair), f"{a} degeneracy group should name {pair}"
+    # a signature unique to one allele must NOT be flagged degenerate
+    assert by["-a4.2"]["depth_distinguishable"] == "yes"
+
+
+def test_deletion_alleles_have_provenance():
+    rows = _tsv("hba_deletion_alleles.tsv")
+    assert rows, "no alleles defined"
+    for r in rows:
+        assert r["basis"] in ("observed", "literature"), \
+            f"{r['allele']}: basis must state where the definition came from"
+        assert r["note"].strip(), f"{r['allele']}: needs a note"
+    # the only 'observed' allele is the one we actually measured
+    obs = [r["allele"] for r in rows if r["basis"] == "observed"]
+    assert obs == ["--SEA"], f"unexpected observed alleles: {obs}"
+
+
+def test_triplication_is_present():
+    """A caller that only looks for losses silently misses anti-3.7."""
+    rows = _tsv("hba_deletion_alleles.tsv")
+    trip = [r for r in rows if r["class"] == "triplication"]
+    assert trip, "anti-3.7 triplication missing — a loss-only caller would never report it"
+    assert int(trip[0]["alpha_genes_lost"]) < 0, "triplication should GAIN a gene"
+
+
+def test_sizes_are_documentary_not_coordinates():
+    """approx_size must never be mistakable for a usable coordinate."""
+    for r in _tsv("hba_deletion_alleles.tsv"):
+        s = r["approx_size"]
+        assert s.startswith(("~", "+")), f"{r['allele']}: size {s!r} should be marked approximate"
+        assert "kb" in s, f"{r['allele']}: size {s!r} should carry units"
+
+
 def test_contract_columns_match_fixture():
     """The contract's declared columns and the example file must not drift apart."""
     with open(CONTRACT) as fh:
