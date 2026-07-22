@@ -214,3 +214,99 @@ def test_main_fails_loud_when_classic_bwa_index_absent():
         "main.nf must emit a clear 'classic BWA index not found' error when SvABA runs "
         "without its index."
     )
+
+
+def test_alpha_globin_subworkflow_has_no_placeholder_fallback():
+    """M8 inherits NOTHING from the existing guards automatically -- they are a
+    hardcoded list. The three-state model must hold here too:
+
+        absent  (a Nextflow NO_* sentinel)  -> a legitimate skip
+        empty   (a 0-byte / header-only contract) -> a CRASHED caller
+        populated -> a real result
+
+    A header-only <S>.alpha_junction.tsv or <S>.alpha_sites.tsv is a VALID
+    NEGATIVE (no junction found / no panel site found) and must not be treated
+    as failure. A header-only <S>.alpha_globin.tsv is not: it means the
+    integrator produced no row, and rendering that as 'nothing found' is exactly
+    the SMN incident -- an empty artifact shown as a clean bill of health.
+    """
+    path = REPO / "subworkflows" / "alpha_globin.nf"
+    assert path.exists(), "subworkflows/alpha_globin.nf is missing"
+    code = "\n".join(_lines(path))
+    assert "touch" not in code, \
+        "alpha_globin.nf must never touch a placeholder contract/detail TSV"
+    assert "|| true" not in code, \
+        "alpha_globin.nf must not swallow a channel's exit code"
+
+
+def test_alpha_globin_integrator_refuses_an_empty_channel():
+    """bin/alpha_globin.py must raise on a present-but-empty channel file rather
+    than emit a contract row that reads as a normal 4-gene result."""
+    text = (REPO / "bin" / "alpha_globin.py").read_text()
+    assert "AlphaGlobinInputError" in text
+    assert "interpretation_complete" in text
+
+
+def test_alpha_globin_never_sets_interpretation_complete_true():
+    """The contract requires this to be structurally impossible for SVcaller to
+    set true -- it measures, it does not interpret."""
+    import re
+    text = (REPO / "bin" / "alpha_globin.py").read_text()
+    assert 'CONTRACT_INTERPRETATION_COMPLETE = "false"' in text
+    assert not re.search(r'interpretation_complete["\']?\s*[:=]\s*["\']true', text)
+    fixture = (REPO / "validation" / "examples" / "SAMPLE.alpha_globin.tsv").read_text()
+    header, row = [l.split("\t") for l in fixture.splitlines()[:2]]
+    assert dict(zip(header, row))["interpretation_complete"] == "false"
+
+
+def test_alpha_globin_report_card_refuses_an_empty_contract():
+    """A deliberately emptied contract must fail the report, not render as an
+    absence of findings."""
+    text = (REPO / "bin" / "hba_report.py").read_text()
+    assert "AlphaReportInputError" in text
+    assert "not_screened" in text, \
+        "the card must render the not-screened declaration, not just the results"
+
+
+def test_every_script_invoked_from_nextflow_is_executable():
+    """REGRESSION, and it has already happened twice.
+
+    docs/CHANGES.md 2026-07-13 records "CNV_TRAITS scripts committed
+    non-executable (exit 126)". The fix was applied but never guarded, and the
+    same thing happened again on 2026-07-22 to four of the five new alpha-globin
+    scripts.
+
+    Every module does `export PATH=${projectDir}/bin:$PATH` and then calls the
+    script by bare name, so the HOST checkout's bin/ shadows the container's
+    /usr/local/bin (where Dockerfile.utils does chmod +x). Without the exec bit
+    on the committed file the process dies with exit 126 -- and the git INDEX
+    mode is what matters, not the working-tree mode, so this checks git.
+    """
+    import re
+    import subprocess
+
+    invoked = set()
+    for nf in REPO.rglob("*.nf"):
+        # A command line looks like `    hba_depth.py \\` (the trailing
+        # backslash is doubled in a Groovy GString), or the bare name alone.
+        for m in re.finditer(r"^\s*([A-Za-z0-9_]+\.py)(?=[\s\\]|$)",
+                             nf.read_text(), re.MULTILINE):
+            invoked.add(m.group(1))
+    assert invoked, "found no bare *.py invocations in any .nf -- regex has rotted"
+
+    out = subprocess.run(["git", "ls-files", "-s", "bin/"],
+                         cwd=REPO, capture_output=True, text=True, check=True).stdout
+    modes = {}
+    for line in out.splitlines():
+        meta, path = line.split("\t", 1)
+        modes[path.split("/")[-1]] = meta.split()[0]
+
+    # Only our own scripts: a .nf also invokes tool-provided ones that live in
+    # the tool's container (configManta.py, cnvpytor, ...), not in bin/.
+    ours = sorted(invoked & set(modes))
+    assert ours, "no bin/ script is invoked from any .nf -- regex has rotted"
+    for script in ours:
+        assert modes[script] == "100755", (
+            f"bin/{script} is committed mode {modes[script]}, not 100755. It is "
+            f"invoked by bare name from a .nf and will die with exit 126. "
+            f"Run: chmod +x bin/{script}")
