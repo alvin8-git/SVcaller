@@ -1,6 +1,8 @@
 # Plan — α-globin copy-number genotyping for thalassemia carrier screening
 
-**Status:** proposal, not started. Written 2026-07-21.
+**Status:** phase 0 complete; **SVcaller measurement module built 2026-07-22** (see
+§ Phase 1). NOT run end-to-end, NOT wired into the HTML report, and the OmniGen
+rewire that closes the P0 false negative is still outstanding. Written 2026-07-21.
 **Scope (approved):** α-deletional **plus** a targeted pathogenic-site check at a
 fixed list of HBA1/HBA2 positions. β-thalassemia measurement remains out of scope
 for SVcaller.
@@ -237,9 +239,26 @@ Four independent evidence channels, because no single one is sufficient:
    (0–4). Reuse the `modules/traits/depth.nf` mosdepth `--by` pattern, but with
    its own scaling — `estimate_copies()` assumes `2 * ratio` and α is a 4-copy
    baseline.
-2. **`HBA_PSV` — paralog discrimination.** Count reads at paralogous sequence
-   variants distinguishing HBA1 from HBA2. This is the part depth cannot do and
-   the part with no existing code in this repo.
+2. ~~**`HBA_PSV` — paralog discrimination.**~~ **SUPERSEDED 2026-07-22 — and this
+   was wrong in a way that mattered.** This slot originally proposed counting
+   reads at paralogous sequence variants distinguishing HBA1 from HBA2, by
+   analogy with `SMNCopyNumberCaller`'s per-PSV vector. The frozen contract and
+   the agent brief both define channel 2 as **deletion-allele naming** instead,
+   and that is what was built (`bin/alpha_globin.py`).
+
+   The substitution is deliberate, not an oversight. The clinically actionable α
+   alleles are defined by *which diagnostic segments they remove*, not by which
+   paralogue a read came from: `--SEA`, `--MED`, `--FIL` and `--THAI` all remove
+   HBA1 **and** HBA2, so PSV discrimination does not separate any of them, and
+   `-α3.7` fuses the two genes into a hybrid, which is precisely the case a PSV
+   count cannot interpret. `assets/hba_segments.bed` records the working
+   alternative: `INTER_A2_A1`, not the gene bodies, is the diagnostic segment.
+
+   **PSV discrimination was therefore NOT built.** What it would still buy: a
+   per-gene copy number, which channel 4 currently has to *assume* from the total
+   α-gene count when it converts VAF to zygosity (see `zygosity_basis` in
+   `bin/hba_sites.py`). That assumption is the weakest link in the site channel,
+   so PSV remains the highest-value future addition — just not as channel 2.
 3. **`HBA_JUNCTION` — allele identity.** The common deletions have fixed,
    published breakpoints (that is why gap-PCR works). Targeted split-read and
    discordant-pair search at the documented coordinates for `-α3.7`, `-α4.2`,
@@ -974,6 +993,80 @@ Hand-curation would have shipped a site that silently never matched.
 
 ---
 
+## Phase 1 — the SVcaller measurement module, built 2026-07-22
+
+Narrative, defects found and the reasoning behind each threshold are in
+`docs/CHANGES.md` (2026-07-22). This section records only what is now DONE and
+what is explicitly NOT.
+
+### Done
+
+| Artifact | What it does |
+|---|---|
+| `subworkflows/alpha_globin.nf` | M8: `HBA_DEPTH` (mosdepth) → `HBA_DEPTH_CALL`, `HBA_JUNCTION`, `HBA_SITES`, `ALPHA_GLOBIN_INTEGRATE` |
+| `bin/hba_depth.py` | ch1 — per-segment `score = ratio / baseline`, never a raw ratio |
+| `bin/alpha_globin.py` | ch2 + contract emitter — allele naming, always as a group |
+| `bin/hba_junction.py` | ch3 — split-read/discordant breakpoints, zygosity from allele balance |
+| `bin/hba_sites.py` | ch4 — targeted pileup, copy-number-aware zygosity |
+| `bin/hba_report.py` | thin factual HTML card |
+| wiring | `main.nf`, `workflows/svcaller.nf`, `--skip_alpha_globin`, `--hba_region` |
+| tests | suite 129 → 290 |
+
+Verified: `nextflow run main.nf --help` compiles every module and reaches
+parameter validation. Channel 3 recovers the committed fixture's breakpoint to
+the base (165000 → 185001) and calls it heterozygous. Channel 4 reproduces
+THAL2's Hb Quong Sze het and THAL1's absence at the same site from the real BAMs.
+
+### Corrections to earlier claims in this document
+
+1. **Channel 2 is not `HBA_PSV`.** See § Design; PSV discrimination was not built
+   and would not have separated the alleles that matter.
+2. **`assets/hba_deletion_alleles.tsv` could not express `-α3.7`** — it had no
+   `d_INTER_A2_A1` column, while `hba_segments.bed` names INTER_A2_A1 as that
+   allele's *only* diagnostic segment. Generator fixed and regenerated; the two
+   frozen degenerate groups are unchanged.
+3. **The "Consequences for the validation plan" list is misnumbered** (1,2,3,4
+   then 3,4,5). Left as-is; the content is right, only the numerals repeat.
+4. **`validation/thal_truth_table.tsv` recorded `DP=23`** for THAL2's Hb Quong
+   Sze site. Not reproducible at any `-Q`/`-q` setting and inconsistent with its
+   own VAF. Corrected to `DP=22 ref 10 / alt 12 VAF 0.545`. The § Sample
+   identity section above still says "DP=22" in one place and the old figure
+   elsewhere; the pileup numbers there are otherwise reproducible.
+5. **`validation/giab_alpha_baseline.tsv`'s header is a stale copy.** It says
+   HG001 "reads low across all **three** segments (0.286/0.503/0.548) … that is
+   0.38/0.67/0.57", silently dropping INTER_A2_A1 — which is the segment
+   carrying the argument that HG001 is technical dropout rather than a deletion
+   (it lies *between* HBA2 and HBA1 yet is the least depressed). The
+   four-segment version is in `assets/hba_segments.bed`'s header. Not changed
+   here: the file is generated output and the numbers in it are correct.
+6. **The intact/het-loss margin on HBZ is thin.** The lowest GIAB normal scores
+   0.826 against a 0.65 cutoff — 1.33 sd of the observed intact spread. HBZ
+   alone decides `--SEA|--MED` vs `--FIL|--THAI`, so that discrimination rests
+   on the noisiest segment in the locus. The plan's earlier claim that HBZ is
+   "now calibrated and the group discrimination is unblocked" is true but
+   overstated: it is calibrated on the **intact side only**, with zero HBZ
+   het-loss observations anywhere in the data.
+
+### NOT done — do not read this module as finished
+
+- **No end-to-end pipeline run.** Everything was developed and checked against
+  committed fixtures and targeted `samtools` region queries. THAL1 + THAL2
+  through the real pipeline remains a prerequisite, and it is what
+  § Verification above actually asks for.
+- **The HTML card is not wired into `report.nf`.** `REPORT` joins on the full
+  meta map, where one divergent key silently drops a whole sample's report with
+  no error. Adding a 23rd channel blind, with no way to run the pipeline, is how
+  that bug returns.
+- **`svcaller/utils:1.2` has not been rebuilt.** It bakes in `bin/` and
+  `assets/`; until it is rebuilt the pipeline runs the OLD code and none of this
+  exists at runtime.
+- **`validation/thal_benchmark.sh` does not exist.** The plan calls it part of
+  the deliverable, not a follow-up. It is still a follow-up.
+- **`assets/cnv_syndromes.tsv` has no α-globin entry**, and the three filter
+  changes under § Filter changes required are untouched — including the
+  `GNOMAD_SV_FILTER` `.get()` landmine, which still spares common α deletions
+  only by accident.
+
 ## Open questions
 
 **Resolved 2026-07-21:** HGVS is `c.377T>C` (typo corrected). DRAGEN unavailable
@@ -988,6 +1081,35 @@ both always run `FILTER_CHROMS`. Germline VCFs (`*.hc4.vcf.gz`) for both
 samples were copied the same day and HBB is confirmed callable, which resolves
 the old "is a germline VCF routinely produced?" question and unblocks β
 independently of this plan (§ β-globin).
+
+### Escalations raised 2026-07-22 — for a human, not for an agent to decide
+
+The contract is frozen and the OmniGen track depends on it, so none of these was
+changed unilaterally. All four need a decision.
+
+1. **The frozen example contradicts the contract's own prose.**
+   `validation/examples/SAMPLE.alpha_globin.tsv` carries `--SEA/aa`, and the
+   contract's inline example (line 124) does too — but the contract's own text
+   at lines 83–84 says depth cannot name one member of a degenerate group and
+   the group form must be emitted. An honest caller produces `--SEA|--MED/aa`
+   for THAL1, so **the committed example encodes a state the caller cannot
+   legitimately reach.** Both tracks test against that file. Either the example
+   is wrong, or it silently assumes a junction-based collapse that no code can
+   currently perform.
+2. **`alpha_genes_called` cannot express a triplication.** The contract declares
+   it `int 0–4`; an `anti-3.7` carrier genuinely has 5 α genes. The
+   implementation emits `NA` and carries the allele in `deletion_alleles`, which
+   loses no information but is not what a consumer would expect. Widening the
+   range is a contract change.
+3. **`genotype` does not assert phase, and the contract's example does.** The
+   contract illustrates `--SEA/aQSa`, writing a site variant into a haplotype.
+   Short reads do not establish which chromosome a site variant sits on, and on
+   a deletion background that placement is the whole clinical question, so the
+   implementation emits `<deletion genotype> +<site findings>` instead. If
+   OmniGen parses this field, the format needs agreeing.
+4. **Contract line 124 shows `site_panel_version` as `@0000000`** while the
+   fixture has `@dfd6ccf`. Cosmetic, but the existing schema test only compares
+   column *names*, so nothing catches it.
 
 Still open:
 

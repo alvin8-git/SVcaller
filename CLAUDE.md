@@ -136,7 +136,7 @@ pytest tests/test_cnv_consensus.py
 pytest tests/test_cnv_consensus.py::test_reciprocal_overlap
 ```
 
-79 tests, ~0.5 s — no fixtures or containers needed, so run them on every `bin/` edit. (The README's "25 passing" badge is stale.) The scripts themselves execute inside the `svcaller/utils:1.2` container during a pipeline run.
+299 tests, ~3.9 s — no containers or network needed, so run them on every `bin/` edit. (The README's "25 passing" badge is stale, and this count was itself stale at 79 until 2026-07-22.) A handful skip themselves when `samtools` is not on PATH. The scripts themselves execute inside the `svcaller/utils:1.2` container during a pipeline run.
 
 ## Samplesheet Format
 
@@ -158,6 +158,7 @@ main.nf                          # Entry: parse samplesheet, set up channels, ca
     ├── subworkflows/cnv_calling.nf  # M3: CNVpytor + GATK gCNV → cnv_consensus.py (reciprocal overlap merge)
     ├── subworkflows/cnv_traits.nf   # M3b: targeted depth → Rh (RHD) / AMY1 / GSTM1-GSTT1-null / Lp(a) KIV-2 copy-number traits
     ├── subworkflows/smn_calling.nf  # M4: SMNCopyNumberCaller
+    ├── subworkflows/alpha_globin.nf # M8: alpha-globin (HBA1/HBA2) — segment depth + junction search + targeted pileup → alpha_globin.tsv contract
     ├── subworkflows/annotate.nf     # M5: AnnotSV (+ optional SV_PON_ANNOTATE before it, in svcaller.nf)
     └── subworkflows/report.nf       # M6/M7: pycirclize Circos SVG + optional Truvari bench → HTML report
 
@@ -190,6 +191,8 @@ Long-form how-to guides live in `docs/` (`howto-run-clinical-sample.md`, `howto-
 - **Delly BCF format**: Delly 1.2.6 outputs BCF binary even with `.vcf` extension. `DELLY_MERGE` uses `bcftools concat | bcftools sort` in `broadinstitute/gatk:4.5.0.0` container (has bcftools 1.13).
 - **Jasmine unsorted output**: Jasmine does not sort its merged VCF. `JASMINE_MERGE` runs `sort -k1,1 -k2,2n` after Jasmine before `bgzip | tabix`.
 - **svcaller/utils**: now at `1.2` everywhere (`params.utils_container`, `conf/docker.config`, and three modules hardcode it). Rebuilt from `Dockerfile.utils` to add `COPY assets/ /usr/local/assets/` (report template) and fix STR VCF gzip reading and null Truvari precision/recall values. `Dockerfile.utils` bakes in **both** `bin/` (→ `/usr/local/bin`) and `assets/` (→ `/usr/local/assets`), and `html_report.py` finds its Jinja template via `Path(__file__).parent.parent / "assets"` — i.e. it only resolves from that `/usr/local/{bin,assets}` layout. So: rebuild the image after editing `bin/` or `assets/`, and never change `bin/`'s depth relative to `assets/` without fixing `TEMPLATE_DIR`.
+- **Alpha-globin depth is not 1.0 when intact.** M8 must threshold on `score = ratio / baseline`, never on the raw control ratio. Intact HBA2 sits at ratio 0.750 and HBZ at 0.760 across GIAB HG002–HG007, so a naive `ratio < 0.8 = loss` calls a het loss in *every* normal. Baselines live in col 5 of `assets/hba_segments.bed`; the raw calibration is `validation/giab_alpha_baseline.tsv`. `INTER_Z_A` is flagged `do_not_average` and must never be scored — it reads 0.99 "intact" in a sample where a `--SEA` deletion covers half of it, because mapping inflation over chr16:155000-162000 cancels the deletion out.
+- **Alpha deletion alleles are reported as GROUPS, never as one allele.** `--SEA|--MED` and `--FIL|--THAI` have identical depth signatures (`depth_distinguishable` column of `assets/hba_deletion_alleles.tsv`). Emitting `--SEA` from depth invents precision; choosing it because the sample looks SE Asian is a population inference dressed as a measurement. Collapsing is permitted only on a junction read or a measured extent that excludes the alternative — and no GRCh38 breakpoint table exists, deliberately, so `bin/alpha_globin.py::_collapse_group` currently always returns `None`.
 - **samtools flagstat**: wired and working — `mapped_pct` and `dup_rate` both parsed from `HG002.flagstat.txt` and shown in HTML QC section.
 - **MELT container**: `svcaller/melt:2.2.2` — must be built locally from `MELTv2.2.2.tar.gz` (MELT.jar requires registration at melt.igs.umaryland.edu; not in bioconda/biocontainers). Build: `docker build -f Dockerfile.melt -t svcaller/melt:2.2.2 .`. Requires bowtie2 in PATH (included in container). ME types run alphabetically: ALU→HERVK→LINE1→SVA (~2h total at 30×).
 - **MELT INFO headers**: MELT outputs many INFO fields (DIFF/LP/RP/RA/PRIOR/SR/MEINFO etc.) that Jasmine drops from the merged VCF header, causing bcftools/Truvari to fatal-exit. Fixed: `call.nf` strips INFO to SVTYPE/MEITYPE/SVLEN/END; `merge.nf` injects `##INFO=<ID=MEITYPE,...>` before `#CHROM`.
@@ -204,6 +207,14 @@ All run inside `svcaller/utils:1.2` (`params.utils_container`). Each is a standa
 | `cnv_consensus.py` | Merge CNVpytor TSV + GATK gCNV SEG → consensus BED |
 | `html_report.py` | Assemble per-sample HTML report from all sections |
 | `smn_report.py` | Generate SMN1/SMN2 HTML section |
+| `hba_depth.py` | M8 ch1: per-segment alpha-globin depth → `score = ratio / baseline` → intact/het_loss/hom_loss/gain |
+| `hba_junction.py` | M8 ch3: split-read + discordant-pair alpha-cluster breakpoint search; calls zygosity from allele balance |
+| `hba_sites.py` | M8 ch4: targeted pileup at `hba_pathogenic_sites.tsv`; copy-number-aware zygosity |
+| `alpha_globin.py` | M8 ch2 + integrator: names deletion alleles (as GROUPS) and emits the `alpha_globin.tsv` contract |
+| `hba_report.py` | M8: thin, factual alpha-globin HTML card (not wired into `report.nf` yet) |
+| `make_globin_panels.py` | Regenerate the HBA/HBB pathogenic-site panels (generator — never hand-edit the assets) |
+| `make_hba_deletion_alleles.py` | Regenerate `hba_segments.bed` + `hba_deletion_alleles.tsv` |
+| `hgvs_map.py` | HGVS `c.` → GRCh38 coordinate, with self-test |
 | `circos_plot.py` | Generate SVG circos plot via pycirclize |
 | `parse_samplesheet.py` | Samplesheet parsing utility |
 | `tra_consensus.py` | Re-cluster interchromosomal BNDs across callers post-Jasmine; publishes final `sv_merged.vcf.gz` |
@@ -269,6 +280,8 @@ validation/giab_samplesheet.csv
 | `--skip_melt` | false | Skip MELT MEI calling (saves ~2h; use when MELT container unavailable) |
 | `--skip_svaba` | false | Skip SvABA local-assembly caller |
 | `--skip_strling` | false | Skip STRling genome-wide STR scanning |
+| `--skip_alpha_globin` | false | Skip M8 alpha-globin measurement (targeted; minutes, not hours) |
+| `--hba_region` | `chr16:1-250000` | Window channel 3 scans for alpha-cluster junctions |
 | `--melt_refs` | null | Path to MELT me_refs dir (auto-detected from container if unset) |
 | `--melt_min_reads` | 3 | Min split-read support for a MELT call (MELT default is 5; lowered for recall) |
 | `--tra_window` | 1000 | Breakend-proximity window (bp) for cross-caller translocation consensus (TRA_CONSENSUS) |

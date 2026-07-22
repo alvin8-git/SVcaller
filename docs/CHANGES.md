@@ -1,5 +1,206 @@
 # Changes
 
+## 2026-07-22 — M8 alpha-globin: the four measurement channels
+
+**Problem.** The α-globin locus was a total blind spot. Across HG001–HG007 the pipeline
+had never produced a chr16 CNV call below 14.6 Mb and no 3.7 kb deletion in any
+`sv_merged.vcf.gz` — including the Han Chinese trio HG005/6/7, where `-α3.7`/`--SEA`
+carriers are statistically likely. Meanwhile OmniGen's carrier panel *already claimed*
+Alpha Thalassemia as a screened condition and rendered it **negative** for THAL1, a
+confirmed `--SEA` carrier, because a gene-based variant lookup structurally cannot see a
+deletion. ~80–90% of α-thalassemia is deletional. That is a false negative produced by
+scope, not by a crash, so no guard could catch it.
+
+**Fix.** A new M8 subworkflow, `subworkflows/alpha_globin.nf`, with four independent
+evidence channels and an integrator:
+
+| | file | what it measures |
+|---|---|---|
+| ch1 | `bin/hba_depth.py` | per-segment normalized depth over the 5 diagnostic segments |
+| ch2 | `bin/alpha_globin.py` | deletion-allele naming from the ch1 signature |
+| ch3 | `bin/hba_junction.py` | split-read / discordant-pair breakpoints + zygosity |
+| ch4 | `bin/hba_sites.py` | targeted pileup at the pinned pathogenic-site panel |
+
+Output is the frozen contract at `results/<S>/alpha_globin/<S>.alpha_globin.tsv`
+(`docs/contracts/alpha_globin_contract.md`), discovered by OmniGen via path convention.
+`bin/hba_report.py` renders a thin factual card. Wired into `main.nf` /
+`workflows/svcaller.nf` behind `--skip_alpha_globin` (default false); `nextflow run
+main.nf --help` compiles all modules and reaches parameter validation.
+
+**Consequence.** SVcaller now measures α-gene dosage, deletion alleles and targeted-site
+genotypes. It still does **not** interpret: no HbH/Bart's/trait classification, no
+couple-level risk, and `interpretation_complete` is a module constant that no code path
+can set true. OmniGen owns every clinical statement, and the rewire of its Alpha
+Thalassemia row to consume this contract is still outstanding — until it happens, the
+live false negative described above stands.
+
+### Four traps that shaped the implementation
+
+**1. Intact depth is not 1.0, so the threshold goes on `score`, not the ratio.**
+`score = (segment_depth / control_depth) / baseline`. Intact HBA2 sits at ratio **0.750**
+and HBZ at **0.760** across GIAB HG002–HG007, so a naive `ratio < 0.8 = loss` calls a het
+loss in *all six normals*. Baselines are col 5 of `assets/hba_segments.bed`; raw
+calibration in `validation/giab_alpha_baseline.tsv`. `bin/hba_depth.py` consumes both and
+never thresholds a raw ratio.
+
+**2. `INTER_Z_A` is `do_not_average` and is treated as no observation at all.** It reads
+0.99 ("intact") in THAL1, where a `--SEA` deletion covers roughly half of it, because
+mapping inflation over chr16:155000-162000 cancels the deletion out. `observed_copies()`
+in `bin/alpha_globin.py` drops it rather than letting it vote for "intact" — omission and
+a vote are not the same thing, and the difference is a missed 20 kb deletion.
+
+**3. Degenerate groups are emitted as groups.** `--SEA|--MED` and `--FIL|--THAI` have
+identical depth signatures. `bin/alpha_globin.py::_collapse_group()` always returns `None`
+and says why: the contract permits collapsing only on a junction read or a measured extent
+that *excludes* the alternative, and `assets/hba_deletion_alleles.tsv` deliberately carries
+no breakpoints (α-cluster NAHR breakpoints sit inside near-identical homology boxes and are
+not single-valued per allele), so there is nothing to compare an extent against. Picking
+`--SEA` because a sample looks SE Asian is a population inference dressed as a measurement.
+
+**4. Site zygosity is copy-number dependent.** On a `--SEA/αα` background the surviving
+HBA2 is hemizygous, so a real variant sits near 100% VAF, not 50%. `bin/hba_sites.py`
+takes the α-gene count as an input, emits the raw VAF alongside the call on every row, and
+records which rule fired in `zygosity_basis`. With no α-gene count it degrades to a
+VAF-only report rather than silently assuming 2 copies. THAL1 exercises the related
+`no_call` path for real: its HBA2 is single-copy, so DP at chr16:173208 (Hb Adana) is 4 —
+reporting "absent" there would fabricate a negative on a severe allele.
+
+### Defect found in a committed asset: `hba_deletion_alleles.tsv` could not express `-α3.7`
+
+**Problem.** The generated allele table carried copy-change columns for `HBZ`, `HBA2` and
+`HBA1` only. But `assets/hba_segments.bed` states plainly that **INTER_A2_A1**, not
+HBA1/HBA2, is the diagnostic segment for `-α3.7` — the commonest α-thal deletion
+worldwide — and `-α3.7`'s only two entries in the table were both `h` (disrupted/hybrid),
+a qualitative marker no threshold can match. The table was therefore unusable by a caller
+for that allele: channel 2 would have had to hardcode the `-α3.7` rule in Python, which is
+exactly what defining alleles by signature exists to prevent.
+
+**Fix.** Added a `d_INTER_A2_A1` column to `bin/make_hba_deletion_alleles.py` (segments in
+genomic order) and regenerated. `-α4.2` gets `h` there rather than `0`: its deletion is
+~4.2 kb but HBA2's gene body is only 835 bp, so the X2 crossover lies *inside*
+INTER_A2_A1 and part of that segment goes with it — the fraction is not known here, so the
+segment must not be thresholded for that allele. `INTER_Z_A` deliberately gets no column
+at all, since no allele may be defined against a `do_not_average` segment.
+
+**Consequence.** The two frozen degenerate groups are **unchanged** (`--SEA|--MED`,
+`--FIL|--THAI`), so the contract is not affected. `hba_segments.bed` regenerated
+byte-identical. A test now rejects an allele table without the column rather than silently
+losing the allele.
+
+### `marginal` was computed and thrown away
+
+**Problem.** `bin/hba_depth.py` computed a `marginal` flag for every segment — whether the
+score sits near a decision boundary — into its row dict, but `marginal` was missing from
+`COLUMNS`, so it never reached the TSV. `bin/alpha_globin.py` reads that flag to downgrade
+`alpha_genes_confidence` to `low`, so every marginal call would have been reported as
+confident.
+
+**Fix.** Added to `COLUMNS`; test asserts it reaches the file.
+
+### The exit-126 bug recurred, and is now actually guarded
+
+**Problem.** Four of the five new `bin/` scripts were committed mode `100644`. Every module
+does `export PATH=${projectDir}/bin:$PATH` and then calls the script by bare name, so the
+host checkout's `bin/` shadows the container's `/usr/local/bin` (where `Dockerfile.utils`
+runs `chmod +x`). Without the exec bit the process dies with **exit 126**. This is exactly
+the incident recorded at `docs/CHANGES.md` 2026-07-13 — "CNV_TRAITS scripts committed
+non-executable" — which was fixed at the time but **never guarded**, so it recurred at the
+first opportunity.
+
+**Fix.** `chmod +x` on the four, plus
+`tests/test_no_empty_placeholders.py::test_every_script_invoked_from_nextflow_is_executable`,
+which scans every `.nf` for bare `*.py` invocations and asserts the **git index** mode
+(not the working-tree mode — the index is what gets committed) is `100755`. Tool-provided
+scripts that live in their own container (`configManta.py`) are excluded. Mutation-tested:
+`git update-index --chmod=-x` → fails, restored → passes.
+
+**Consequence.** `bin/cnv_traits_common.py` stays `100644` and correctly so — it is
+imported, never invoked.
+
+### Adversarial re-derivation caught a defect the implementation had shipped
+
+Every numeric claim above was re-derived from the raw BAMs by a separate agent
+whose brief was to **refute** it, with no sight of the implementers' reasoning.
+Most claims survived exactly: all 28 ratios in `validation/giab_alpha_baseline.tsv`
+reproduce to 3 dp, the fixture breakpoint and THAL1's real junction were both
+re-derived independently to the base, and an exhaustive sweep of all 256
+four-segment signatures confirmed a bare `--SEA` is unreachable. Three things did
+not survive.
+
+**1. `h` was doing two incompatible jobs — a silent 3-gene carrier was being
+called a 2-gene trait.** `_delta('h')` returned `0`, which does not mean "do not
+threshold this segment"; it hard-asserts *exactly 2 copies*. That is correct and
+load-bearing for `-α3.7`, whose hybrid gene keeps enough of both gene bodies to
+read intact. It is wrong for `-α4.2`: that deletion is ~4.2 kb while HBA2's gene
+body is only 835 bp, so 2–3.4 kb of the 2969 bp INTER_A2_A1 goes with it and the
+segment scores anywhere from ~0.43 to ~0.77 — straddling the 0.65 cutoff. The
+note added to `-α4.2` said "do not threshold it for this allele"; the code did
+the opposite. Result: `(HBZ 2, HBA2 1, INTER 1, HBA1 2)` came out as
+`-a3.7/-a4.2` (2 genes) instead of `-a4.2/aa` (3 genes) — a **silent 3-gene
+carrier reported as α-thalassemia trait, flipped by a 0.03 wobble in depth**.
+
+*Fix.* Split the symbol. `h` (hybrid) → `{0}`, an expectation; new `?`
+(unconstrained) → `{-1, 0}`, genuinely not compared. `+1` is excluded from `?`
+because a deletion allele cannot gain copies. `expected_copies()` now returns a
+*set*. Both readings of INTER_A2_A1 now give `-a4.2/aa`, 3 genes.
+
+**2. Group members were joined alphabetically.** The code emitted `--MED|--SEA`;
+the asset's own `depth_distinguishable` cells and every occurrence in the
+contract write `--SEA|--MED`. OmniGen renders this string, so its spelling is
+interface, not cosmetics. Group order now follows the allele table's row order.
+
+**3. `validation/thal_truth_table.tsv` recorded `DP=23`** for THAL2's Hb Quong
+Sze site. Not reproducible at any setting — a sweep over `-Q` × `-q` gives 25 /
+22 / 20 / 17, never 23 — and internally inconsistent with its own VAF
+(12/23 = 0.52, not the 0.55 recorded). Corrected to `DP=22 ref 10 / alt 12
+VAF 0.545` with the exact flags, and THAL1's junction extent added as evidence
+(method `depth+junction`). The `--SEA` vs `--MED` group is **still not
+collapsed**: the breakpoint is now measured, but no GRCh38 coordinates exist for
+either allele to compare 19304 bp against, so it excludes neither.
+
+Also hardened: an unknown segment key raised a raw `KeyError`; it now raises
+`AlphaGlobinInputError` naming the column and why `INTER_Z_A` has none.
+
+**Two things the verification flagged that were NOT fixed**, and are live risks:
+
+- **The intact/het-loss margin is thin on HBZ.** The lowest GIAB normal score is
+  0.826 (HG004 HBZ) against a 0.65 cutoff — only **1.33 sd** of the observed
+  intact spread. HBZ alone decides `--SEA|--MED` vs `--FIL|--THAI`, so that
+  discrimination rests on the locus's noisiest segment. HBA1 is 2.11 sd; HBA2
+  and INTER_A2_A1 are comfortable at 3.45 and 4.95 sd.
+- **The gain threshold is not safe.** At 1.35, the parametric false-gain rate is
+  ~0.63% per sample on HBZ and ~0.28% on HBA1, and an `anti-3.7` at 1.5 sits
+  only ~1.1–1.3 sd above the cut. No triplication control exists. `anti-3.7`
+  already yields `alpha_genes_called=NA`, so a gain is a lead, not a call —
+  which is the only reason this is tolerable.
+
+### A parsimony rule, and the blind spot it creates
+
+**Problem.** A `--SEA` deletion on one chromosome and an `anti-3.7` triplication on the
+other restore every diagnostic segment to 2 copies. Enumerating all genotypes therefore
+made **every normal sample** report as ambiguous between "no deletion" and "a deletion
+masked by a triplication" — technically true, operationally useless, and a guaranteed
+source of false alarms.
+
+**Fix.** `name_alleles()` keeps only the genotypes with the fewest non-wild-type
+haplotypes.
+
+**Consequence.** A compensated deletion+triplication carrier reads as normal. That is a
+genuine, if remote, blind spot, recorded here and in the module docstring rather than as a
+caveat printed on every sample — a caveat on every sample is a caveat nobody reads.
+
+### What was deliberately NOT done
+
+- **No end-to-end pipeline run.** THAL1/THAL2 were exercised only through targeted
+  `samtools` region queries. A supervised full run is still required before any use.
+- **The card is not wired into `report.nf`.** `REPORT` joins on the full meta map, where
+  one divergent key silently drops a sample's entire report with no error; adding a 23rd
+  channel without being able to run the pipeline is how that bug gets reintroduced.
+- **`svcaller/utils:1.2` was not rebuilt.** The image bakes in `bin/` and `assets/`, so
+  until it is rebuilt the pipeline runs the *old* code and none of the above exists at
+  runtime.
+- **No genome-wide variant calling.** Channel 4 is a pileup at fixed coordinates only.
+
 ## 2026-07-16 — Portability: stop hardcoding `/data/alvin/tmp`
 
 **Problem.** Two configs baked a host-specific path into every run, breaking the pipeline
