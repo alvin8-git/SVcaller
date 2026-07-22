@@ -1,0 +1,2 @@
+sample	alpha_genes_called	alpha_genes_confidence	deletion_alleles	deletion_evidence	site_genotypes	site_panel_version	genotype	screened	not_screened	interpretation_complete
+SAMPLE	2	high	--SEA/aa	both	none	hba_pathogenic_sites.tsv@dfd6ccf	--SEA/aa	alpha_deletional,alpha_targeted_sites	beta_globin,alpha_nondeletional_outside_panel	false

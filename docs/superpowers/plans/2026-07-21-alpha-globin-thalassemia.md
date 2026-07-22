@@ -338,6 +338,34 @@ One encouraging signal: the Quong Sze VAF is 0.55, not the ~0.25 expected if
 HBA1/HBA2 reads collapsed onto one paralog. Reads are segregating correctly at
 that site, which is mild evidence the targeted-site channel is feasible at 30×.
 
+### THAL1 also carries a beta-thalassemia allele (found 2026-07-22)
+
+Running the newly derived HBB panel against THAL1's germline VCF hit
+immediately:
+
+```
+IVS-II-654  c.316-197  chr11:5225923  G>A  GT=0/1  AD=9,10  (VAF 0.53)
+```
+
+IVS-II-654 is a common Chinese β⁺-thalassemia allele. **THAL1 is therefore a
+double heterozygote — `--SEA` α-thal trait *and* β-thal trait.** Nothing in the
+purchase description said so, and nothing in this plan assumed it.
+
+Two consequences:
+
+- As a validation sample THAL1 is *more* valuable than assumed: it exercises the
+  α deletional channel and the β panel simultaneously, and it is the only sample
+  on hand that tests whether the two screens stay independent and neither
+  suppresses the other's finding.
+- It sharpens the false-reassurance risk. A report that measures only α would
+  describe THAL1 by its `--SEA` allele alone, which is an incomplete and
+  clinically misleading picture of that individual.
+
+Caveats: this rests on **one VCF record at depth 19**, not orthogonally
+confirmed, and the allele is intronic (pathogenic via cryptic splicing) so it
+cannot be read off the protein consequence. Confirm from the reads and, ideally,
+by the supplier's own assay before entering it in the truth table.
+
 **Action:** confirm with the supplier whether the mix-up is in the filenames or
 in our notes, and record the resolution in `validation/thal_truth_table.tsv`.
 Until then treat the *sequence* as authoritative and the *filename* as suspect.
@@ -679,6 +707,48 @@ Nextflow change, and can proceed in parallel.
 
 ---
 
+## Phase 0 — shared interface, completed 2026-07-22
+
+Built before fanning out to independent SVcaller and OmniGen tracks, because
+both consume the same artifacts and would otherwise each invent their own.
+
+| Artifact | What it settles |
+|---|---|
+| `docs/contracts/alpha_globin_contract.md` | file path, format, exact column list, both open decisions |
+| `validation/examples/SAMPLE.alpha_globin.tsv` | canonical fixture both sides test against |
+| `assets/hba_pathogenic_sites.tsv` | 4 α sites |
+| `assets/hbb_pathogenic_sites.tsv` | 12 β sites |
+| `bin/hgvs_map.py` | HGVS c. → GRCh38, with self-test |
+| `bin/make_globin_panels.py` | regenerates both panels; refuses to emit a bad row |
+| `tests/test_globin_panels.py` | 13 tests; suite now 92 |
+
+**Two decisions that were genuinely ambiguous** (details in the contract):
+
+1. **Discovery is by path convention**, not manifest key. OmniGen does it both
+   ways today — SMN uses `config.resolve(SAMPLE,"smn")`, CNV traits use a
+   hardcoded `${SV}/results/...` path — so "follow the existing pattern" would
+   have produced two incompatible integrations. `config.py` reserves manifest
+   keys for *irregularly-named* paths; SVcaller's are regular.
+2. **α-globin is its own subworkflow**, not a fifth CNV trait caller, because
+   the junction and pileup channels do not fit `TRAIT_DEPTH`'s shape — but it
+   reuses `bin/cnv_traits_common.py` for normalized depth rather than
+   duplicating it. An earlier note in this plan said "fifth trait caller"; that
+   was half right and is superseded here.
+
+**Coordinates are derived, never hand-typed.** `hgvs_map.py` reproduces six
+coordinates established independently of it (HbS, HbE, CD41-42, CD17 from 1000G
+population structure; Hb Quong Sze from THAL2's reads; IVS-II-654 cross-checked
+two ways), and `make_globin_panels.py` verifies every row against the reference
+FASTA — HBB is minus-strand, so a panel that forgets to complement calls
+nothing while looking healthy.
+
+The guards earned their keep immediately: generation **failed** on the `-28`
+allele, because that name is numbered from the CAP site, not the ATG. HBB has a
+50 nt 5′ UTR, so `-28` is `c.-78` (chr11:5227099, inside the `CATAAAA` TATA box).
+Hand-curation would have shipped a site that silently never matched.
+
+---
+
 ## Open questions
 
 **Resolved 2026-07-21:** HGVS is `c.377T>C` (typo corrected). DRAGEN unavailable
@@ -709,12 +779,15 @@ Still open:
    determines the report wording and whether the GIAB orthogonal-typing work is
    a prerequisite or a nice-to-have. β makes this sharper, not easier: it is
    n=0.
-4. **Freeze the site panel** — confirm the final ~10–15 α positions against
-   HbVar/IthaGenes before hard-coding coordinates, and settle the parallel
-   `hbb_pathogenic_sites.tsv` list the same way.
+4. **Freeze the site panels' CONTENT.** Coordinates are settled (phase 0 —
+   derived and FASTA-checked), but the *allele list* is curated and incomplete:
+   4 α sites, 12 β sites. Review against HbVar/IthaGenes and decide what a
+   population-appropriate panel must contain. Reviewers should check the HGVS
+   and allele names in `bin/make_globin_panels.py`, never the coordinates.
 5. **Get annotation working.** No ClinVar VCF on disk; VEP is installed with no
-   cache. Blocks β interpretation entirely, and blocks confirming the c.377
-   coordinate against a real transcript annotation.
+   cache. No longer blocks the c. → genomic mapping (phase 0 solved that from
+   the AnnotSV RefSeq models), but still blocks classifying anything *outside*
+   the curated panels — i.e. any variant we did not already name.
 6. **Are THAL1/THAL2's orthogonal results gap-PCR, MLPA, or Sanger?** Each
    validates a different channel; Quong Sze implies Sanger or a targeted assay,
    which does not validate deletion calling at all. **Now also the route to
