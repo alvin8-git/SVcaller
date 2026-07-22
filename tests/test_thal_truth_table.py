@@ -22,7 +22,12 @@ TRUTH = os.path.join(REPO, "validation", "thal_truth_table.tsv")
 LOCI = {"alpha", "beta"}
 ZYG = {"het", "hom", "compound_het", "none"}
 CONF = {"high", "medium", "low"}
-METHODS = {"depth", "vcf", "pileup+vcf", "reads", "panel_genotype"}
+# `depth+junction` added 2026-07-22: THAL1's deletion extent is now measured
+# from split reads and discordant pairs, not depth alone. It is a stronger
+# method than `depth` and must be nameable, or a real improvement in evidence
+# would have to be recorded as if it had not happened.
+METHODS = {"depth", "depth+junction", "vcf", "pileup+vcf", "reads",
+           "panel_genotype"}
 
 
 def _rows(path):

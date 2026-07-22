@@ -103,6 +103,18 @@ def read_tsv(path, what):
     return [dict(zip(header, l.split("\t"))) for l in lines[1:]]
 
 
+def group_order(alleles):
+    """allele name -> its row index in assets/hba_deletion_alleles.tsv.
+
+    Group members are joined in FILE order, not alphabetically. Both the asset's
+    own `depth_distinguishable` cells (`no:--SEA|--MED`) and every occurrence in
+    docs/contracts/alpha_globin_contract.md write `--SEA|--MED` and
+    `--FIL|--THAI`; an alphabetical sort emits `--MED|--SEA`, which is the same
+    measurement spelled a way the consumer was not told to expect. OmniGen
+    renders this string, so the spelling is interface, not cosmetics."""
+    return {a["allele"]: i for i, a in enumerate(alleles)}
+
+
 def parse_alleles(path):
     """assets/hba_deletion_alleles.tsv -> list of allele dicts."""
     with open(path) as fh:
@@ -148,65 +160,89 @@ def marginal_segments(depth_rows):
 # --------------------------------------------------------------------------- #
 # channel 2 — allele naming
 # --------------------------------------------------------------------------- #
-def _delta(sym):
-    """A d_* cell -> the copy change this haplotype makes to that segment.
+def _deltas(sym):
+    """A d_* cell -> the SET of copy changes this haplotype may make there.
 
-    'h' (disrupted/hybrid) maps to 0 — NO CLEAN LOSS — and that choice is
-    load-bearing, so here is the reasoning in full.
+    Three symbols, and the difference between the last two is a bug that was
+    found by adversarial re-derivation after the naive version shipped:
 
-    'h' is a marker, not a number: an -a3.7 hybrid gene fuses HBA2's 5' end to
-    HBA1's 3' end, so neither gene body vanishes. Depth over the HBA2 and HBA1
-    segments is depressed but NOT halved. An earlier version of this function
-    returned None for 'h' and skipped the segment entirely; that made 'h' a full
-    wildcard, and -a3.7 then matched THAL1's --SEA signature (2,1,1,1) because
-    the two segments that distinguish them had been wildcarded away. It would
-    have named the wrong allele on the one real sample we have.
+      0 / -1 / +   exact: {0}, {-1}, {+1}.
 
-    Mapping 'h' to 0 says: for this allele that segment must NOT read as a clean
-    het/hom loss. Combined with mosdepth --mapq 0 (multi-mapping reads are
-    kept, so hybrid reads still pile onto both paralogues) an -a3.7 carrier's
-    HBA2/HBA1 land in the depth caller's `intact` band, and -a3.7 is then
-    identified by INTER_A2_A1 alone — exactly what hba_segments.bed says is the
-    diagnostic segment for it.
+      'h'  disrupted/hybrid -> {0}. An EXPECTATION, not a wildcard. An -a3.7
+           hybrid gene fuses HBA2's 5' end to HBA1's 3' end, so neither gene
+           body vanishes; with mosdepth --mapq 0 the hybrid's reads still pile
+           onto both paralogues and HBA2/HBA1 land in the `intact` band. This is
+           load-bearing: an earlier version skipped 'h' segments entirely, which
+           made -a3.7 a near-wildcard that matched THAL1's --SEA signature
+           (2,1,1,1) and named the wrong allele on the only real sample we have.
 
-    UNVALIDATED: no -a3.7 sample exists in this project, so the above is
-    reasoning from the gene model, not a measurement. The failure mode is
-    deliberately one-sided: if a real -a3.7 depresses HBA2/HBA1 enough to be
-    called a loss, nothing matches and we emit NA. Emitting NA is safe;
-    emitting a confidently wrong allele is not."""
+      '?'  unconstrained -> {-1, 0}. The expectation genuinely straddles a
+           decision boundary. -a4.2 is ~4.2 kb while HBA2's gene body is only
+           835 bp, so 2-3.4 kb of the 2969 bp INTER_A2_A1 goes with it and that
+           segment scores anywhere from ~0.43 to ~0.77 depending on the 5'
+           breakpoint. Asserting {0} there (what 'h' would do) misnames a silent
+           3-gene -a4.2 carrier as a 2-gene alpha-thal trait. '+1' is excluded:
+           a deletion allele cannot gain copies.
+
+    UNVALIDATED: no -a3.7 or -a4.2 sample exists in this project, so both are
+    reasoning from the gene model, not measurements. The failure mode is
+    deliberately one-sided — when nothing matches we emit NA, and NA is safe
+    where a confidently wrong allele is not."""
     s = str(sym).strip()
     if s == "h":
-        return 0
+        return frozenset({0})
+    if s == "?":
+        return frozenset({-1, 0})
     if s == "+":
-        return +1
-    return int(s)
+        return frozenset({+1})
+    return frozenset({int(s)})
+
+
+def _cell(hap, seg):
+    """hap['d_<seg>'], with a real error instead of a raw KeyError."""
+    key = "d_" + seg
+    if key not in hap:
+        raise AlphaGlobinInputError(
+            f"allele {hap.get('allele', '?')!r} has no {key} column, so segment "
+            f"{seg} cannot be matched. Either the segment is not one an allele "
+            f"may be defined against (INTER_Z_A is do_not_average and "
+            f"deliberately has no column), or the allele table needs "
+            f"regenerating with bin/make_hba_deletion_alleles.py.")
+    return hap[key]
 
 
 def expected_copies(hap_a, hap_b, seg):
-    """Copies expected at `seg` for the unordered genotype hap_a/hap_b.
+    """The SET of copy counts consistent with genotype hap_a/hap_b at `seg`.
 
-    Two copies to start; each haplotype (None = wild-type 'aa') applies its d_*."""
-    return 2 + sum(_delta(h["d_" + seg]) for h in (hap_a, hap_b) if h is not None)
+    Two copies to start; each haplotype (None = wild-type 'aa') contributes one
+    of its allowed deltas."""
+    out = {2}
+    for hap in (hap_a, hap_b):
+        if hap is None:
+            continue
+        out = {t + d for t in out for d in _deltas(_cell(hap, seg))}
+    return out
 
 
 def has_hybrid(hap, seg):
-    """True when this haplotype's expectation at `seg` rests on an 'h' marker."""
-    return hap is not None and str(hap["d_" + seg]).strip() == "h"
+    """True when this haplotype's expectation at `seg` is not a single value."""
+    return hap is not None and str(_cell(hap, seg)).strip() in ("h", "?")
 
 
 def match_genotypes(obs, alleles):
     """Every (hap_a, hap_b) genotype consistent with the observed segment copies.
 
-    Wild-type is None. EVERY observed segment must agree exactly — there is no
-    wildcard and no nearest-match. A signature matching nothing yields no hits,
-    and the caller reports NA rather than rounding onto the closest allele.
+    Wild-type is None. EVERY observed segment must be consistent — there is no
+    nearest-match. A signature matching nothing yields no hits, and the caller
+    reports NA rather than rounding onto the closest allele.
 
-    Returns (name_a, name_b, alpha_genes_called, rests_on_hybrid)."""
+    Returns (name_a, name_b, alpha_genes_called, rests_on_an_inexact_expectation)."""
     cands = [None] + list(alleles)
     hits = []
     for i, a in enumerate(cands):
         for b in cands[i:]:
-            if any(expected_copies(a, b, seg) != seen for seg, seen in obs.items()):
+            if any(seen not in expected_copies(a, b, seg)
+                   for seg, seen in obs.items()):
                 continue
             lost = sum(int(h["alpha_genes_lost"]) for h in (a, b) if h is not None)
             hyb = any(has_hybrid(h, seg) for h in (a, b) for seg in obs)
@@ -270,8 +306,10 @@ def name_alleles(obs, alleles, junction_rows=None):
     fewest = min(sum(1 for n in (h[0], h[1]) if n != "aa") for h in hits)
     hits = [h for h in hits if sum(1 for n in (h[0], h[1]) if n != "aa") == fewest]
 
-    slot_a = sorted({h[0] for h in hits})
-    slot_b = sorted({h[1] for h in hits})
+    order = group_order(alleles)
+    rank = lambda n: (0, order[n]) if n in order else (1, 0)   # noqa: E731
+    slot_a = sorted({h[0] for h in hits}, key=rank)
+    slot_b = sorted({h[1] for h in hits}, key=rank)
     genes = {h[2] for h in hits}
 
     collapsed = _collapse_group(slot_a, junction_rows)

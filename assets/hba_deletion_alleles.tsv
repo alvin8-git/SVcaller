@@ -14,10 +14,15 @@
 #
 # d_* columns are the copy change on the AFFECTED chromosome, in
 # GENOMIC order, and name the segments in hba_segments.bed:
-#   0 intact · -1 lost · h disrupted/hybrid (partial depth signal) · + gained
+#   0 intact · -1 lost · + gained
+#   h  disrupted/hybrid: rearranged but NOT cleanly lost; still reads as
+#      ~2 copies. This is an EXPECTATION to match against, not a wildcard.
+#   ?  unconstrained: the expected depth straddles a decision boundary, so
+#      this segment MUST NOT be compared for this allele.
 #
-# 'h' means DO NOT THRESHOLD that segment for that allele; match on the
-# others. It is a marker, not a number, and must never be coerced to one.
+# h and ? are NOT interchangeable. Treating -a4.2's INTER_A2_A1 as 'h'
+# (= expect 2 copies) misnames a silent 3-gene -a4.2 carrier as a 2-gene
+# alpha-thal trait whenever its 5' breakpoint takes enough of the segment.
 #
 # INTER_Z_A deliberately has NO column: it is flagged do_not_average in
 # hba_segments.bed, so no allele may be defined against it.
@@ -32,5 +37,5 @@ allele	class	approx_size	d_HBZ	d_HBA2	d_INTER_A2_A1	d_HBA1	alpha_genes_lost	popu
 --FIL	deletional	~31 kb	-1	-1	-1	-1	2	SEA(PHL)	literature	no:--FIL|--THAI	Larger; extends into HBZ. Loss of HBZ signal is the discriminator vs --SEA/--MED.
 --THAI	deletional	~34 kb	-1	-1	-1	-1	2	SEA(THA)	literature	no:--FIL|--THAI	As --FIL, also removes HBZ. Depth-degenerate with --FIL.
 -a3.7	deletional	~3.7 kb	0	h	-1	h	1	global,AFR,MED,SEA	literature	yes	Rightward NAHR between Z boxes; fuses HBA2 5' to HBA1 3' into ONE hybrid gene. Neither gene body vanishes cleanly - the deleted 3.7 kb lies between them, so INTER_A2_A1 is the diagnostic segment, not HBA1/HBA2. Most common alpha-thal deletion worldwide.
--a4.2	deletional	~4.2 kb	0	-1	h	0	1	SEA,PAC	literature	yes	Leftward NAHR between X boxes; removes HBA2, leaves HBA1 intact. INTER_A2_A1 is 'h', not 0: the deletion is ~4.2 kb but HBA2's gene body is only 835 bp, so the X2 crossover point lies INSIDE INTER_A2_A1 and part of that segment goes with it. Its exact fraction is not known here, so do not threshold it for this allele - HBA2 lost with HBA1 intact is the call.
+-a4.2	deletional	~4.2 kb	0	-1	?	0	1	SEA,PAC	literature	yes	Leftward NAHR between X boxes; removes HBA2, leaves HBA1 intact. INTER_A2_A1 is '?' (UNCONSTRAINED), not 'h' and not 0: the deletion is ~4.2 kb but HBA2's gene body is only 835 bp, so the X2 crossover lies INSIDE the 2969 bp INTER_A2_A1 and 2-3.4 kb of it goes too. Depending on where the 5' breakpoint falls that segment scores anywhere from ~0.43 to ~0.77 - i.e. it straddles the het-loss cutoff. Constraining it either way would misname a real carrier, so it is not compared. HBA2 lost with HBA1 intact is the call.
 anti-3.7	triplication	+3.7 kb	0	+	+	+	-1	global	literature	yes	Reciprocal product of the -a3.7 NAHR: alpha-gene TRIPLICATION (aaa/). Gains a gene rather than losing one. Benign alone, but modifies beta-thal severity, and a caller that only looks for losses will silently miss it.

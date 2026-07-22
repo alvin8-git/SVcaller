@@ -93,7 +93,18 @@ HG001_NOTE = (
 
 # allele, class, approx size, (HBZ, HBA2, INTER_A2_A1, HBA1) copy change on the
 # affected chromosome, net functional alpha genes lost, populations, basis, note.
-#   0 = intact, -1 = lost, "h" = disrupted/hybrid/partial, "+" = gained
+#   0 = intact · -1 = lost · "+" = gained
+#   "h" = disrupted/hybrid: sequence is rearranged but NOT cleanly lost, and the
+#         segment still reads as ~2 copies. An EXPECTATION, not a wildcard.
+#   "?" = unconstrained: the expected depth genuinely straddles a decision
+#         boundary, so the segment must not be compared for this allele.
+#
+# 'h' and '?' were ONE symbol until 2026-07-22, and conflating them was a bug.
+# For -a3.7 the hybrid gene keeps enough of both gene bodies that HBA2/HBA1 read
+# intact, so "expect 2 copies" is right and load-bearing — without it -a3.7
+# becomes a near-wildcard that matches THAL1's --SEA signature. For -a4.2's
+# INTER_A2_A1 the expectation is genuinely unknown (see its note), and asserting
+# 2 copies there misnamed a silent 3-gene carrier as a 2-gene alpha-thal trait.
 #
 # WHY d_INTER_A2_A1 EXISTS (added 2026-07-22). The first version of this table
 # carried only (HBZ, HBA2, HBA1). That made the table unusable by a caller for
@@ -137,12 +148,15 @@ ALLELES = [
      "alpha-thal deletion worldwide."),
 
     ("-a4.2",     "deletional", "~4.2 kb",
-     (0, -1, "h", 0), 1, "SEA,PAC", "literature",
+     (0, -1, "?", 0), 1, "SEA,PAC", "literature",
      "Leftward NAHR between X boxes; removes HBA2, leaves HBA1 intact. "
-     "INTER_A2_A1 is 'h', not 0: the deletion is ~4.2 kb but HBA2's gene body is "
-     "only 835 bp, so the X2 crossover point lies INSIDE INTER_A2_A1 and part of "
-     "that segment goes with it. Its exact fraction is not known here, so do not "
-     "threshold it for this allele - HBA2 lost with HBA1 intact is the call."),
+     "INTER_A2_A1 is '?' (UNCONSTRAINED), not 'h' and not 0: the deletion is "
+     "~4.2 kb but HBA2's gene body is only 835 bp, so the X2 crossover lies "
+     "INSIDE the 2969 bp INTER_A2_A1 and 2-3.4 kb of it goes too. Depending on "
+     "where the 5' breakpoint falls that segment scores anywhere from ~0.43 to "
+     "~0.77 - i.e. it straddles the het-loss cutoff. Constraining it either way "
+     "would misname a real carrier, so it is not compared. HBA2 lost with HBA1 "
+     "intact is the call."),
 
     ("anti-3.7",  "triplication", "+3.7 kb",
      (0, "+", "+", "+"), -1, "global", "literature",
@@ -248,10 +262,15 @@ def main():
         fh.write("#\n")
         fh.write("# d_* columns are the copy change on the AFFECTED chromosome, in\n")
         fh.write("# GENOMIC order, and name the segments in hba_segments.bed:\n")
-        fh.write("#   0 intact · -1 lost · h disrupted/hybrid (partial depth signal) · + gained\n")
+        fh.write("#   0 intact · -1 lost · + gained\n")
+        fh.write("#   h  disrupted/hybrid: rearranged but NOT cleanly lost; still reads as\n")
+        fh.write("#      ~2 copies. This is an EXPECTATION to match against, not a wildcard.\n")
+        fh.write("#   ?  unconstrained: the expected depth straddles a decision boundary, so\n")
+        fh.write("#      this segment MUST NOT be compared for this allele.\n")
         fh.write("#\n")
-        fh.write("# 'h' means DO NOT THRESHOLD that segment for that allele; match on the\n")
-        fh.write("# others. It is a marker, not a number, and must never be coerced to one.\n")
+        fh.write("# h and ? are NOT interchangeable. Treating -a4.2's INTER_A2_A1 as 'h'\n")
+        fh.write("# (= expect 2 copies) misnames a silent 3-gene -a4.2 carrier as a 2-gene\n")
+        fh.write("# alpha-thal trait whenever its 5' breakpoint takes enough of the segment.\n")
         fh.write("#\n")
         fh.write("# INTER_Z_A deliberately has NO column: it is flagged do_not_average in\n")
         fh.write("# hba_segments.bed, so no allele may be defined against it.\n")

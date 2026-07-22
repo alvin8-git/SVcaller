@@ -41,7 +41,7 @@ def test_thal1_is_named_as_the_group_never_as_sea_alone(alleles):
     naming --SEA from depth invents precision. Choosing it because the sample
     looks SE Asian is a population inference dressed as a measurement."""
     called, genes, note = ag.name_alleles(THAL1, alleles)
-    assert called == "--MED|--SEA/aa", called
+    assert called == "--SEA|--MED/aa", called
     assert genes == "2"
     assert "degenerate" in note
     # the failure this guards: a bare allele name with no group
@@ -102,7 +102,7 @@ def test_compound_heterozygote_is_resolved(alleles):
     """--SEA/-a3.7 is the clinically important genotype and no sample has it."""
     obs = {"HBZ": 2, "HBA2": 1, "INTER_A2_A1": 0, "HBA1": 1}
     called, genes, _ = ag.name_alleles(obs, alleles)
-    assert called == "--MED|--SEA/-a3.7"
+    assert called == "--SEA|--MED/-a3.7"
     assert genes == "1"
 
 
@@ -110,7 +110,7 @@ def test_homozygous_deletion_gives_zero_genes(alleles):
     obs = {"HBZ": 2, "HBA2": 0, "INTER_A2_A1": 0, "HBA1": 0}
     called, genes, _ = ag.name_alleles(obs, alleles)
     assert genes == "0"
-    assert called == "--MED|--SEA/--MED|--SEA"
+    assert called == "--SEA|--MED/--SEA|--MED"
 
 
 def test_signature_matching_nothing_is_NA_not_the_nearest_allele(alleles):
@@ -180,7 +180,7 @@ def test_group_is_never_collapsed_even_with_a_junction(alleles):
     junction = [{"left_bp": "165000", "right_bp": "185001", "size": "20000",
                  "zygosity": "het"}]
     called, _, _ = ag.name_alleles(THAL1, alleles, junction_rows=junction)
-    assert called == "--MED|--SEA/aa"
+    assert called == "--SEA|--MED/aa"
     assert ag._collapse_group(["--SEA", "--MED"], junction) is None
 
 
@@ -327,7 +327,7 @@ def test_genotype_does_not_assert_phase(alleles):
     row, _ = ag.build_row("S", _depth_rows(THAL1), None,
                           [_site_row(call="present", zygosity="hemizygous")],
                           alleles, PANEL)
-    assert row["genotype"] == "--MED|--SEA/aa +HBA2:c.377:hemizygous"
+    assert row["genotype"] == "--SEA|--MED/aa +HBA2:c.377:hemizygous"
     assert "aQS" not in row["genotype"]
 
 
@@ -346,7 +346,7 @@ def test_cli_end_to_end(tmp_path, alleles):
     assert r.returncode == 0, r.stderr
     header, row = [l.split("\t") for l in out.read_text().splitlines()]
     d = dict(zip(header, row))
-    assert d["deletion_alleles"] == "--MED|--SEA/aa"
+    assert d["deletion_alleles"] == "--SEA|--MED/aa"
     assert d["alpha_genes_called"] == "2"
     assert d["interpretation_complete"] == "false"
 
@@ -412,3 +412,84 @@ def test_out_is_required_in_normal_mode():
     r = _run_cli("--sample", "S", "--alleles", ALLELE_TSV)
     assert r.returncode != 0
     assert "--out" in r.stderr
+
+
+# --------------------------------------------------------------------------- #
+# regressions found by adversarial re-derivation, 2026-07-22
+# --------------------------------------------------------------------------- #
+def test_a42_is_not_misnamed_when_inter_a2_a1_reads_as_lost(alleles):
+    """THE DEFECT an independent re-derivation caught.
+
+    -a4.2 is ~4.2 kb but HBA2's gene body is only 835 bp, so 2-3.4 kb of the
+    2969 bp INTER_A2_A1 goes with the deletion and that segment scores anywhere
+    from ~0.43 to ~0.77 -- it STRADDLES the 0.65 het-loss cutoff. The first
+    version marked it 'h', which asserts exactly 2 copies, so a real -a4.2
+    carrier whose 5' breakpoint took enough of the segment came out as
+    `-a3.7/-a4.2` -- a silent 3-gene carrier reported as a 2-gene alpha-thal
+    trait, flipped by a 0.03 wobble in depth.
+
+    Both readings of INTER_A2_A1 must give the same answer."""
+    for inter in (2, 1):
+        obs = {"HBZ": 2, "HBA2": 1, "INTER_A2_A1": inter, "HBA1": 2}
+        called, genes, _ = ag.name_alleles(obs, alleles)
+        assert called == "-a4.2/aa", f"INTER_A2_A1={inter} gave {called}"
+        assert genes == "3"
+
+
+def test_h_and_question_mark_are_not_interchangeable(alleles):
+    """'h' expects 2 copies (load-bearing for -a3.7, or it becomes a wildcard
+    that matches THAL1's --SEA signature). '?' is genuinely unconstrained. If a
+    future edit collapses them, one of the two alleles breaks."""
+    assert ag._deltas("h") == frozenset({0})
+    assert ag._deltas("?") == frozenset({-1, 0})
+    a37 = next(a for a in alleles if a["allele"] == "-a3.7")
+    a42 = next(a for a in alleles if a["allele"] == "-a4.2")
+    assert a37["d_HBA2"] == "h", "-a3.7's gene bodies must expect 2 copies"
+    assert a42["d_INTER_A2_A1"] == "?", "-a4.2's INTER_A2_A1 must be unconstrained"
+    # '?' must not admit a GAIN: a deletion allele cannot add copies.
+    assert +1 not in ag._deltas("?")
+
+
+def test_group_members_are_joined_in_asset_order_not_alphabetically(alleles):
+    """OmniGen renders this string, so its spelling is interface, not
+    cosmetics. The asset's own depth_distinguishable cells and every occurrence
+    in the contract write `--SEA|--MED`; an alphabetical sort emits
+    `--MED|--SEA`, the same measurement spelled a way the consumer was never
+    told to expect."""
+    called, _, _ = ag.name_alleles(THAL1, alleles)
+    assert called == "--SEA|--MED/aa"
+    assert ag.name_alleles({"HBZ": 1, "HBA2": 1, "INTER_A2_A1": 1, "HBA1": 1},
+                           alleles)[0] == "--FIL|--THAI/aa"
+    for a in alleles:
+        val = a["depth_distinguishable"]
+        if val.startswith("no:"):
+            group = val[3:]
+            assert group in ("--SEA|--MED", "--FIL|--THAI"), group
+
+
+def test_hg001_impossible_signature_is_NA(alleles):
+    """HG001 reads low on HBZ and HBA1 but NOT on INTER_A2_A1, which lies
+    between HBA2 and HBA1 -- no contiguous deletion can do that. It is technical
+    dropout. The caller must refuse it, not fit it to something."""
+    obs = {"HBZ": 1, "HBA2": 2, "INTER_A2_A1": 2, "HBA1": 1}
+    called, genes, _ = ag.name_alleles(obs, alleles)
+    assert called == "NA" and genes == "NA"
+
+
+def test_unknown_segment_raises_a_real_error_not_a_KeyError(alleles):
+    """INTER_Z_A is do_not_average and deliberately has no allele column."""
+    with pytest.raises(ag.AlphaGlobinInputError, match="d_INTER_Z_A"):
+        ag.expected_copies(alleles[0], None, "INTER_Z_A")
+
+
+def test_bare_sea_is_unreachable_across_every_signature(alleles):
+    """Exhaustive: no observed signature may ever name --SEA (or --MED, --FIL,
+    --THAI) on its own. Emitting one from depth invents precision."""
+    import itertools
+    segs = ["HBZ", "HBA2", "INTER_A2_A1", "HBA1"]
+    degenerate = {"--SEA", "--MED", "--FIL", "--THAI"}
+    for copies in itertools.product([0, 1, 2, 3], repeat=4):
+        called, _, _ = ag.name_alleles(dict(zip(segs, copies)), alleles)
+        for hap in called.split("/"):
+            assert hap not in degenerate, (
+                f"{dict(zip(segs, copies))} named {hap!r} alone in {called!r}")

@@ -19,8 +19,8 @@ COLS = ["sample", "alpha_genes_called", "alpha_genes_confidence",
         "site_panel_version", "genotype", "screened", "not_screened",
         "interpretation_complete"]
 
-THAL1_ROW = ["THAL1", "2", "high", "--MED|--SEA/aa", "both", "none",
-             "hba_pathogenic_sites.tsv@dfd6ccf", "--MED|--SEA/aa",
+THAL1_ROW = ["THAL1", "2", "high", "--SEA|--MED/aa", "both", "none",
+             "hba_pathogenic_sites.tsv@dfd6ccf", "--SEA|--MED/aa",
              "alpha_deletional,alpha_targeted_sites",
              "beta_globin,alpha_nondeletional_outside_panel", "false"]
 
@@ -51,7 +51,7 @@ def _results_text(html):
 def test_renders_the_measurements(tmp_path):
     html = hr.render_html_section("THAL1", _write(tmp_path))
     body = _text(html)
-    assert "--MED|--SEA/aa" in body
+    assert "--SEA|--MED/aa" in body
     assert "hba_pathogenic_sites.tsv@dfd6ccf" in body
 
 
@@ -124,8 +124,8 @@ def test_degenerate_group_is_shown_as_the_group(tmp_path):
     first member would re-invent the precision the group exists to deny."""
     html = hr.render_html_section("THAL1", _write(tmp_path))
     body = _text(html)
-    assert "--MED|--SEA/aa" in body
-    assert not re.search(r"(?<![|\-])--SEA/aa", body.replace("--MED|--SEA/aa", ""))
+    assert "--SEA|--MED/aa" in body
+    assert not re.search(r"(?<![|\-])--SEA/aa", body.replace("--SEA|--MED/aa", ""))
 
 
 def test_values_are_html_escaped(tmp_path):
@@ -150,4 +150,4 @@ def test_cli(tmp_path):
          "--tsv", _write(tmp_path), "--sample", "THAL1", "--out", str(out)],
         capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
-    assert "--MED|--SEA/aa" in out.read_text()
+    assert "--SEA|--MED/aa" in out.read_text()
