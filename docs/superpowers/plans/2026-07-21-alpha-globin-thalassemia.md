@@ -1082,10 +1082,41 @@ samples were copied the same day and HBB is confirmed callable, which resolves
 the old "is a germline VCF routinely produced?" question and unblocks β
 independently of this plan (§ β-globin).
 
-### Escalations raised 2026-07-22 — for a human, not for an agent to decide
+### Escalations raised 2026-07-22 — ALL FOUR RESOLVED, same day
 
 The contract is frozen and the OmniGen track depends on it, so none of these was
-changed unilaterally. All four need a decision.
+changed unilaterally by the agent that found them. Raising them was correct; all
+four turned out to be genuine defects **in the contract**, not in the
+implementation, and the implementation had already diverged to stay honest where
+it mattered. Resolution is recorded after the original text.
+
+**Resolutions (contract + both tracks updated together):**
+
+1. **Fixture** — the contract now ships **three** fixtures, not one. The original
+   showed only the resolved `--SEA/aa` form; the group form (`--SEA|--MED/aa`,
+   evidence `depth`) is what a depth-only run actually emits and carries the
+   requirement that OmniGen render it verbatim. The untested path was the risky
+   one — a consumer could pass every test while truncating to the first member,
+   which is precisely the bug that later appeared in the DTC parser. Third
+   fixture covers the triplication.
+2. **Triplication** — `alpha_genes_called` widened **0–4 → 0–6**. The old range
+   assumed α variation only ever removes genes; `anti-3.7` is the reciprocal
+   product of the `-α3.7` NAHR and adds one, so a carrier has 5 and a homozygote
+   6. Emitting `NA` for a perfectly determined count reported a measurement
+   failure that had not happened. `NA` now means only "could not be determined".
+   OmniGen gained `PHENO` entries for 5 and 6 — a triplication is **not**
+   thalassemia and is named as such — and its `"{n} of 4"` phrasing is now
+   count-aware, since "5 of 4 alpha genes" reads as a bug.
+3. **Phase** — the contract's `--SEA/aQSa` example was wrong and the
+   implementation was right to refuse it. Site findings now appear after ` +`,
+   never inside a haplotype. Writing `aQSa` into a haplotype claims which
+   chromosome the variant sits on, and on a deletion background that placement is
+   the clinical question — the same error class as calling an unphased compound
+   het "affected".
+4. **`@0000000`** — the contract's inline example now uses `@<sha>` rather than a
+   literal that could drift from the fixture.
+
+Original escalation text follows.
 
 1. **The frozen example contradicts the contract's own prose.**
    `validation/examples/SAMPLE.alpha_globin.tsv` carries `--SEA/aa`, and the

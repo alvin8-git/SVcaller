@@ -58,13 +58,13 @@ run rather than silently mis-rendering.
 | Column | Type | Meaning |
 |---|---|---|
 | `sample` | string | sample id, matches `meta.id` |
-| `alpha_genes_called` | int 0–4, or `NA` | functional α-gene count |
+| `alpha_genes_called` | int 0–6, or `NA` | functional α-gene count. **Not capped at 4** — see below |
 | `alpha_genes_confidence` | `high`\|`medium`\|`low` | depth+junction agree / depth only / marginal |
 | `deletion_alleles` | string | e.g. `--SEA\|--MED/aa`, `none`, `NA`. `/`-separated haplotypes, `a` = intact α. **`\|` inside a haplotype means an unresolved degenerate group — see below** |
 | `deletion_evidence` | `depth`\|`junction`\|`both`\|`none` | which channels supported the call |
 | `site_genotypes` | string | `;`-joined `GENE:HGVS:zygosity`, or `none` |
 | `site_panel_version` | string | `hba_pathogenic_sites.tsv@<sha1>` — the panel actually used |
-| `genotype` | string | integrated, e.g. `--SEA/aQSa` |
+| `genotype` | string | `<deletion genotype>` optionally ` +<site findings>`, e.g. `--SEA\|--MED/aa +HBA2:c.377T>C:het`. **Never writes a site variant into a haplotype** — see below |
 | `screened` | string | `,`-joined tier ids actually run |
 | `not_screened` | string | `,`-joined tier ids explicitly NOT run |
 | `interpretation_complete` | `false` | always false from SVcaller; it measures, it does not interpret |
@@ -91,6 +91,50 @@ alternative, and record which in `deletion_evidence`.
 
 OmniGen must render the group as-is. Do not silently display the first member.
 
+### The α-gene count is not capped at 4 (widened 2026-07-22)
+
+`alpha_genes_called` was originally declared `int 0–4`, on the unexamined
+assumption that α-globin variation only ever removes genes. It does not:
+`anti-3.7` is the **reciprocal product** of the same NAHR that creates `-α3.7`,
+and it *adds* a gene. An `anti-3.7` carrier genuinely has **5**; homozygous
+`anti-3.7` has 6. The range is therefore **0–6**.
+
+The old range forced the implementation to emit `NA` for a real, countable
+result — the allele survived in `deletion_alleles` so nothing was lost, but the
+count field lied by omission. A consumer that renders "α genes: NA" for a
+sample whose gene count is perfectly well determined is reporting a measurement
+failure that did not occur.
+
+`NA` remains valid, and now means what it should: the count could not be
+determined. It must not be used for counts the field merely could not hold.
+
+### `genotype` does not assert phase (corrected 2026-07-22)
+
+This field previously illustrated `--SEA/aQSa` — a site variant written **into**
+a haplotype. That was wrong, and the implementation was right to diverge from it
+rather than obey it.
+
+Short reads at this locus do not establish which chromosome a site variant sits
+on. Writing `aQSa` into a haplotype claims exactly that, and on a deletion
+background the placement *is* the clinical question: `--SEA` in trans to a
+Quong Sze allele is HbH disease, whereas in cis the person is a `--SEA` carrier
+who also happens to carry a site variant on the intact chromosome. Asserting the
+first from data that cannot distinguish them is the same class of error as
+reporting an unphased compound het as "affected".
+
+The format is therefore two separable measurements:
+
+```
+<deletion genotype> [ +<site findings> ]
+
+--SEA|--MED/aa                        deletion only
+--SEA|--MED/aa +HBA2:c.377T>C:het     deletion AND a site finding, phase unstated
+aa/aa +HBA2:c.427T>C:het              no deletion, site finding only
+```
+
+Neither half implies the other. A consumer must not render the ` +` form as a
+compound genotype, and must not reorder it into a haplotype string.
+
 ### Zygosity is copy-number dependent — do not drop the raw VAF
 
 `site_genotypes` zygosity **must** be computed against `alpha_genes_called`. On a
@@ -114,15 +158,36 @@ makes `omnigen_report` exit rather than render. α-globin gets the same test.
 
 ---
 
-## Example
+## Examples — three fixtures, not one
 
-`validation/examples/SAMPLE.alpha_globin.tsv` is the canonical fixture. It
-encodes THAL1's expected output (`--SEA` heterozygote, no site hits):
+`validation/examples/` holds **three** fixtures. Both tracks must test against
+all of them.
+
+One fixture was a mistake. The original showed only the *resolved* form
+(`--SEA/aa`, collapsed on junction evidence), which is the rarer and easier case.
+The **group** form is what a depth-only run actually emits, and it carries the
+subtle requirement that OmniGen render it verbatim rather than showing the first
+member — so the risky path was the one nothing tested. A consumer could have
+passed every test while silently truncating `--SEA|--MED` to `--SEA`, which is
+exactly the bug that later turned up in the DTC parser.
+
+| Fixture | Case | Exercises |
+|---|---|---|
+| `SAMPLE.alpha_globin.tsv` | `--SEA/aa`, evidence `both` | group collapsed by a junction read |
+| `SAMPLE_group.alpha_globin.tsv` | `--SEA\|--MED/aa`, evidence `depth` | **unresolved group — must render verbatim** |
+| `SAMPLE_triplication.alpha_globin.tsv` | `anti-3.7/aa`, 5 α genes | count above 4; the widened range |
 
 ```
 sample	alpha_genes_called	alpha_genes_confidence	deletion_alleles	deletion_evidence	site_genotypes	site_panel_version	genotype	screened	not_screened	interpretation_complete
-SAMPLE	2	high	--SEA/aa	both	none	hba_pathogenic_sites.tsv@0000000	--SEA/aa	alpha_deletional,alpha_targeted_sites	beta_globin,alpha_nondeletional_outside_panel	false
+SAMPLE	2	high	--SEA/aa	both	none	hba_pathogenic_sites.tsv@<sha>	--SEA/aa	alpha_deletional,alpha_targeted_sites	beta_globin,alpha_nondeletional_outside_panel	false
+SAMPLE_GROUP	2	medium	--SEA|--MED/aa	depth	none	hba_pathogenic_sites.tsv@<sha>	--SEA|--MED/aa	alpha_deletional,alpha_targeted_sites	beta_globin,alpha_nondeletional_outside_panel	false
+SAMPLE_TRIP	5	high	anti-3.7/aa	both	HBA2:c.377T>C:het	hba_pathogenic_sites.tsv@<sha>	anti-3.7/aa +HBA2:c.377T>C:het	alpha_deletional,alpha_targeted_sites	beta_globin,alpha_nondeletional_outside_panel	false
 ```
+
+Note the group fixture's `alpha_genes_confidence` is `medium`, not `high`:
+depth alone resolved the gene *count* but not the allele *identity*. And the
+triplication fixture shows the ` +` site form, so the phase-neutral `genotype`
+format is covered too.
 
 ---
 

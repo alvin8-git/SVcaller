@@ -1,5 +1,50 @@
 # Changes
 
+## 2026-07-22 (later) — the contract was wrong three ways; unfrozen and fixed
+
+**Problem.** Three defects in `docs/contracts/alpha_globin_contract.md`, all
+raised as escalations by the M8 agent and all genuine. In two of them the
+implementation had already diverged from the contract *to stay honest*, which is
+the right instinct but leaves spec and code disagreeing.
+
+1. `alpha_genes_called` was declared `int 0-4`, on the unexamined assumption that
+   alpha variation only ever REMOVES genes. `anti-3.7` is the reciprocal product
+   of the `-a3.7` NAHR and ADDS one, so a carrier has 5 and a homozygote 6. The
+   range forced `bin/alpha_globin.py` to emit `NA` for a count it had determined
+   perfectly well — reporting a measurement failure that had not occurred.
+2. `genotype` was illustrated as `--SEA/aQSa`, writing a site variant INTO a
+   haplotype. Short reads at this locus do not establish which chromosome a site
+   variant sits on, and on a deletion background that placement is the whole
+   clinical question: `--SEA` in trans to Quong Sze is HbH disease, in cis it is
+   a carrier who also has a variant on the intact chromosome. Same error class as
+   reporting an unphased compound het as "affected".
+3. Only ONE fixture existed, showing the *resolved* `--SEA/aa` form. The group
+   form is what a depth-only run emits and carries the requirement that OmniGen
+   render it verbatim — so the risky path was the untested one. A consumer could
+   pass every test while truncating `--SEA|--MED` to its first member, which is
+   exactly the bug that later surfaced in the DTC parser.
+
+**Fix.** Range widened to `0-6`; `bin/alpha_globin.py`'s guard now catches only
+genuinely impossible counts, and `NA` means only "could not be determined".
+`genotype` documented as `<deletion genotype> [ +<site findings> ]`, codifying
+what the implementation already did. `validation/examples/` now holds three
+fixtures — resolved, group, triplication — and both tracks test against all of
+them.
+
+**Consequence.** Suite 299 -> 302. `test_group_form_is_exercised_by_a_fixture`,
+`test_triplication_fixture_exceeds_the_old_cap` and
+`test_genotype_never_writes_a_site_variant_into_a_haplotype` guard the three.
+`test_triplication_is_reported_but_gene_count_is_NA` was renamed and inverted
+rather than deleted, so the behaviour change is visible in the diff.
+
+The consumer needed updating in the same breath: OmniGen's `PHENO` map was keyed
+0-4, so a count of 5 fell to a default reading "Out-of-range gene count" — in
+range, wrongly labelled — and its detail line would have read "5 of 4 alpha
+genes". Widening a contract without checking the consumer would have traded one
+defect for a worse one. See `OmniGen/docs/CHANGES.md`.
+
+---
+
 ## 2026-07-22 — M8 alpha-globin: the four measurement channels
 
 **Problem.** The α-globin locus was a total blind spot. Across HG001–HG007 the pipeline

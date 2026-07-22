@@ -122,16 +122,20 @@ def test_signature_matching_nothing_is_NA_not_the_nearest_allele(alleles):
     assert "match no allele" in note
 
 
-def test_triplication_is_reported_but_gene_count_is_NA(alleles):
-    """ESCALATION, pinned as a test. A triplication carrier has 5 alpha genes;
-    the frozen contract declares alpha_genes_called as 0-4. Widening the
-    contract unilaterally is forbidden, so the count is NA and the allele is
-    carried in deletion_alleles instead — no information is lost."""
+def test_triplication_reports_five_genes(alleles):
+    """CHANGED 2026-07-22 — the escalation this pinned has been resolved.
+
+    A triplication carrier genuinely has 5 alpha genes. The contract declared
+    alpha_genes_called as 0-4, on the unexamined assumption that alpha variation
+    only ever REMOVES genes — anti-3.7 is the reciprocal product of the -a3.7
+    NAHR and adds one. The old range forced `NA` for a perfectly determined
+    count, i.e. it reported a measurement failure that had not happened. The
+    contract now declares 0-6 and the count is emitted."""
     obs = {"HBZ": 2, "HBA2": 3, "INTER_A2_A1": 3, "HBA1": 3}
     called, genes, note = ag.name_alleles(obs, alleles)
     assert called == "anti-3.7/aa"
-    assert genes == "NA"
-    assert "0-4" in note
+    assert genes == "5", f"triplication should report 5 alpha genes, got {genes!r}"
+    assert "NA" not in genes
 
 
 def test_inter_z_a_is_never_evidence():

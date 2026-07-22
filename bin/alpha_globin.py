@@ -332,16 +332,22 @@ def name_alleles(obs, alleles, junction_rows=None):
         return called, "NA", (note + "; candidate genotypes disagree on the "
                               "alpha-gene count").lstrip("; ")
     n = genes.pop()
-    if not 0 <= n <= 4:
-        # A triplication carrier genuinely has 5 alpha genes. The contract
-        # declares alpha_genes_called as int 0-4, so emitting 5 would break it
-        # and widening it unilaterally is forbidden (contract is frozen and the
-        # OmniGen track depends on it). Emit NA; the allele itself is still
-        # named in deletion_alleles, so no information is lost. ESCALATION.
+    if not 0 <= n <= 6:
+        # RESOLVED 2026-07-22: the contract now declares 0-6, so a triplication
+        # is reported as the 5 (or 6) genes it actually is. The old 0-4 range
+        # assumed alpha variation only ever REMOVES genes; anti-3.7 is the
+        # reciprocal product of the -a3.7 NAHR and adds one, so a carrier has 5
+        # and a homozygote 6. Emitting NA for a perfectly determined count was
+        # reporting a measurement failure that had not happened.
+        #
+        # This branch now catches only genuinely impossible counts — a bug in
+        # the allele table or in expected_copies(), not a real genotype. NA here
+        # means "could not be determined", which is what it should always have
+        # meant.
         return called, "NA", (
-            f"{n} alpha genes implied (triplication); the frozen contract "
-            f"declares alpha_genes_called as 0-4, so it is reported as NA and "
-            f"the allele is carried in deletion_alleles instead")
+            f"{n} alpha genes implied, which is outside the possible range 0-6; "
+            f"this indicates a defect in the allele table or the copy-number "
+            f"expectations, not a real genotype")
     return called, str(n), note
 
 

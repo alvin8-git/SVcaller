@@ -330,18 +330,90 @@ def test_sizes_are_documentary_not_coordinates():
         assert "kb" in s, f"{r['allele']}: size {s!r} should carry units"
 
 
-def test_contract_columns_match_fixture():
-    """The contract's declared columns and the example file must not drift apart."""
-    with open(CONTRACT) as fh:
-        declared = [l.split("`")[1] for l in fh
-                    if l.startswith("| `") and "`" in l[3:]]
-    with open(FIXTURE) as fh:
+def _fixtures():
+    d = os.path.join(REPO, "validation", "examples")
+    return sorted(os.path.join(d, f) for f in os.listdir(d)
+                  if f.endswith(".alpha_globin.tsv"))
+
+
+def _fixture_row(path):
+    with open(path) as fh:
         lines = fh.read().splitlines()
-    fixture_cols = lines[0].split("\t")
-    assert declared == fixture_cols, (
-        f"contract declares {declared}\nfixture has  {fixture_cols}")
-    assert len(lines) == 2, "fixture must be exactly one header + one data row"
-    assert len(lines[1].split("\t")) == len(fixture_cols)
+    return dict(zip(lines[0].split("\t"), lines[1].split("\t")))
+
+
+def test_contract_columns_match_fixture():
+    """The contract's declared columns and EVERY example file must agree."""
+    # Scope to the Required-columns table. A naive "every line starting with
+    # '| `'" also swallowed the fixture-inventory table added later in the
+    # contract, which is a different table entirely.
+    with open(CONTRACT) as fh:
+        body = fh.read()
+    section = body.split("### Required columns", 1)[1].split("\n###", 1)[0]
+    declared = [l.split("`")[1] for l in section.splitlines()
+                if l.startswith("| `")]
+    files = _fixtures()
+    assert len(files) >= 3, "expected the resolved, group and triplication fixtures"
+    for path in files:
+        with open(path) as fh:
+            lines = fh.read().splitlines()
+        cols = lines[0].split("\t")
+        assert declared == cols, (
+            f"{os.path.basename(path)}: contract declares {declared}\nfixture has {cols}")
+        assert len(lines) == 2, f"{os.path.basename(path)}: one header + one data row"
+        assert len(lines[1].split("\t")) == len(cols)
+
+
+def test_group_form_is_exercised_by_a_fixture():
+    """The ORIGINAL fixture mistake: only the resolved form was covered.
+
+    A depth-only run emits the degenerate group, and OmniGen must render it
+    verbatim rather than showing the first member. That is the subtle
+    requirement, so it is the one that needs a fixture — a consumer could
+    otherwise pass every test while truncating `--SEA|--MED` to `--SEA`, which
+    is precisely the bug that later appeared in the DTC parser.
+    """
+    groups = [r for r in map(_fixture_row, _fixtures()) if "|" in r["deletion_alleles"]]
+    assert groups, "no fixture exercises an unresolved degenerate group"
+    r = groups[0]
+    assert r["deletion_evidence"] == "depth", \
+        "the group form is what DEPTH ALONE yields; junction evidence would collapse it"
+    assert "|" in r["genotype"], "the group must survive into the genotype field too"
+    members = r["deletion_alleles"].split("/")[0].split("|")
+    alleles = {a["allele"]: a for a in _tsv("hba_deletion_alleles.tsv")}
+    for m in members:
+        assert m in alleles, f"unknown allele {m!r} in the group fixture"
+        assert alleles[m]["depth_distinguishable"].startswith("no:"), \
+            f"{m} is written as degenerate but the allele table says otherwise"
+
+
+def test_triplication_fixture_exceeds_the_old_cap():
+    """alpha_genes_called was declared 0-4 on the assumption that alpha variation
+    only ever removes genes. anti-3.7 adds one, so a carrier has 5. This fixture
+    exists to keep the widened range honest — if someone re-narrows the contract,
+    the column check above and this test both fail."""
+    trips = [r for r in map(_fixture_row, _fixtures())
+             if r["alpha_genes_called"].isdigit() and int(r["alpha_genes_called"]) > 4]
+    assert trips, "no fixture exercises an alpha-gene count above 4"
+    r = trips[0]
+    assert int(r["alpha_genes_called"]) <= 6, "0-6 is the possible range"
+    assert "anti-3.7" in r["deletion_alleles"]
+
+
+def test_genotype_never_writes_a_site_variant_into_a_haplotype():
+    """Phase is not measurable here. Site findings appear AFTER ' +', never
+    inside a haplotype — `--SEA/aQSa` claims which chromosome the variant sits
+    on, and on a deletion background that placement is the clinical question."""
+    for path in _fixtures():
+        r = _fixture_row(path)
+        haplo = r["genotype"].split(" +")[0]
+        assert ":" not in haplo, (
+            f"{os.path.basename(path)}: genotype haplotype part {haplo!r} contains a "
+            "site variant — phase is being asserted")
+        if r["site_genotypes"] not in ("none", "NA"):
+            assert " +" in r["genotype"], (
+                f"{os.path.basename(path)}: has site findings but genotype does not "
+                "carry them after ' +'")
 
 
 def test_fixture_states_interpretation_incomplete():
