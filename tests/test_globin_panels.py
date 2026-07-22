@@ -195,6 +195,45 @@ def test_hba_segments_are_contiguous_and_ordered():
         assert e > s, f"{name} is empty or inverted"
 
 
+def test_segments_declare_reliability():
+    """Measured on THAL1/THAL2 2026-07-22: the five segments are NOT
+    interchangeable, and a caller that averages all of them against one
+    genome-wide control emits wrong calls in two distinct ways.
+
+      HBZ        reads 0.71 in THAL2, which has NO deletion -> a global 0.8
+                 threshold false-POSITIVES. Needs its own baseline.
+      INTER_Z_A  mapping inflation (1.4-1.9 over chr16:155000-162000) cancels
+                 out the real deletion at 164000-172875, averaging to 0.99 -
+                 reporting 'intact' while containing half a --SEA deletion.
+    """
+    path = os.path.join(REPO, "assets", "hba_segments.bed")
+    rel = {}
+    with open(path) as fh:
+        for l in fh:
+            if l.startswith("#") or not l.strip():
+                continue
+            f = l.split("\t")
+            assert len(f) >= 5, f"segment row missing the reliability column: {l[:60]}"
+            rel[f[3]] = f[4]
+    assert rel["HBZ"] == "needs_own_baseline"
+    assert rel["INTER_Z_A"] == "do_not_average"
+    for seg in ("HBA2", "INTER_A2_A1", "HBA1"):
+        assert rel[seg] == "good", f"{seg} should be a clean diagnostic segment"
+
+
+def test_hbz_dependent_discrimination_is_flagged():
+    """--SEA|--MED vs --FIL|--THAI is decided ENTIRELY by whether HBZ is lost.
+    HBZ is the segment that needs its own baseline, so that discrimination is
+    uncalibrated until a known-normal cohort supplies one. If someone marks HBZ
+    'good' without doing that, this fails."""
+    path = os.path.join(REPO, "assets", "hba_segments.bed")
+    hbz = [l for l in open(path) if not l.startswith("#") and "\tHBZ\t" in l]
+    assert hbz, "HBZ segment missing"
+    assert "needs_own_baseline" in hbz[0], (
+        "HBZ is flagged usable, but it is the sole discriminator between the two "
+        "degenerate 2-gene-deletion groups — it must be calibrated first")
+
+
 def test_deletion_alleles_declare_degeneracy():
     """Depth alone cannot separate --SEA from --MED, nor --FIL from --THAI. A
     caller that names one of them from depth is overclaiming, so the file must

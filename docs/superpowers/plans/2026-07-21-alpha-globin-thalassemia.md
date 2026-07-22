@@ -833,6 +833,40 @@ a junction read or an extent that excludes the alternative.
 `anti-3.7` (triplication) is included deliberately: a caller written to look
 only for losses would never report it, and it modifies β-thal severity.
 
+### Measuring the segments found two defects in them (2026-07-22)
+
+Depth over the five segments, normalized to a chr2 control:
+
+| Segment | THAL1 (`--SEA` het) | THAL2 (no deletion) | verdict |
+|---|---|---|---|
+| HBZ | 0.86 | **0.71** | unreliable |
+| INTER_Z_A | **0.99** | 1.01 | unreliable |
+| HBA2 | 0.37 | 0.81 | good |
+| INTER_A2_A1 | 0.50 | 0.99 | good |
+| HBA1 | 0.40 | 0.90 | good |
+
+The `--SEA` signature validates — HBA1+HBA2 lost, HBZ spared. But two segments
+are not usable as written:
+
+1. **HBZ false-positives.** THAL2 has *no* deletion, yet HBZ reads 0.71; a
+   global 0.8 threshold calls it a het loss. HBZ is small, GC-rich and
+   subtelomeric, so intact depth sits well below 1.0. It needs a per-segment
+   baseline from known-normal samples, never the genome-wide control ratio.
+2. **INTER_Z_A hides a real deletion.** It reads 0.99 in THAL1 — "intact" — yet
+   the `--SEA` deletion covers roughly half of it (164000–172875). The 1 kb
+   profile shows why: mapping piles up to 1.4–1.9 across 155000–162000, and
+   averaging over 18 kb cancels the deletion out. Averaged, this segment is
+   actively misleading.
+
+**Consequence for allele calling:** `--SEA|--MED` vs `--FIL|--THAI` is decided
+*entirely* by whether HBZ is lost — and HBZ is the segment that needs
+calibrating. So that discrimination is **uncalibrated today**, and a caller must
+not claim it until a known-normal cohort supplies a baseline. Both facts are now
+carried in `hba_segments.bed` (col 5) and asserted by tests, so a future edit
+marking HBZ `good` without doing the calibration fails the suite.
+
+This is why channel 2 was not ready despite the definitions existing.
+
 **Two decisions that were genuinely ambiguous** (details in the contract):
 
 1. **Discovery is by path convention**, not manifest key. OmniGen does it both
