@@ -12,18 +12,25 @@
 # basis:  observed   = measured in this project's data, cited in note
 #         literature = allele composition is textbook; SIZE is approximate
 #
-# d_* columns are the copy change on the AFFECTED chromosome:
+# d_* columns are the copy change on the AFFECTED chromosome, in
+# GENOMIC order, and name the segments in hba_segments.bed:
 #   0 intact · -1 lost · h disrupted/hybrid (partial depth signal) · + gained
+#
+# 'h' means DO NOT THRESHOLD that segment for that allele; match on the
+# others. It is a marker, not a number, and must never be coerced to one.
+#
+# INTER_Z_A deliberately has NO column: it is flagged do_not_average in
+# hba_segments.bed, so no allele may be defined against it.
 #
 # depth_distinguishable=no:A|B means depth ALONE cannot separate those
 # alleles. The caller MUST report the group, not arbitrarily pick one.
 # Resolving within a group needs the deletion extent or a junction read.
 #
-allele	class	approx_size	d_HBZ	d_HBA2	d_HBA1	alpha_genes_lost	population	basis	depth_distinguishable	note
---SEA	deletional	~20 kb	0	-1	-1	2	EAS,SEA	observed	no:--SEA|--MED	OBSERVED in THAL1: normalized depth 0.45-0.60 across chr16:164000-186000, HBZ 1.00, flanks 1.05. Spares HBZ. Commonest 2-gene allele in SE Asia.
---MED	deletional	~17 kb	0	-1	-1	2	MED	literature	no:--SEA|--MED	Removes both alpha genes, spares HBZ. Depth-degenerate with --SEA; separating them needs the extent or a junction read.
---FIL	deletional	~31 kb	-1	-1	-1	2	SEA(PHL)	literature	no:--FIL|--THAI	Larger; extends into HBZ. Loss of HBZ signal is the discriminator vs --SEA/--MED.
---THAI	deletional	~34 kb	-1	-1	-1	2	SEA(THA)	literature	no:--FIL|--THAI	As --FIL, also removes HBZ. Depth-degenerate with --FIL.
--a3.7	deletional	~3.7 kb	0	h	h	1	global,AFR,MED,SEA	literature	yes	Rightward NAHR between Z boxes; fuses HBA2 5' to HBA1 3' into ONE hybrid gene. Neither gene body vanishes cleanly - the deleted 3.7 kb lies between them, so INTER_A2_A1 is the diagnostic segment, not HBA1/HBA2. Most common alpha-thal deletion worldwide.
--a4.2	deletional	~4.2 kb	0	-1	0	1	SEA,PAC	literature	yes	Leftward NAHR between X boxes; removes HBA2, leaves HBA1 intact.
-anti-3.7	triplication	+3.7 kb	0	+	+	-1	global	literature	yes	Reciprocal product of the -a3.7 NAHR: alpha-gene TRIPLICATION (aaa/). Gains a gene rather than losing one. Benign alone, but modifies beta-thal severity, and a caller that only looks for losses will silently miss it.
+allele	class	approx_size	d_HBZ	d_HBA2	d_INTER_A2_A1	d_HBA1	alpha_genes_lost	population	basis	depth_distinguishable	note
+--SEA	deletional	~20 kb	0	-1	-1	-1	2	EAS,SEA	observed	no:--SEA|--MED	OBSERVED in THAL1: normalized depth 0.45-0.60 across chr16:164000-186000, HBZ 1.00, flanks 1.05. Spares HBZ. Commonest 2-gene allele in SE Asia.
+--MED	deletional	~17 kb	0	-1	-1	-1	2	MED	literature	no:--SEA|--MED	Removes both alpha genes, spares HBZ. Depth-degenerate with --SEA; separating them needs the extent or a junction read.
+--FIL	deletional	~31 kb	-1	-1	-1	-1	2	SEA(PHL)	literature	no:--FIL|--THAI	Larger; extends into HBZ. Loss of HBZ signal is the discriminator vs --SEA/--MED.
+--THAI	deletional	~34 kb	-1	-1	-1	-1	2	SEA(THA)	literature	no:--FIL|--THAI	As --FIL, also removes HBZ. Depth-degenerate with --FIL.
+-a3.7	deletional	~3.7 kb	0	h	-1	h	1	global,AFR,MED,SEA	literature	yes	Rightward NAHR between Z boxes; fuses HBA2 5' to HBA1 3' into ONE hybrid gene. Neither gene body vanishes cleanly - the deleted 3.7 kb lies between them, so INTER_A2_A1 is the diagnostic segment, not HBA1/HBA2. Most common alpha-thal deletion worldwide.
+-a4.2	deletional	~4.2 kb	0	-1	h	0	1	SEA,PAC	literature	yes	Leftward NAHR between X boxes; removes HBA2, leaves HBA1 intact. INTER_A2_A1 is 'h', not 0: the deletion is ~4.2 kb but HBA2's gene body is only 835 bp, so the X2 crossover point lies INSIDE INTER_A2_A1 and part of that segment goes with it. Its exact fraction is not known here, so do not threshold it for this allele - HBA2 lost with HBA1 intact is the call.
+anti-3.7	triplication	+3.7 kb	0	+	+	+	-1	global	literature	yes	Reciprocal product of the -a3.7 NAHR: alpha-gene TRIPLICATION (aaa/). Gains a gene rather than losing one. Benign alone, but modifies beta-thal severity, and a caller that only looks for losses will silently miss it.

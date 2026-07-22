@@ -91,48 +91,69 @@ HG001_NOTE = (
     "and do not record it as a carrier either."
 )
 
-# allele, class, approx size, (HBZ, HBA2, HBA1) copy change on the affected
-# chromosome, net functional alpha genes lost, populations, basis, note.
-#   0 = intact, -1 = lost, "h" = disrupted/hybrid (partial signal)
+# allele, class, approx size, (HBZ, HBA2, INTER_A2_A1, HBA1) copy change on the
+# affected chromosome, net functional alpha genes lost, populations, basis, note.
+#   0 = intact, -1 = lost, "h" = disrupted/hybrid/partial, "+" = gained
+#
+# WHY d_INTER_A2_A1 EXISTS (added 2026-07-22). The first version of this table
+# carried only (HBZ, HBA2, HBA1). That made the table unusable by a caller for
+# the single most common allele in the world: hba_segments.bed states plainly
+# that INTER_A2_A1 is "the diagnostic segment for -a3.7, NOT HBA1/HBA2", yet the
+# only two entries -a3.7 had were both "h" — a qualitative marker no threshold
+# can match. A caller would have had to hardcode the -a3.7 rule in Python, which
+# is exactly what defining alleles by signature exists to avoid.
+#
+# The segment ORDER here is genomic (HBZ -> HBA2 -> INTER_A2_A1 -> HBA1), and
+# matches the order of the scorable segments in hba_segments.bed. INTER_Z_A has
+# no column at all: it is flagged do_not_average, so no allele may be defined
+# against it.
+#
+# "h" means DO NOT THRESHOLD THIS SEGMENT for this allele — match on the other
+# positions. It is not a number and must never be coerced to one.
 ALLELES = [
     ("--SEA",     "deletional", "~20 kb",
-     (0, -1, -1), 2, "EAS,SEA", "observed",
+     (0, -1, -1, -1), 2, "EAS,SEA", "observed",
      "OBSERVED in THAL1: normalized depth 0.45-0.60 across chr16:164000-186000, "
      "HBZ 1.00, flanks 1.05. Spares HBZ. Commonest 2-gene allele in SE Asia."),
 
     ("--MED",     "deletional", "~17 kb",
-     (0, -1, -1), 2, "MED", "literature",
+     (0, -1, -1, -1), 2, "MED", "literature",
      "Removes both alpha genes, spares HBZ. Depth-degenerate with --SEA; "
      "separating them needs the extent or a junction read."),
 
     ("--FIL",     "deletional", "~31 kb",
-     (-1, -1, -1), 2, "SEA(PHL)", "literature",
+     (-1, -1, -1, -1), 2, "SEA(PHL)", "literature",
      "Larger; extends into HBZ. Loss of HBZ signal is the discriminator vs --SEA/--MED."),
 
     ("--THAI",    "deletional", "~34 kb",
-     (-1, -1, -1), 2, "SEA(THA)", "literature",
+     (-1, -1, -1, -1), 2, "SEA(THA)", "literature",
      "As --FIL, also removes HBZ. Depth-degenerate with --FIL."),
 
     ("-a3.7",     "deletional", "~3.7 kb",
-     (0, "h", "h"), 1, "global,AFR,MED,SEA", "literature",
+     (0, "h", -1, "h"), 1, "global,AFR,MED,SEA", "literature",
      "Rightward NAHR between Z boxes; fuses HBA2 5' to HBA1 3' into ONE hybrid "
      "gene. Neither gene body vanishes cleanly - the deleted 3.7 kb lies between "
      "them, so INTER_A2_A1 is the diagnostic segment, not HBA1/HBA2. Most common "
      "alpha-thal deletion worldwide."),
 
     ("-a4.2",     "deletional", "~4.2 kb",
-     (0, -1, 0), 1, "SEA,PAC", "literature",
-     "Leftward NAHR between X boxes; removes HBA2, leaves HBA1 intact."),
+     (0, -1, "h", 0), 1, "SEA,PAC", "literature",
+     "Leftward NAHR between X boxes; removes HBA2, leaves HBA1 intact. "
+     "INTER_A2_A1 is 'h', not 0: the deletion is ~4.2 kb but HBA2's gene body is "
+     "only 835 bp, so the X2 crossover point lies INSIDE INTER_A2_A1 and part of "
+     "that segment goes with it. Its exact fraction is not known here, so do not "
+     "threshold it for this allele - HBA2 lost with HBA1 intact is the call."),
 
     ("anti-3.7",  "triplication", "+3.7 kb",
-     (0, "+", "+"), -1, "global", "literature",
+     (0, "+", "+", "+"), -1, "global", "literature",
      "Reciprocal product of the -a3.7 NAHR: alpha-gene TRIPLICATION (aaa/). Gains "
      "a gene rather than losing one. Benign alone, but modifies beta-thal severity, "
      "and a caller that only looks for losses will silently miss it."),
 ]
 
-HEADER = ["allele", "class", "approx_size", "d_HBZ", "d_HBA2", "d_HBA1",
-          "alpha_genes_lost", "population", "basis", "depth_distinguishable", "note"]
+HEADER = ["allele", "class", "approx_size", "d_HBZ", "d_HBA2", "d_INTER_A2_A1",
+          "d_HBA1", "alpha_genes_lost", "population", "basis",
+          "depth_distinguishable", "note"]
 
 
 def build_segments(models):
@@ -225,17 +246,25 @@ def main():
         fh.write("# basis:  observed   = measured in this project's data, cited in note\n")
         fh.write("#         literature = allele composition is textbook; SIZE is approximate\n")
         fh.write("#\n")
-        fh.write("# d_* columns are the copy change on the AFFECTED chromosome:\n")
+        fh.write("# d_* columns are the copy change on the AFFECTED chromosome, in\n")
+        fh.write("# GENOMIC order, and name the segments in hba_segments.bed:\n")
         fh.write("#   0 intact · -1 lost · h disrupted/hybrid (partial depth signal) · + gained\n")
+        fh.write("#\n")
+        fh.write("# 'h' means DO NOT THRESHOLD that segment for that allele; match on the\n")
+        fh.write("# others. It is a marker, not a number, and must never be coerced to one.\n")
+        fh.write("#\n")
+        fh.write("# INTER_Z_A deliberately has NO column: it is flagged do_not_average in\n")
+        fh.write("# hba_segments.bed, so no allele may be defined against it.\n")
         fh.write("#\n")
         fh.write("# depth_distinguishable=no:A|B means depth ALONE cannot separate those\n")
         fh.write("# alleles. The caller MUST report the group, not arbitrarily pick one.\n")
         fh.write("# Resolving within a group needs the deletion extent or a junction read.\n")
         fh.write("#\n")
         fh.write("\t".join(HEADER) + "\n")
-        for allele, cls, size, (dz, d2, d1), lost, pop, basis, note in ALLELES:
-            fh.write("\t".join([allele, cls, size, str(dz), str(d2), str(d1),
-                                str(lost), pop, basis, dist[allele], note]) + "\n")
+        for allele, cls, size, (dz, d2, di, d1), lost, pop, basis, note in ALLELES:
+            fh.write("\t".join([allele, cls, size, str(dz), str(d2), str(di),
+                                str(d1), str(lost), pop, basis, dist[allele],
+                                note]) + "\n")
 
     print(f"hba_segments.bed          {len(segs)} segments (derived)")
     for chrom, s, e, name, baseline, rel, _ in segs:
