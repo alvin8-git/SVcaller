@@ -72,3 +72,10 @@ docs/cnv_traits_card_demo.html
 # ── The committed demo report is an intentional documentation artifact ───────
 !docs/demo/
 !docs/demo/**
+
+# ── Synthetic test fixtures are source, not data ─────────────────────────────
+# tests/fixtures/alpha_junction.bam is ~2 KB of generated reads with a known
+# breakpoint (tests/fixtures/make_junction_fixture.py). The *.bam rule above
+# would otherwise silently drop it and the channel-3 tests would skip forever.
+!tests/fixtures/
+!tests/fixtures/**
