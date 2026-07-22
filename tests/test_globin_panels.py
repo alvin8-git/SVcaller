@@ -57,6 +57,79 @@ def test_mapper_refuses_to_guess():
     assert "crosses a splice boundary" in (r.stdout + r.stderr)
 
 
+CODON = {
+ 'TTT':'F','TTC':'F','TTA':'L','TTG':'L','CTT':'L','CTC':'L','CTA':'L','CTG':'L',
+ 'ATT':'I','ATC':'I','ATA':'I','ATG':'M','GTT':'V','GTC':'V','GTA':'V','GTG':'V',
+ 'TCT':'S','TCC':'S','TCA':'S','TCG':'S','CCT':'P','CCC':'P','CCA':'P','CCG':'P',
+ 'ACT':'T','ACC':'T','ACA':'T','ACG':'T','GCT':'A','GCC':'A','GCA':'A','GCG':'A',
+ 'TAT':'Y','TAC':'Y','TAA':'*','TAG':'*','CAT':'H','CAC':'H','CAA':'Q','CAG':'Q',
+ 'AAT':'N','AAC':'N','AAA':'K','AAG':'K','GAT':'D','GAC':'D','GAA':'E','GAG':'E',
+ 'TGT':'C','TGC':'C','TGA':'*','TGG':'W','CGT':'R','CGC':'R','CGA':'R','CGG':'R',
+ 'AGT':'S','AGC':'S','AGA':'R','AGG':'R','GGT':'G','GGC':'G','GGA':'G','GGG':'G'}
+COMP = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}
+REF_FASTA = "/data/alvin/ref/GRCh38/hg38.fa"
+
+needs_ref = pytest.mark.skipif(
+    not os.path.exists(REF_FASTA), reason="GRCh38 FASTA not present")
+
+
+def _coding_base(model, hgvs):
+    import subprocess as sp
+    g = model.resolve(hgvs)
+    out = sp.run(["samtools", "faidx", REF_FASTA, f"{model.chrom}:{g}-{g}"],
+                 capture_output=True, text=True, check=True).stdout
+    b = "".join(l.strip() for l in out.splitlines()[1:]).upper()
+    return b if model.strand == "+" else COMP[b]
+
+
+def _models():
+    sys.path.insert(0, BIN)
+    from hgvs_map import load_models
+    return load_models(ANNOTSV_BED, {"HBB", "HBA1", "HBA2"})
+
+
+@needs_annotsv
+@needs_ref
+@pytest.mark.parametrize("gene,intron_end,exon_start", [
+    ("HBB", "92+1", "93-1"),     # IVS-1
+    ("HBB", "315+1", "316-1"),   # IVS-2
+])
+def test_splice_sites_obey_gt_ag(gene, intron_end, exon_start):
+    """A wrong exon boundary shows up immediately as a broken GT..AG rule."""
+    m = _models()[gene]
+    donor = _coding_base(m, intron_end) + _coding_base(m, intron_end[:-1] + "2")
+    acc = _coding_base(m, exon_start[:-1] + "2") + _coding_base(m, exon_start)
+    assert donor == "GT", f"{gene} {intron_end} donor is {donor}, not GT"
+    assert acc == "AG", f"{gene} {exon_start} acceptor is {acc}, not AG"
+
+
+@needs_annotsv
+@needs_ref
+@pytest.mark.parametrize("allele,gene,cpos,cref,calt,legacy,consequence", [
+    ("HbS",                "HBB",  20,  "A", "T", 6,   "E6V"),
+    ("HbC",                "HBB",  19,  "G", "A", 6,   "E6K"),
+    ("HbE",                "HBB",  79,  "G", "A", 26,  "E26K"),
+    ("CD17",               "HBB",  52,  "A", "T", 17,  "K17*"),
+    ("CD39",               "HBB",  118, "C", "T", 39,  "Q39*"),
+    ("Hb Quong Sze",       "HBA2", 377, "T", "C", 125, "L125P"),
+    ("Hb Adana",           "HBA2", 179, "G", "A", 59,  "G59D"),
+    ("Hb Constant Spring", "HBA2", 427, "T", "C", 142, "*142Q"),
+])
+def test_allele_name_matches_hgvs(allele, gene, cpos, cref, calt, legacy, consequence):
+    """Legacy globin names number codons from the MATURE protein (no initiator
+    Met), so legacy codon N is c.(3N+1)..c.(3N+3). If the curated name and the
+    curated HGVS disagree, the translated consequence exposes it."""
+    m = _models()[gene]
+    start = 3 * legacy + 1
+    idx = cpos - start
+    assert 0 <= idx <= 2, f"{allele}: c.{cpos} is not inside legacy codon {legacy}"
+    codon = "".join(_coding_base(m, str(start + i)) for i in range(3))
+    assert codon[idx] == cref, f"{allele}: FASTA has {codon[idx]}, curated ref is {cref}"
+    mut = codon[:idx] + calt + codon[idx + 1:]
+    got = f"{CODON[codon]}{legacy}{CODON[mut]}"
+    assert got == consequence, f"{allele}: consequence is {got}, expected {consequence}"
+
+
 def _panel_rows(name):
     path = os.path.join(REPO, "assets", name)
     with open(path) as fh:
