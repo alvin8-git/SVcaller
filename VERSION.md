@@ -56,7 +56,7 @@
 
 ## v1.1.0 (in development — 2026-06-08)
 
-**Major feature release.** 6-caller ensemble, 3-tier clinical report, SV PON, XLS export.
+**Major feature release.** 5-caller ensemble, 3-tier clinical report, SV PON, XLS export.
 
 ### New Callers
 - Scramble MEI caller (L1/ALU/SVA mobile element insertions)

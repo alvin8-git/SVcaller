@@ -18,7 +18,7 @@ Accepts FASTQ or pre-aligned BAM input. Produces a per-sample HTML report with a
 
 ## Features
 
-- **Ensemble SV calling** — 6 callers (Manta + DELLY + GRIDSS + Scramble + MELT + SvABA) merged with JASMINE; GRIDSS BND pairs auto-converted to typed DEL/DUP/INV
+- **Ensemble SV calling** — **5-caller ensemble**: Manta + DELLY + GRIDSS (core, all three must succeed) plus Scramble and MELT, each added only when it has calls. Merged with JASMINE. SvABA is **not** part of the ensemble — it is skipped by default and its VCF never reaches the merge; GRIDSS BND pairs auto-converted to typed DEL/DUP/INV
 - **STR genotyping** — ExpansionHunter (32 disease loci) + STRling genome-wide scanning
 - **Dual CNV calling** — CNVpytor + GATK gCNV with consensus merging
 - **SMN1/SMN2 copy number** — SMNCopyNumberCaller with 2+0 haplotype detection
@@ -140,7 +140,7 @@ HG003,,,/data/HG003.GRCh38.bam
 | `--sv_pon` | null | GIAB 7-sample SV Panel of Normals BED for artifact flagging (see `pon/sv_pon/`) |
 | `--giab_truth` | null | GIAB T2TQ100-V1.0 truth VCF.gz for truvari benchmarking |
 | `--giab_truth_v5q` | null | GIAB v5.0q truth VCF.gz (second benchmark pass) |
-| `--skip_gridss` | `false` | Skip GRIDSS (saves 4–6 h; Manta+DELLY+Scramble+MELT+SvABA only) |
+| `--skip_gridss` | `false` | Skip GRIDSS (saves 4–6 h; leaves Manta+DELLY+Scramble+MELT) |
 | `--skip_melt` | `false` | Skip MELT MEI calling (saves ~2 h when container unavailable) |
 | `--auto_cleanup` | `false` | Delete the `-work-dir` automatically on successful completion (removes the `-resume` cache) |
 | `--max_cpus` | `64` | Max CPUs any process may request (caps `task.attempt` scaling) |
@@ -298,7 +298,7 @@ results/
 └── <sample_id>/
     ├── <sample_id>.report.html          # Self-contained HTML report
     ├── <sample_id>.variants.xlsx        # Excel workbook (SVs / CNVs / STRs / SMN sheets)
-    ├── <sample_id>.sv_merged.vcf.gz     # Ensemble SV calls (Manta+DELLY+GRIDSS+Scramble+MELT+SvABA)
+    ├── <sample_id>.sv_merged.vcf.gz     # Ensemble SV calls (Manta+DELLY+GRIDSS+Scramble+MELT)
     ├── <sample_id>.sv_merged.vcf.gz.tbi
     ├── <sample_id>.str.vcf.gz           # STR calls (ExpansionHunter)
     ├── <sample_id>.cnv_consensus.bed    # Consensus CNV calls
@@ -359,7 +359,7 @@ bash validation/giab_benchmark.sh \
     results/HG002/HG002.sv_merged.vcf.gz
 ```
 
-**Current benchmark on HG002 (6 callers — Manta + Delly + GRIDSS + Scramble + MELT + SvABA, run16; GRIDSS BND→SV fix):**
+**Current benchmark on HG002 (5-caller ensemble — Manta + Delly + GRIDSS + Scramble + MELT, run16; GRIDSS BND→SV fix). SvABA was never merged, so it contributed nothing to these numbers:**
 
 | Benchmark | Precision | Recall | F1 | TP-base | FP |
 |-----------|-----------|--------|-----|---------|-----|

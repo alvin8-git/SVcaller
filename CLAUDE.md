@@ -281,9 +281,29 @@ invalidates the storeDir cache, re-costing an hour per sample. **Pre-flight:** `
 
 **Storage/optimization:** MOSDEPTH runs `--no-per-base` (skips the unused ~4.5 GB/sample per-base BED; only `regions.bed.gz` is consumed). Reclaim orphaned work dirs from failed/superseded runs with `bash bin/nf-cleanup.sh --reclaim` (dry-run; `--force` to delete) — keeps the latest successful run for `-resume`, refuses while a run is active. Scatter-gather is safe only for depth/per-locus tools (Delly already internal; GATK counts/CNVpytor/EH shardable); Manta/GRIDSS/SvABA need whole-genome context — do not chunk. Do NOT `docker rmi`/`prune -a` the locally-built `svcaller/{melt:2.2.2,utils,smncopynum}` images (not re-pullable; `prune -f` dangling-only is safe).
 
-## Current F1 Baseline (2026-06-08, run16: labelled "6-caller Manta+Delly+GRIDSS+Scramble+MELT+SvABA", GRIDSS BND→SV fix)
+## The ensemble is 5 callers. It has always been 5.
 
-> The "6-caller" label is inaccurate — SvABA never reaches Jasmine (see the SV merge note in Key design points). These numbers are a 5-caller ensemble. Re-benchmark after wiring SvABA in.
+**Manta + DELLY + GRIDSS** — core, all three must succeed for the merge to run.
+**Scramble + MELT** — added to `vcf_list.txt` only when each has calls.
+
+**SvABA is NOT in the ensemble.** `modules/jasmine/merge.nf` references
+`vcfs[0..4]` and never `vcfs[5]`, so SvABA's VCF is staged into the merge task
+directory and ignored. It is also absent from the design spec's SV ensemble.
+`skip_svaba` therefore defaults to **true** (flipped 2026-07-22) — it previously
+burned ~4 h/sample at 16 pinned CPUs producing nothing that reached the merge.
+
+Re-enabling it means wiring `vcfs[5]` into `vcf_list.txt` **first**; setting
+`--skip_svaba false` alone changes nothing except the runtime.
+
+Guarded by `tests/test_ensemble_caller_count.py`, which fails both ways: if a doc
+claims 6 callers, and if the code starts merging a 6th without the docs catching
+up. Anything consuming SVcaller — OmniGen included — should say **5-caller** and
+must not name SvABA.
+
+## Current F1 Baseline (2026-06-08, run16, GRIDSS BND→SV fix)
+
+> Run16 was *labelled* "6-caller … +SvABA" at the time. That label was wrong;
+> SvABA contributed nothing to these numbers. They are a 5-caller result.
 
 | Benchmark | F1 | Precision | Recall | TP-base | FP | comp cnt |
 |---|---|---|---|---|---|---|
