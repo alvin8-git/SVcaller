@@ -50,7 +50,12 @@ workflow SV_CALLING {
     DELLY_CALL_SVTYPE(ch_delly_input, ch_fasta, ch_fai)
     DELLY_MERGE(DELLY_CALL_SVTYPE.out.vcf.groupTuple(size: 5))
 
-    EXPANSIONHUNTER(ch_bam, ch_fasta, ch_fai, ch_eh_catalog)
+    // Run on the validated, canonical-filtered BAM, same as STRling and every SV
+    // caller. EH used to take the raw ch_bam, so for a full-hg38 BAM input the two
+    // STR callers (EH + STRling) genotyped DIFFERENT read sets (the raw BAM keeps
+    // reads whose mate is on an alt contig; the filtered BAM drops them), and EH
+    // alone skipped the VALIDATE_REF_BAM pre-flight. Both now see ch_validated_bam.
+    EXPANSIONHUNTER(ch_validated_bam, ch_fasta, ch_fai, ch_eh_catalog)
 
     // P6: STRling genome-wide STR expansion detection (parallel with EH)
     if (!params.skip_strling) {
