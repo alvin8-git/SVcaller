@@ -15,7 +15,6 @@ include { SCRAMBLE_STUB          } from '../modules/scramble/stub'
 include { MELT_CALL              } from '../modules/melt/call'
 include { MELT_STUB              } from '../modules/melt/stub'
 include { SVABA_CALL             } from '../modules/svaba/call'
-include { SVABA_STUB             } from '../modules/svaba/call'
 include { STRLING_CALL           } from '../modules/strling/call'
 include { SAMTOOLS_FILTER_CHROMS } from '../modules/samtools/filter_chroms'
 include { VALIDATE_REF_BAM      } from '../modules/samtools/validate_ref_bam'
@@ -112,28 +111,25 @@ workflow SV_CALLING {
         ch_melt_vcf = MELT_STUB.out.vcf
     }
 
-    // P7: SvABA local-assembly caller; 6th position in SUPP_VEC
-    // SUPP_VEC positions: Manta[0] Delly[1] GRIDSS[2] Scramble[3] MELT[4] SvABA[5]
+    // SvABA is NOT part of the ensemble. modules/jasmine/merge.nf reads vcfs[0..4]
+    // only and never vcfs[5], so SvABA's VCF is never merged. It therefore does not
+    // enter ch_to_merge below, and no stub is produced when skipped (the old stub
+    // rode the merge join to be discarded). SVABA_CALL runs ONLY when explicitly
+    // re-enabled, for evaluation; wire vcfs[5] into merge.nf before trusting it.
+    // See docs/reorg-plan-2026-07-21.md and test_ensemble_caller_count.
     if (!params.skip_svaba) {
-        // ch_bwa_index stages the CLASSIC bwa index next to ref_fasta so SvABA's
-        // bwa_idx_load_from_disk can find it. Without it SvABA dies on every run.
         SVABA_CALL(ch_validated_bam, ch_fasta, ch_fai, ch_bwa_index)
-        ch_svaba_vcf = SVABA_CALL.out.vcf
-    } else {
-        SVABA_STUB(ch_validated_bam)
-        ch_svaba_vcf = SVABA_STUB.out.vcf
     }
 
-    // Collect VCFs per sample and merge with JASMINE (min_support=1)
-    // File order: [manta, delly, gridss, scramble, melt, svaba] — determines SUPP_VEC bit positions
+    // Collect the 5 ensemble VCFs per sample and merge with JASMINE (min_support=1).
+    // File order [manta, delly, gridss, scramble, melt] sets the SUPP_VEC bit positions.
     ch_to_merge = MANTA_CALL.out.vcf
         .join(DELLY_MERGE.out.vcf)
         .join(ch_gridss_vcf)
         .join(ch_scramble_vcf)
         .join(ch_melt_vcf)
-        .join(ch_svaba_vcf)
-        .map { meta, manta_vcf, delly_vcf, gridss_vcf, scramble_vcf, melt_vcf, svaba_vcf ->
-            [meta, [manta_vcf, delly_vcf, gridss_vcf, scramble_vcf, melt_vcf, svaba_vcf]]
+        .map { meta, manta_vcf, delly_vcf, gridss_vcf, scramble_vcf, melt_vcf ->
+            [meta, [manta_vcf, delly_vcf, gridss_vcf, scramble_vcf, melt_vcf]]
         }
 
     JASMINE_MERGE(ch_to_merge, ch_fasta, ch_fai)
