@@ -117,6 +117,7 @@ workflow SVCALLER {
         CNV_TRAITS.out.amy1,
         CNV_TRAITS.out.gst,
         CNV_TRAITS.out.lpa,
+        ch_alpha_globin,
     )
 
     emit:

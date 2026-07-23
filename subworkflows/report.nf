@@ -17,7 +17,8 @@ process BUILD_HTML_REPORT {
                      path(flagstat_txt), path(insert_size_metrics),
                      path(benchmark_json_v5q), path(sizebin_json_v5q),
                      path(strling_tsv), path(sv_vcf),
-                     path(rh_status_tsv), path(amy1_tsv), path(gst_null_tsv), path(lpa_kiv2_tsv)
+                     path(rh_status_tsv), path(amy1_tsv), path(gst_null_tsv), path(lpa_kiv2_tsv),
+                     path(alpha_tsv)
 
     output:
     tuple val(meta), path("${meta.id}.report.html"),    emit: html
@@ -45,6 +46,13 @@ process BUILD_HTML_REPORT {
         --sample ${meta.id} \\
         --out    ${meta.id}.smn_section.html
 
+    # Alpha-globin (M8) card, same pre-render pattern as SMN. hba_report.py handles a
+    # NO_FILE sentinel by rendering a "module did not run" card, so this always runs.
+    hba_report.py \\
+        --tsv    ${alpha_tsv} \\
+        --sample ${meta.id} \\
+        --out    ${meta.id}.alpha_section.html
+
     # v16: 3-tier SV report, named disease diagnoses, XLS export
     html_report.py \\
         --sample           ${meta.id} \\
@@ -53,6 +61,7 @@ process BUILD_HTML_REPORT {
         --cnv-bed          ${cnv_bed} \\
         --sv-tsv           ${sv_tsv} \\
         --sv-vcf           ${sv_vcf} \\
+        --alpha-html       ${meta.id}.alpha_section.html \\
         --circos-svg       ${circos_svg} \\
         --out              ${meta.id}.report.html \\
         --pipeline-version ${workflow.manifest.version} \\
@@ -97,6 +106,7 @@ workflow REPORT {
     ch_amy1          // [ meta, amy1.tsv ]          AMY1 copy number
     ch_gst_null      // [ meta, gst_null.tsv ]      GSTM1/GSTT1 null
     ch_lpa_kiv2      // [ meta, lpa_kiv2.tsv ]       LPA KIV-2 copy number
+    ch_alpha_globin  // [ meta, alpha_globin.tsv ]   M8 alpha-globin contract (optional)
 
     main:
     ch_circos_in = ch_sv_vcf
@@ -219,10 +229,14 @@ workflow REPORT {
         .map { row -> row[0..-2] + [row[-1] ?: file("NO_FILE")] }
         .join(ch_lpa_kiv2, remainder: true).filter { it[1] != null }
         .map { row -> row[0..-2] + [row[-1] ?: file("NO_FILE")] }
+        // M8 alpha-globin contract TSV (optional → NO_FILE). hba_report.py renders a
+        // "module did not run" card from a NO_FILE sentinel, so this never drops a report.
+        .join(ch_alpha_globin, remainder: true).filter { it[1] != null }
+        .map { row -> row[0..-2] + [row[-1] ?: file("NO_FILE")] }
         // final: [meta, sv_tsv, cnv_bed, smn_tsv, circos_svg, benchmark_json, sizebin_json,
         //         coverage_summary, picard_metrics, str_vcf, flagstat_txt, insert_size_metrics,
         //         benchmark_json_v5q, sizebin_json_v5q, strling_tsv, sv_vcf,
-        //         rh_status, amy1, gst_null, lpa_kiv2]
+        //         rh_status, amy1, gst_null, lpa_kiv2, alpha_globin]
 
     BUILD_HTML_REPORT(ch_report_in)
 

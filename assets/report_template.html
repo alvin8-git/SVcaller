@@ -304,6 +304,13 @@
     {{ smn_html | safe }}
   </div>
 
+  <!-- ALPHA-GLOBIN (HBA1/HBA2) SECTION -->
+  {% if alpha_html %}
+  <div class="section-card">
+    {{ alpha_html | safe }}
+  </div>
+  {% endif %}
+
   <!-- STR FINDINGS (EH catalog + STRling consensus) -->
   {% if str_consensus %}
   <div class="card section-card">

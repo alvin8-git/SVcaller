@@ -1432,6 +1432,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   strling_tsv_path: str = None,
                   smn_tsv_path: str = None,
                   sv_vcf_path: str = None,
+                  alpha_html_path: str = None,
                   rh_status_path: str = None,
                   amy1_path: str = None,
                   gst_null_path: str = None,
@@ -1452,6 +1453,14 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
 
     bootstrap_css     = _inline_bootstrap_css()
     smn_html          = Path(smn_html_path).read_text()
+    # Alpha-globin card (M8) is optional and pre-rendered by hba_report.py, exactly like
+    # smn_report.py. Absent file -> empty string -> the template's {% if alpha_html %}
+    # drops the section. hba_report.py itself renders a "module did not run" card when the
+    # contract is a NO_* sentinel, so an empty string here only happens if the fragment
+    # step was skipped entirely (e.g. an older report.nf).
+    alpha_html        = (Path(alpha_html_path).read_text()
+                         if alpha_html_path and Path(alpha_html_path).exists()
+                         else "")
     circos_svg_inline = Path(circos_svg_path).read_text()
     sv_summary        = parse_sv_summary(sv_tsv_path)
     sv_tier1, sv_tier2, sv_tier3, sv_all = classify_sv_tiers(sv_tsv_path)
@@ -1522,6 +1531,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
         cnv_total=cnv_total,
         cnv_traits_html=cnv_traits_html,
         smn_html=smn_html,
+        alpha_html=alpha_html,
         circos_svg_inline=circos_svg_inline,
         benchmark=benchmark,
         benchmark_bins=benchmark_bins,
@@ -1559,6 +1569,9 @@ def main():
     parser.add_argument("--sv-vcf",           default=None, dest="sv_vcf",
                         help="Merged SV VCF; fallback source for the SV sheet when the "
                              "AnnotSV TSV is empty (run without --annotsv_db).")
+    parser.add_argument("--alpha-html",       default=None, dest="alpha_html",
+                        help="Pre-rendered alpha-globin (HBA1/HBA2) HTML card from "
+                             "hba_report.py. Optional; section is dropped if absent.")
     parser.add_argument("--rh-status",        default=None, dest="rh_status")
     parser.add_argument("--amy1",             default=None, dest="amy1")
     parser.add_argument("--gst-null",         default=None, dest="gst_null")
@@ -1588,6 +1601,7 @@ def main():
         strling_tsv_path=args.strling_tsv,
         smn_tsv_path=args.smn_tsv,
         sv_vcf_path=args.sv_vcf,
+        alpha_html_path=args.alpha_html,
         rh_status_path=args.rh_status,
         amy1_path=args.amy1,
         gst_null_path=args.gst_null,

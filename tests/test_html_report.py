@@ -29,6 +29,45 @@ def test_report_contains_sample_id(tmp_path):
     assert "SVcaller" in content
 
 
+# --- alpha-globin card wiring (M8 -> report) ----------------------------------
+
+def _minimal_inputs(tmp_path):
+    smn_html = tmp_path / "smn.html"; smn_html.write_text("<p>SMN stub</p>")
+    cnv_bed = tmp_path / "cnv.bed"
+    cnv_bed.write_text("#chrom\tstart\tend\tcn\tsvtype\tcaller_support\tconfidence\tquality\tsample\n")
+    sv_tsv = tmp_path / "sv.tsv"
+    sv_tsv.write_text("AnnotSV_ID\tSV_chrom\tSV_start\tSV_end\tSV_type\tAnnotSV_ranking_score\n")
+    circos_svg = tmp_path / "circos.svg"; circos_svg.write_text("<svg/>")
+    return dict(smn_html_path=str(smn_html), cnv_bed_path=str(cnv_bed),
+                sv_tsv_path=str(sv_tsv), circos_svg_path=str(circos_svg))
+
+
+def test_alpha_card_is_rendered_when_supplied(tmp_path):
+    """The whole point of wiring: an alpha-globin fragment must reach the report.
+    For months the card generator (hba_report.py) existed but was never connected,
+    so a --SEA carrier's result was invisible in the HTML."""
+    from html_report import render_report
+    alpha = tmp_path / "alpha.html"
+    alpha.write_text('<div class="card"><h5>Alpha-globin (HBA1/HBA2)</h5>'
+                     '<td>--SEA|--MED/aa</td></div>')
+    out = tmp_path / "report.html"
+    render_report(sample_id="AG_TEST", out_path=str(out), pipeline_version="1.0.0",
+                  alpha_html_path=str(alpha), **_minimal_inputs(tmp_path))
+    content = out.read_text()
+    assert "Alpha-globin (HBA1/HBA2)" in content, "alpha card did not reach the report"
+    assert "--SEA|--MED/aa" in content
+
+
+def test_alpha_section_absent_when_not_supplied(tmp_path):
+    """No fragment -> the {% if alpha_html %} guard drops the section, rather than
+    emitting an empty card that reads as 'nothing found at this locus'."""
+    from html_report import render_report
+    out = tmp_path / "report.html"
+    render_report(sample_id="NO_AG", out_path=str(out), pipeline_version="1.0.0",
+                  alpha_html_path=None, **_minimal_inputs(tmp_path))
+    assert "Alpha-globin (HBA1/HBA2)" not in out.read_text()
+
+
 # --- SV merged-VCF fallback (2026-06 empty-SV-sheet regression) ---------------
 
 _MERGED_VCF = """\
