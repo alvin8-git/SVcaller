@@ -46,10 +46,18 @@ workflow PREPROCESS {
             ch_bam_in.map { meta, bam, bai -> [[*:meta, needs_chr_filter: true], bam, bai] }
         )
 
+    // QC runs on ch_final_bam, which for BAM inputs is the PRE-FILTER_CHROMS input
+    // (needs_chr_filter: true — the filter runs later, in sv_calling.nf). That is
+    // deliberate for flagstat: the mapping rate must be measured against the reads
+    // as aligned (full hg38, alt contigs and all), so it reports the true alignment
+    // fraction. Move it AFTER FILTER_CHROMS and mapped% becomes a meaningless 100%,
+    // because the filter has already dropped every unmapped / non-canonical read.
+    // (Learned the hard way re-deriving THAL QC from the cached filtered BAM.)
+
     // Coverage QC — halts pipeline if < min_depth
     MOSDEPTH(ch_final_bam, min_depth)
 
-    // Mapping rate QC
+    // Mapping rate QC — see note above: pre-filter on purpose
     SAMTOOLS_FLAGSTAT(ch_final_bam)
 
     // Insert size distribution QC
