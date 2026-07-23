@@ -13,6 +13,7 @@ include { TRA_CONSENSUS          } from '../modules/jasmine/tra_consensus'
 include { SCRAMBLE_CALL          } from '../modules/scramble/call'
 include { SCRAMBLE_STUB          } from '../modules/scramble/stub'
 include { MELT_CALL              } from '../modules/melt/call'
+include { MELT_MERGE             } from '../modules/melt/merge'
 include { MELT_STUB              } from '../modules/melt/stub'
 include { SVABA_CALL             } from '../modules/svaba/call'
 include { STRLING_CALL           } from '../modules/strling/call'
@@ -104,8 +105,14 @@ workflow SV_CALLING {
     }
 
     if (!params.skip_melt) {
-        MELT_CALL(ch_validated_bam, ch_fasta, ch_fai)
-        ch_melt_vcf = MELT_CALL.out.vcf
+        // Fan out the 4 ME types (ALU, HERVK, LINE1, SVA) in parallel, one MELT Single
+        // per task, then collect into MELT_MERGE. Same pattern as DELLY's 5 SV types.
+        // groupTuple(size: 4) waits for all 4 types before merging; a crashed type
+        // fails its own task and the whole sample, so the merge never sees a partial set.
+        ch_melt_input = ch_validated_bam.combine(Channel.from(['ALU', 'HERVK', 'LINE1', 'SVA']))
+        MELT_CALL(ch_melt_input, ch_fasta, ch_fai)
+        MELT_MERGE(MELT_CALL.out.vcf.groupTuple(size: 4))
+        ch_melt_vcf = MELT_MERGE.out.vcf
     } else {
         MELT_STUB(ch_validated_bam)
         ch_melt_vcf = MELT_STUB.out.vcf

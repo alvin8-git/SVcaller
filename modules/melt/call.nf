@@ -1,15 +1,20 @@
-// v2: container now includes bowtie2 (required by MELT Single for discordant read extraction)
+// v3: MELT Single runs ONE mobile-element type per task. sv_calling.nf fans out
+// the 4 types (ALU, HERVK, LINE1, SVA) in parallel then collects into MELT_MERGE.
+// Previously one task looped the 4 types serially (~1.2 h). Fanning out drops the
+// wall clock to the slowest single type (~30 min) at the cost of 4 concurrent
+// java heaps, bounded by maxForks 4 and per-task memory (see the memory note below).
 process MELT_CALL {
-    tag "${meta.id}"
+    tag "${meta.id}:${metype}"
     label 'process_medium'
+    maxForks 4
 
     input:
-    tuple val(meta), path(bam), path(bai)
+    tuple val(meta), path(bam), path(bai), val(metype)
     path ref_fasta
     path ref_fai
 
     output:
-    tuple val(meta), path("${meta.id}.melt.vcf.gz"), emit: vcf
+    tuple val(meta), path("${meta.id}.${metype}.final_comp.vcf"), emit: vcf
 
     script:
     def mem_gb = Math.max(task.memory.toGiga().toInteger() - 2, 4)
@@ -46,103 +51,53 @@ process MELT_CALL {
         MELT_DIR=\$(dirname "\$melt_jar")
     fi
 
-    # Check ME refs exist -- again a misconfiguration, not an empty result.
-    n_refs=\$(ls "\${MELT_REFS}"/*_MELT.zip 2>/dev/null | wc -l || echo 0)
-    if [ "\$n_refs" -eq 0 ]; then
-        echo "ERROR: no *_MELT.zip mobile-element references found in '\${MELT_REFS}'." >&2
-        echo "MELT cannot detect any ME type without them. Refusing to emit an empty VCF." >&2
+    # Check THIS type's ME ref exists -- a misconfiguration, not an empty result.
+    # (The old task globbed all *_MELT.zip; per-type we validate only the one we run.)
+    zip_file="\${MELT_REFS}/${metype}_MELT.zip"
+    if [ ! -f "\$zip_file" ]; then
+        echo "ERROR: mobile-element reference '\$zip_file' not found." >&2
+        echo "MELT cannot detect ${metype} without it. Refusing to emit an empty VCF." >&2
         echo "Fix: point --melt_refs at a valid me_refs/Hg38 dir, or run with --skip_melt." >&2
         exit 1
     fi
 
-    # Run MELT Single for each ME type (ALU, LINE1/LINE, SVA, HERVK).
-    # A non-zero exit from MELT is a crash, not "zero insertions of this type" -- the
-    # previous '|| true' let every ME type die and still produce a confident empty VCF.
-    failed_types=""
-    mkdir -p melt_tmp
-    for zip_file in "\${MELT_REFS}"/*_MELT.zip; do
-        me=\$(basename "\$zip_file" _MELT.zip)
-        # -n takes gene annotation BED12 (not prior sites); Hg38.genes.bed is standard BED12
-        gene_bed="\${MELT_DIR}/add_bed_files/Hg38/Hg38.genes.bed"
-        n_arg=""
-        [ -f "\$gene_bed" ] && n_arg="-n \$gene_bed"
-        if ! java -Xmx${mem_gb}g -jar "\$melt_jar" Single \\
-            -bamfile ${bam} \\
-            -h       ${ref_fasta} \\
-            -t       "\$zip_file" \\
-            \${n_arg} \\
-            -w       melt_tmp/\${me} \\
-            -c       ${params.min_depth} \\
-            -sr      ${params.melt_min_reads} \\
-            2>&1; then
-            failed_types="\${failed_types} \${me}"
-        fi
-    done
-
-    if [ -n "\$failed_types" ]; then
-        echo "ERROR: MELT Single failed for ME type(s):\${failed_types}" >&2
+    # Run MELT Single for the single ME type ${metype}.
+    # A non-zero exit from MELT is a crash, not "zero insertions of this type" -- no
+    # '|| true' here; a failed type must fail the task so the merge is never fed a
+    # confident empty VCF.
+    mkdir -p melt_tmp/${metype}
+    # -n takes gene annotation BED12 (not prior sites); Hg38.genes.bed is standard BED12
+    gene_bed="\${MELT_DIR}/add_bed_files/Hg38/Hg38.genes.bed"
+    n_arg=""
+    [ -f "\$gene_bed" ] && n_arg="-n \$gene_bed"
+    if ! java -Xmx${mem_gb}g -jar "\$melt_jar" Single \\
+        -bamfile ${bam} \\
+        -h       ${ref_fasta} \\
+        -t       "\$zip_file" \\
+        \${n_arg} \\
+        -w       melt_tmp/${metype} \\
+        -c       ${params.min_depth} \\
+        -sr      ${params.melt_min_reads} \\
+        2>&1; then
+        echo "ERROR: MELT Single failed for ME type ${metype}." >&2
         echo "A crashed MELT run must not be published as 'no mobile element insertions'." >&2
         echo "Fix the MELT failure above, or run with --skip_melt to skip MELT explicitly." >&2
         exit 1
     fi
 
-    # Merge per-type VCFs; filter to canonical chr + PASS; normalise SVTYPE → INS
-    first=""
-    for vcf in melt_tmp/*/*.final_comp.vcf; do
-        [ -f "\$vcf" ] || continue
-        first="\$vcf"; break
-    done
-
-    # Every MELT type exited 0, so each should have written a *.final_comp.vcf (with zero
-    # rows if it found nothing). No VCF at all means MELT did not actually run.
-    if [ -z "\$first" ]; then
-        echo "ERROR: MELT exited 0 for all ME types but wrote no *.final_comp.vcf." >&2
+    # MELT exited 0, so it should have written a *.final_comp.vcf (zero rows if it found
+    # nothing). No VCF at all means MELT did not actually run for this type.
+    comp=\$(ls melt_tmp/${metype}/*.final_comp.vcf 2>/dev/null | head -1 || true)
+    if [ -z "\$comp" ]; then
+        echo "ERROR: MELT exited 0 for ${metype} but wrote no *.final_comp.vcf." >&2
         echo "Refusing to emit an empty VCF that would be read as 'no MEIs found'." >&2
-        find melt_tmp -type f >&2 || true
+        find melt_tmp/${metype} -type f >&2 || true
         exit 1
     fi
 
-    (
-        grep "^#" "\$first"
-        for vcf in melt_tmp/*/*.final_comp.vcf; do
-            [ -f "\$vcf" ] || continue
-            grep -v "^#" "\$vcf"
-        done
-    ) | awk '
-        BEGIN{OFS="\\t"}
-        /^##fileformat/{
-            print
-            print "##INFO=<ID=MEITYPE,Number=1,Type=String,Description=\\"Mobile element insertion type (ALU/LINE1/SVA/HERVK)\\">"
-            next
-        }
-        /^#/{print;next}
-        \$1!~/^chr([0-9]+|X|Y|M)\$/{next}
-        \$7!="PASS" && \$7!="."{next}
-        {
-            # Strip INFO to essentials; normalise SVTYPE → INS; store ME type as MEITYPE
-            svtype="INS"; meitype=""; svlen=""; end_=""
-            n=split(\$8,info,";")
-            for(i=1;i<=n;i++){
-                f=info[i]
-                if(f~/^SVTYPE=/){
-                    t=substr(f,8)
-                    if(t~/^(ALU|LINE1|LINE|SVA|HERVK)\$/) { meitype=t; svtype="INS" }
-                    else svtype=t
-                }
-                else if(f~/^SVLEN=/) svlen=f
-                else if(f~/^END=/)   end_=f
-            }
-            new_info="SVTYPE=" svtype
-            if(meitype!="") new_info=new_info ";MEITYPE=" meitype
-            if(svlen!="")   new_info=new_info ";" svlen
-            if(end_!="")    new_info=new_info ";" end_
-            \$8=new_info
-            # Add FORMAT/GT if absent
-            if(\$9=="" || \$9=="."){
-                \$9="GT"; \$10="0/1"
-            }
-            print
-        }' | sort -k1,1 -k2,2n | gzip > ${meta.id}.melt.vcf.gz
+    # Hand the raw per-type VCF to MELT_MERGE untouched; all filtering/normalisation
+    # (canonical chr + PASS, INFO strip, MEITYPE header) happens once in the merge.
+    cp "\$comp" ${meta.id}.${metype}.final_comp.vcf
     rm -rf melt_tmp
     """
 }
