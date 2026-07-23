@@ -106,6 +106,35 @@ def test_no_doc_claims_six_callers():
         "merged):\n  " + "\n  ".join(offenders))
 
 
+def test_report_does_not_name_svaba_while_it_is_unmerged():
+    """The user-facing HTML report must not credit SvABA while merge.nf ignores it.
+
+    This is not hypothetical: the report template's caller footer read
+    "Manta + Delly + GRIDSS + Scramble + MELT + SvABA + STRling" long after SvABA
+    was known to contribute nothing, because the doc-scan above only walks .md
+    files and never the template or the report builder. A clinician reading the
+    report would credit a caller that produced no calls.
+
+    Tied to the merge wiring so it inverts correctly the day SvABA is really
+    wired in (vcfs[5]) — then the report SHOULD name it and this test flips.
+    """
+    if "vcfs[5]" in _merge_src():
+        return  # SvABA re-enabled: naming it in the report is now correct
+    targets = [
+        os.path.join(REPO, "assets", "report_template.html"),
+        os.path.join(REPO, "bin", "html_report.py"),
+    ]
+    named = []
+    for p in targets:
+        src = open(p, errors="replace").read()
+        # "not merged" next to the name is the deliberate historical note, allowed.
+        if re.search(r"svaba", src, re.I) and "not merged" not in src.lower():
+            named.append(os.path.relpath(p, REPO))
+    assert not named, (
+        f"{named} name SvABA but merge.nf does not merge it (vcfs[5] absent). "
+        "Remove it from the caller list, or wire vcfs[5] in first.")
+
+
 @pytest.mark.parametrize("doc", ["README.md", "CLAUDE.md"])
 def test_key_docs_state_the_real_count(doc):
     """Silence is not enough — the primary docs must say 5 explicitly, since a

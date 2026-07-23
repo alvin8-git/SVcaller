@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build per-sample SVcaller HTML report using Jinja2. Callers: Manta+Delly+GRIDSS+Scramble+MELT+SvABA+STRling."""
+"""Build per-sample SVcaller HTML report using Jinja2. Callers: Manta+Delly+GRIDSS+Scramble+MELT+STRling (SvABA staged, not merged — see test_ensemble_caller_count)."""
 import argparse, csv, gzip, json, re, sys
 from datetime import date
 from pathlib import Path
