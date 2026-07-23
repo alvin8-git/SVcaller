@@ -1,6 +1,7 @@
 process PICARD_INSERT_SIZE {
     tag "${meta.id}"
     label 'process_single'
+    publishDir "${params.outdir}/${meta.id}/qc", mode: 'copy', pattern: "*.insert_size_metrics.txt"
 
     input:
     tuple val(meta), path(bam), path(bai)

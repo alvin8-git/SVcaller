@@ -1,6 +1,9 @@
 process SAMTOOLS_FLAGSTAT {
     tag "${meta.id}"
     label 'process_single'
+    // Publish so the report's QC section is reproducible after the work dir is
+    // cleaned (Rule 5). Consumed from work/ only used to silently lose QC.
+    publishDir "${params.outdir}/${meta.id}/qc", mode: 'copy', pattern: "*.flagstat.txt"
 
     input:
     tuple val(meta), path(bam), path(bai)

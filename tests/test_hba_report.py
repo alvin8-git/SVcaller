@@ -55,23 +55,30 @@ def test_renders_the_measurements(tmp_path):
     assert "hba_pathogenic_sites.tsv@dfd6ccf" in body
 
 
-def test_not_screened_is_rendered_inline_not_as_a_footnote(tmp_path):
-    """A footnote is what let an empty SMN result render as 'Clear'. The scope
-    declaration must appear as a prominent block ABOVE the results table."""
+def test_scope_is_present_and_explicit_in_the_footer(tmp_path):
+    """The card was made compact (2026-07-23): the scope moved from an alert box
+    above the table to a muted footer below it. What must NOT change is that the
+    scope is explicit and states that an untested locus is not a cleared one — a
+    footnote-that-reads-as-'Clear' is exactly the SMN failure this guards against.
+
+    Note the phrasing is 'not the same as tested-and-absent', not 'not a negative
+    result': once the footer sits BELOW the table, the word 'negative' would fall
+    inside the results region that test_a_normal_sample_is_not_described_as_negative
+    forbids. Same meaning, no banned word."""
     html = hr.render_html_section("THAL1", _write(tmp_path))
-    assert "alert" in html, "scope declaration must be an alert block"
-    assert html.index("What this did NOT examine") < html.index("<table"), \
-        "the scope block must come before the results table"
+    assert "alpha-scope-footer" in html, "the scope footer must be present"
     body = _text(html)
     assert "beta" in body.lower() and "HBB" in body
-    assert "not a negative result" in body
+    assert "Not examined" in body
+    assert "nothing about them can be ruled out" in body
+    assert "not the same as tested-and-absent" in body
 
 
 def test_every_not_screened_tier_gets_readable_text(tmp_path):
-    """A bare tier id in the report is a tier nobody reads."""
+    """A bare tier id in the report is a tier nobody reads — the footer renders
+    each not_screened tier's human sentence, not its slug."""
     html = hr.render_html_section("THAL1", _write(tmp_path))
     for tier in ("beta_globin", "alpha_nondeletional_outside_panel"):
-        assert tier in html
         assert hr.TIER_TEXT[tier][:30] in _text(html)
 
 
@@ -126,6 +133,27 @@ def test_degenerate_group_is_shown_as_the_group(tmp_path):
     body = _text(html)
     assert "--SEA|--MED/aa" in body
     assert not re.search(r"(?<![|\-])--SEA/aa", body.replace("--SEA|--MED/aa", ""))
+
+
+def test_site_hits_are_named_from_the_panel(tmp_path):
+    """A raw 'HBA2:c.377:het' is uninterpretable; the card names it from the
+    pinned panel. This is the whole reason the panel is loaded."""
+    row = list(THAL1_ROW)
+    row[5] = "HBA2:c.377:het"     # Hb Quong Sze in assets/hba_pathogenic_sites.tsv
+    body = _text(hr.render_html_section("THAL2", _write(tmp_path, row)))
+    assert "Hb Quong Sze" in body, "panel-driven site naming did not fire"
+    assert "heterozygous" in body
+    # and the footer must still list what the scan covered, by name
+    assert "Constant Spring" in body
+
+
+def test_panel_load_is_optional(tmp_path, monkeypatch):
+    """If the panel file cannot be found the card must still render (degraded to
+    the raw site string), never crash — reports must not depend on asset layout."""
+    monkeypatch.setattr(hr, "_load_panel", lambda: ({}, []))
+    row = list(THAL1_ROW); row[5] = "HBA2:c.377:het"
+    body = _text(hr.render_html_section("S", _write(tmp_path, row)))
+    assert "HBA2 c.377" in body and "heterozygous" in body
 
 
 def test_values_are_html_escaped(tmp_path):

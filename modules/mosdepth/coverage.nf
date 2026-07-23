@@ -1,6 +1,7 @@
 process MOSDEPTH {
     tag "${meta.id}"
     label 'process_low'
+    publishDir "${params.outdir}/${meta.id}/qc", mode: 'copy', pattern: "*.mosdepth.summary.txt"
 
     input:
     tuple val(meta), path(bam), path(bai)
