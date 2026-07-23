@@ -23,6 +23,7 @@ Accepts FASTQ or pre-aligned BAM input. Produces a per-sample HTML report with a
 - **Dual CNV calling** — CNVpytor + GATK gCNV with consensus merging
 - **SMN1/SMN2 copy number** — SMNCopyNumberCaller with 2+0 haplotype detection
 - **Copy-number / blood-group traits** — targeted normalized read depth for Rh factor (RHD), AMY1, GSTM1/GSTT1 null, and LPA KIV-2, emitted as stable per-sample contract files
+- **Alpha-globin (HBA1/HBA2)** — M8 measures alpha-thalassemia via per-segment depth, alpha-cluster junction search, and a pinned pathogenic-site pileup; emitted as a per-sample contract and a measurement-only report card (dosage 0–4, deletion reported as a group when depth cannot separate alleles, panel-named site hits). No clinical interpretation
 - **Clinical annotation** — AnnotSV 3.4.6 with SV PON (GIAB 7-sample), gnomAD-SV AF, SegDup, and ENCODE blacklist badges
 - **Genome-wide visualization** — pycirclize Circos plot (SVs, CNV gains/losses, STR expansions, SMN locus)
 - **3-tier clinical HTML report** — ACMG SF v3.2 Tier 1, OMIM morbid Tier 2, Tier 3 with full XLS export; Bootstrap 5, embedded SVG, optional truvari GIAB benchmark
@@ -33,38 +34,34 @@ Accepts FASTQ or pre-aligned BAM input. Produces a per-sample HTML report with a
 ## Pipeline Overview
 
 ```
-FASTQ or BAM
-     │
-     ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  M1 · Pre-processing                                            │
-│  BWA-MEM2 align → samtools sort → Picard MarkDup → mosdepth QC │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ BAM
-          ┌──────────────────┼──────────────────┐
-          ▼                  ▼                  ▼
-┌─────────────────┐ ┌───────────────┐ ┌──────────────────┐
-│ M2 · SV Calling │ │ M3 · CNV Call │ │ M4 · SMN Calling │
-│ Manta + DELLY   │ │ CNVpytor      │ │ SMNCopyNumber    │
-│ GRIDSS + EH     │ │ GATK gCNV     │ │ Caller v1.1      │
-│ JASMINE merge   │ │ consensus BED │ │                  │
-└────────┬────────┘ └───────┬───────┘ └───────┬──────────┘
-         │                  │                 │
-         ▼                  │                 │
-┌────────────────┐          │                 │
-│ M5 · Annotate  │          │                 │
-│ AnnotSV 3.4    │          │                 │
-│ gnomAD-SV AF   │          │                 │
-│ filter <1%     │          │                 │
-└────────┬───────┘          │                 │
-         └──────────────────┴─────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────┐
-│  M6/M7 · Visualization & Reporting          │
-│  pycirclize Circos plot + Jinja2 HTML report │
-│  (optional) truvari GIAB benchmark          │
-└─────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│ M1 · Pre-processing                                                               │
+│ BWA-MEM2 → sort → MarkDup → mosdepth QC                                           │
+└─────────────────────────────────────────┬─────────────────────────────────────────┘
+                                          │ BAM
+         ┌─────────────────────┬──────────┴─────────┬─────────────────────┐
+         ▼                     ▼                    ▼                     ▼
+┌──────────────────┐ ┌───────────────────┐ ┌──────────────────┐ ┌───────────────────┐
+│ M2 · SV Calling  │ │ M3 · CNV + traits │ │ M4 · SMN Calling │ │ M8 · Alpha-globin │
+│ Manta  DELLY     │ │ CNVpytor          │ │ SMNCopyNumber    │ │ HBA1/HBA2 depth   │
+│ GRIDSS  Scramble │ │ GATK gCNV → BED   │ │ Caller v1.1      │ │ + junction search │
+│ MELT → JASMINE   │ │ RHD/AMY1/GSTM1    │ │                  │ │ + targeted site   │
+│ (5-caller merge) │ │ GSTT1/LPA KIV-2   │ │                  │ │ pileup            │
+└────────┬─────────┘ └─────────┬─────────┘ └────────┬─────────┘ └─────────┬─────────┘
+         │                     │                    │                     │
+         ▼                     │                    │                     │
+ ┌───────────────┐
+ │ M5 · Annotate │             │                    │                     │
+ │ AnnotSV 3.4   │             │                    │                     │
+ │ gnomAD-SV AF  │             │                    │                     │
+ │ filter <1%    │             │                    │                     │
+ └───────┬───────┘             │                    │                     │
+         └─────────────────────┴──────────┬─────────┴─────────────────────┘
+                                          ▼
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│ M6/M7 · Visualization & Reporting                                                 │
+│ pycirclize Circos + Jinja2 HTML report + (optional) Truvari benchmark             │
+└───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -312,6 +309,15 @@ results/
     │   ├── <sample_id>.amy1.tsv         # AMY1 (salivary amylase) copy number
     │   ├── <sample_id>.gst_null.tsv     # GSTM1 / GSTT1 null (homozygous deletion) status
     │   └── <sample_id>.lpa_kiv2.tsv     # LPA KIV-2 tandem-repeat copy number (Lp(a))
+    ├── alpha_globin/                    # M8 · alpha-globin (HBA1/HBA2)
+    │   ├── <sample_id>.alpha_globin.tsv # contract: dosage, deletion group, site genotypes
+    │   ├── <sample_id>.alpha_depth.tsv  # per-segment normalized depth
+    │   ├── <sample_id>.alpha_junction.tsv # alpha-cluster breakpoint search
+    │   └── <sample_id>.alpha_sites.tsv  # pinned pathogenic-site pileup
+    ├── qc/                              # published alignment QC (survives work-dir cleanup)
+    │   ├── <sample_id>.flagstat.txt     # mapping rate (true, measured pre-FILTER_CHROMS)
+    │   ├── <sample_id>.mosdepth.summary.txt
+    │   └── <sample_id>.insert_size_metrics.txt
     └── <sample_id>.truvari/             # GIAB benchmark (if --giab_truth set)
         └── summary.json
 ```
@@ -345,6 +351,7 @@ The HTML report includes:
 - **Tier 3** — all remaining SVs, top 10 shown; full list in XLS download
 - STR expansion loci with INREPEAT / NORMAL / INTERMEDIATE status
 - **Blood Group & Copy-Number Traits** card — Rh(D) factor (RHD copy number), AMY1 copies, GSTM1/GSTT1 null status, LPA KIV-2 copies
+- **Alpha-globin (HBA1/HBA2)** card — alpha-gene dosage (0–4), genotype, deletion group (e.g. `--SEA|--MED` when depth cannot separate the alleles), and panel-named pathogenic-site findings. Measurement only, no clinical call
 - GIAB benchmark precision/recall/F1 with per-size-bin breakdown (optional)
 
 ---
