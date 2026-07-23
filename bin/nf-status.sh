@@ -39,13 +39,29 @@
 #                  again — this is what stops stale failures re-alerting forever.
 #                  The file is refreshed on each run.
 #
-# Exit status: 0 always. Read the output; do not branch on $? — see above.
+# Exit status: 0 when it reported, 2 when it REFUSED to report (missing work
+# dir). Never branch on $? to infer run health — see above; a healthy run and a
+# dead one both exit 0. Only 2 is meaningful, and it means "ask me again with a
+# work dir that exists".
 set -uo pipefail
 
 PIDFILE="${1:?usage: nf-status.sh <pidfile> <workdir> [baseline] [runlog]}"
 WORKDIR="${2:?usage: nf-status.sh <pidfile> <workdir> [baseline] [runlog]}"
 BASELINE="${3:-}"
 RUNLOG="${4:-}"
+
+# ---- the work dir must actually exist -------------------------------------
+# A mistyped or stale work dir makes `find` print nothing, which reports
+# "tasks_completed=0 tasks_failed=0" — indistinguishable from a run that has
+# genuinely done nothing. That is a silent wrong answer, the exact class of bug
+# this script exists to prevent, and it bit us: `work_thal` vs `work_THAL`
+# reported a healthy 63-task run as zero of everything.
+if [ ! -d "$WORKDIR" ]; then
+    echo "ERROR: work dir '$WORKDIR' does not exist." >&2
+    echo "  Refusing to report task counts for a directory that is not there." >&2
+    echo "  Candidates here: $(ls -d "$(dirname "$WORKDIR")"/work_* 2>/dev/null | tr '\n' ' ')" >&2
+    exit 2
+fi
 
 # ---- liveness -------------------------------------------------------------
 if [ -r "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then

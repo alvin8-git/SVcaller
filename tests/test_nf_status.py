@@ -141,3 +141,31 @@ def test_script_does_not_use_pattern_matching_for_state():
         assert banned not in body, (
             f"nf-status.sh uses {banned}; liveness must be `kill -0` on a "
             "recorded pid, which cannot match the checking process itself")
+
+
+def test_missing_workdir_refuses_instead_of_reporting_zero(tmp_path):
+    """A mistyped work dir must NOT report `tasks_completed=0 tasks_failed=0`.
+
+    `find` on a nonexistent path prints nothing, so the counters stay at zero and
+    the output is indistinguishable from a run that has genuinely done nothing.
+    That happened for real: `work_thal` vs `work_THAL` reported a healthy 63-task
+    run as zero of everything, and it was believed for a moment. Worse, the
+    invocation went on to overwrite the failure baseline with an empty list, so
+    the next correct call re-alerted three already-known failures as new.
+
+    Refusing (exit 2, message on stderr) is the only safe answer.
+    """
+    dead = tmp_path / "dead.pid"
+    dead.write_text("999999")
+    baseline = tmp_path / "baseline"
+    baseline.write_text("preexisting\t1\n")
+    r = subprocess.run(
+        ["bash", SCRIPT, str(dead), str(tmp_path / "work_typo"), str(baseline)],
+        capture_output=True, text=True)
+    assert r.returncode == 2, f"expected refusal, got rc={r.returncode}"
+    assert "tasks_completed" not in r.stdout, \
+        "reported task counts for a work dir that does not exist"
+    assert "does not exist" in r.stderr
+    # and it must not have clobbered the baseline on its way out
+    assert baseline.read_text() == "preexisting\t1\n", \
+        "a refused call still overwrote the failure baseline"
