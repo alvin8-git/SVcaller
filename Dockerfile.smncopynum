@@ -1,8 +1,10 @@
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git samtools \
+        git samtools procps \
     && rm -rf /var/lib/apt/lists/*
+# procps provides `ps`, required by Nextflow to collect per-task metrics once
+# trace/report/timeline are enabled (nextflow.config), else the task fails.
 
 RUN git clone --branch v1.1 --depth 1 \
     https://github.com/Illumina/SMNCopyNumberCaller.git /opt/smn
