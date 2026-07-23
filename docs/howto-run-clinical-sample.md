@@ -5,7 +5,8 @@ Step-by-step guide for running a new patient sample through the SVcaller pipelin
 ## Prerequisites
 
 - Pre-aligned BAM file with a `.bai` index at the same path, **or** paired FASTQ files (R1/R2, gzipped)
-- Reference FASTA at `/path/to/ref/GRCh38/hg38.canonical.fa` (canonical chromosomes, chr1-22+X+Y+M), with its `.fai`, the **bwa-mem2** index (alignment), and the **classic** BWA index (`bwa index hg38.canonical.fa` → `.amb/.ann/.bwt/.pac/.sa`) that SvABA requires, all at the same prefix. Missing the classic index fails loud at startup; use `--skip_svaba true` to omit SvABA instead.
+- Reference FASTA at `/path/to/ref/GRCh38/hg38.canonical.fa` (canonical chromosomes, chr1-22+X+Y+M), with its `.fai` and the **bwa-mem2** index (alignment) at the same prefix.
+- The **classic** BWA index (`bwa index hg38.canonical.fa` → `.amb/.ann/.bwt/.pac/.sa`) is optional. SvABA is off by default (`--skip_svaba` defaults to `true`), so the classic index is only needed if you opt in with `--skip_svaba false`. Build it at the same prefix as the FASTA in that case.
 - PON at `/path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5`
 - AnnotSV database at `/path/to/ref/annotsv/Annotations_Human`
 - At least 500 GB free disk space for a 30× WGS sample

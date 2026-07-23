@@ -32,14 +32,15 @@ You need three things on disk before running:
 
 | File | Path | Notes |
 |------|------|-------|
-| GRCh38 canonical FASTA | `/path/to/ref/GRCh38/hg38.canonical.fa` | chr1-22+X+Y+M only; needs `.fai` + BWA-MEM2 index (for alignment) AND the classic BWA index (for SvABA), both at same prefix |
+| GRCh38 canonical FASTA | `/path/to/ref/GRCh38/hg38.canonical.fa` | chr1-22+X+Y+M only; needs `.fai` + BWA-MEM2 index (for alignment) at the same prefix. The classic BWA index is optional (SvABA only, off by default). |
 | Autosomal intervals BED | `/path/to/ref/GRCh38/wgs_autosomal.bed` | Used by GATK CNV |
 | GATK gCNV PON | `/path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5` | Built from 7 GIAB normals |
 
-Two BWA indexes live at the FASTA prefix and are **not** interchangeable: the bwa-mem2
-index (`.0123`, `.bwt.2bit.64`, …) drives alignment, while SvABA needs the **classic** BWA
-index (`.amb`, `.ann`, `.bwt`, `.pac`, `.sa`) which you build with `bwa index hg38.canonical.fa`.
-If it is missing the pipeline fails loud at startup (or run with `--skip_svaba` to omit SvABA).
+The bwa-mem2 index (`.0123`, `.bwt.2bit.64`, …) at the FASTA prefix drives alignment and is
+required. SvABA is off by default (`--skip_svaba` defaults to `true`), so its **classic** BWA
+index (`.amb`, `.ann`, `.bwt`, `.pac`, `.sa`) is optional. You only need it if you opt in with
+`--skip_svaba false`, in which case build it with `bwa index hg38.canonical.fa` at the same
+prefix. Note that the two index types are **not** interchangeable.
 
 **If these already exist, skip to Step 3.** If not, see [How to build a Panel of Normals](howto-build-pon.md) for the PON, and download the GRCh38 reference from NCBI/Ensembl.
 

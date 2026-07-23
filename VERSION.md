@@ -48,7 +48,7 @@
 - Docker biocontainer tags invalid; use `-profile local` (conda)
 - Conda env build requires python=3.9 (pywfa 0.5.1 not available for python≥3.10)
 - AnnotSV excluded from conda env (run via Docker or provide `--annotsv_db` separately)
-- samtools flagstat not yet wired (mapped_pct shows "N/A" in QC section)
+- samtools flagstat not yet wired (mapped_pct shows "N/A" in QC section) — resolved in v1.2.0
 
 ---
 
@@ -61,7 +61,7 @@
 ### New Callers
 - Scramble MEI caller (L1/ALU/SVA mobile element insertions)
 - MELT MEI caller (ALU/HERVK/LINE1/SVA; local build from MELTv2.2.2.tar.gz)
-- SvABA local-assembly caller (DEL/INV/BND from local read assembly)
+- SvABA local-assembly caller module added (DEL/INV/BND) but STAGED, NOT MERGED: `modules/jasmine/merge.nf` reads `vcfs[0..4]` and never `vcfs[5]`, so SvABA contributes nothing to the merged set. `skip_svaba` defaults to true as of v1.2.0. The ensemble is 5 callers, not 6.
 - STRling genome-wide STR scanner (complements ExpansionHunter's 32-locus catalog)
 - GRIDSS BND→SV converter (`bin/gridss_convert_bnd.py`): BND pairs auto-converted to typed DEL/DUP/INV before JASMINE merge
 
@@ -82,7 +82,7 @@
 - Novel STRling candidates suppressed from clinical table
 
 ### Performance
-- Canonical reference (`hg38.canonical.fa`) skips FILTER_CHROMS for FASTQ-derived BAMs (~25 min saved)
+- Canonical reference (`hg38.canonical.fa`) skips FILTER_CHROMS for FASTQ-derived BAMs (~70 min saved on a ~30x BAM; the step is awk-bound at ~19 MB/s and does not speed up with more cores)
 
 ### Containers
 | Tool | Image |
@@ -97,8 +97,44 @@
 | T2TQ100-V1.0 | 0.733 | 0.255 | 0.378 |
 | v5.0q | 0.738 | 0.259 | 0.383 |
 
-### Planned: v1.2.0
+> Caveat (added 2026-07-23): these numbers predate two caller fixes and are effectively a 4-caller result. SvABA was never merged, and MELT was silently failing on an invalid `-reads` flag until the v1.2.0 `-sr` fix, so only Manta + DELLY + GRIDSS + Scramble contributed. A re-benchmark with MELT is pending.
+
+---
+
+## v1.2.0 (in development — 2026-07-23)
+
+**Correctness and reporting pass.** Two callers that never actually ran were found and fixed or correctly labelled, the alpha-globin card reached the report, and QC was made reproducible.
+
+### Callers
+- MELT `-reads` flag fix: MELT v2.2.2 has no `-reads` option and was exiting non-zero on every ME type since 2026-06-05. Corrected to `-sr`. MELT now reaches the JASMINE merge for the first time. `--melt_min_reads` (default 3) maps to `-sr`; MELT's own `-sr` default is 0, so 3 is more stringent than stock MELT.
+- SvABA correctly labelled as staged-but-not-merged; `skip_svaba` now defaults to true. Re-enabling requires wiring `vcfs[5]` into `modules/jasmine/merge.nf` first, then a benchmarked HG002 comparison.
+- Documented ensemble is 5 callers (Manta + DELLY + GRIDSS core, Scramble + MELT optional). Guarded by `tests/test_ensemble_caller_count.py`.
+
+### Alpha-globin (M8)
+- `bin/hba_report.py` card wired into `subworkflows/report.nf` via the SMN pre-render pattern; it was written but never connected.
+- Card redesigned SMN-style: dosage + genotype headline, 3-row body (deletion / evidence / point-mutation scan), muted footer for the panel and scope. Site hits named from the panel (`HBA2:c.377` becomes "Hb Quong Sze"). Deletion alleles reported as a GROUP (`--SEA|--MED`) when depth cannot distinguish them. Measurements only, no clinical interpretation.
+
+### QC
+- samtools flagstat confirmed wired; it runs on the pre-FILTER_CHROMS BAM, so mapped% is the true alignment rate, not a post-filter 100%.
+- mosdepth summary, flagstat, and insert-size now publish to `results/<sample>/qc/`, so the report's QC section survives a work-dir cleanup.
+
+### Ops tooling
+- `bin/nf-run-headless.sh`: launches a run fully detached (`setsid`, no controlling TTY, records PID).
+- `bin/nf-status.sh`: liveness by `kill -0` on a recorded PID, per-task state from `.exitcode` files; refuses a work dir that does not exist instead of reporting a false zero.
+
+### Containers
+| Tool | Image |
+|------|-------|
+| Python utils / report | `svcaller/utils:1.3` (rebuilt with the wired alpha-globin card) |
+| MELT | `svcaller/melt:2.2.2` |
+| SMNCopyNumberCaller | `svcaller/smncopynum:1.1` |
+
+### Tests
+- 333 tests across 21 modules, ~5 s, no containers or network needed.
+
+### Planned (future)
 
 - Nanopore long-read support (Sniffles2 + CuteSV, minimap2 alignment)
-- CMRG benchmark — 273 clinically relevant genes
+- CMRG benchmark: 273 clinically relevant genes
 - Improved recall: low-QUAL Manta/Delly rescue, soft GRIDSS QUAL floor
+- Re-benchmark HG002 with MELT contributing (first true 5-caller F1)

@@ -1,5 +1,56 @@
 # Changes
 
+## 2026-07-23 — two callers that never ran, the alpha-globin card wired in, and QC made honest
+
+**MELT had never produced a merged call.** `modules/melt/call.nf` passed
+`-reads ${params.melt_min_reads}`. MELT v2.2.2 has no such option: it printed its
+usage text and exited non-zero for every ME type, on every sample, since the flag
+landed on 2026-06-05. The module's own guard correctly refused to publish an empty
+VCF as "no mobile element insertions", so the failure was loud, but nobody had read
+it. The run16 F1 baseline (2026-06-08) was measured while MELT was failing, so it
+was effectively a 4-caller result (Manta + DELLY + GRIDSS + Scramble), not the
+5-caller it was labelled. Fixed the flag to `-sr`; MELT now reaches the JASMINE
+merge for the first time. `tests/test_melt_flags.py` pins MELT's accepted flag set
+so this cannot recur. Also corrected the docs: MELT's own `-sr` default is 0 (no
+filtering), so `--melt_min_reads 3` is more stringent than stock MELT, the opposite
+of the old "default 5, lowered for recall" claim.
+
+**SvABA correctly labelled and switched off by default.** SvABA has never been
+merged (`modules/jasmine/merge.nf` reads `vcfs[0..4]` and never `vcfs[5]`), so it
+burned about 4 CPU-hours per sample producing nothing that reached the merge.
+`skip_svaba` now defaults to true. The report no longer names SvABA in its caller
+list; `tests/test_ensemble_caller_count.py` now scans the report template, not just
+the docs, so a stale "+ SvABA" cannot survive there again. Re-enabling needs
+`vcfs[5]` wired into the merge first, then a benchmarked HG002 comparison.
+
+**Alpha-globin card wired into the report and redesigned.** `bin/hba_report.py` had
+rendered a factual alpha-globin card for a while, but nothing connected it to
+`subworkflows/report.nf`, so a `--SEA` carrier's result existed only in
+`results/<sample>/alpha_globin/<sample>.alpha_globin.tsv` and was invisible in the
+HTML. Wired it using the same pre-render pattern as SMN. Then rebuilt the card
+SMN-style: a headline (alpha-gene dosage plus genotype in plain terms), a 3-row body
+(deletion / evidence / point-mutation scan), and a muted footer for the panel, its
+version, and what was NOT examined. Site hits are named from the panel
+(`HBA2:c.377` becomes "Hb Quong Sze") instead of shown as coordinates. Deletion
+alleles are reported as a GROUP (`--SEA|--MED`) when depth cannot distinguish them.
+The card reports measurements only and makes no clinical call.
+
+**QC published and confirmed honest.** mosdepth summary, flagstat, and insert-size
+now publish to `results/<sample>/qc/`, so the report's QC section is reproducible
+after a work-dir cleanup (Rule 5). flagstat runs on `ch_final_bam`, which for BAM
+inputs is the pre-FILTER_CHROMS input, so mapped% is the true alignment rate
+measured against the reads as aligned to full hg38, not a post-filter 100%. A
+comment in `subworkflows/preprocess.nf` records that this ordering is deliberate.
+
+**Ops tooling.** `bin/nf-run-headless.sh` launches a run fully detached (`setsid`,
+no controlling TTY, records the PID). `bin/nf-status.sh` reports liveness by
+`kill -0` on the recorded PID and per-task state from `.exitcode` files, and refuses
+a work dir that does not exist rather than reporting a false zero. Both are guarded
+by `tests/test_nf_status.py`. FILTER_CHROMS was also measured properly: about 70 min
+for a 79 GB BAM at 19 MB/s, awk-bound on one core, so `--max_cpus` does not help it.
+
+Suite grew to 333 tests across 21 modules.
+
 ## 2026-07-22 (later) — the contract was wrong three ways; unfrozen and fixed
 
 **Problem.** Three defects in `docs/contracts/alpha_globin_contract.md`, all

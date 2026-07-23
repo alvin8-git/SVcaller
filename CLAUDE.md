@@ -136,7 +136,7 @@ pytest tests/test_cnv_consensus.py
 pytest tests/test_cnv_consensus.py::test_reciprocal_overlap
 ```
 
-307 tests, ~4 s — no containers or network needed, so run them on every `bin/` edit. (The README's "25 passing" badge is stale, and this count was itself stale at 79 until 2026-07-22.) A handful skip themselves when `samtools` is not on PATH. The scripts themselves execute inside the `svcaller/utils:1.3` container during a pipeline run.
+333 tests, ~5 s — no containers or network needed, so run them on every `bin/` edit. (The README's "25 passing" badge is stale, and this count was itself stale at 79 until 2026-07-22, then 307 until 2026-07-23.) A handful skip themselves when `samtools` is not on PATH. The scripts themselves execute inside the `svcaller/utils:1.3` container during a pipeline run.
 
 ## Samplesheet Format
 
@@ -154,7 +154,7 @@ HG003,,,/path/HG003.bam
 main.nf                          # Entry: parse samplesheet, set up channels, call SVCALLER
 └── workflows/svcaller.nf        # Top-level orchestration
     ├── subworkflows/preprocess.nf   # M1: BWA-MEM2 align → SAMTOOLS_SORT → Picard MarkDup → Mosdepth QC
-    ├── subworkflows/sv_calling.nf   # M2: Manta + Delly + GRIDSS + Scramble + MELT + SvABA (parallel) → Jasmine merge → TRA_CONSENSUS; ExpansionHunter + STRling (STRs)
+    ├── subworkflows/sv_calling.nf   # M2: Manta + Delly + GRIDSS + Scramble + MELT (parallel, 5-caller) → Jasmine merge → TRA_CONSENSUS; SvABA staged but NOT merged; ExpansionHunter + STRling (STRs)
     ├── subworkflows/cnv_calling.nf  # M3: CNVpytor + GATK gCNV → cnv_consensus.py (reciprocal overlap merge)
     ├── subworkflows/cnv_traits.nf   # M3b: targeted depth → Rh (RHD) / AMY1 / GSTM1-GSTT1-null / Lp(a) KIV-2 copy-number traits
     ├── subworkflows/smn_calling.nf  # M4: SMNCopyNumberCaller
@@ -171,7 +171,7 @@ Long-form how-to guides live in `docs/` (`howto-run-clinical-sample.md`, `howto-
 **Key design points:**
 - M2, M3, M4 run in parallel on the same BAM channel after preprocessing. M3b (CNV_TRAITS) consumes the BAM plus `CNV_CALLING.out.cnv_bed`, so it runs after M3.
 - M3 case mode runs `GATK_PREPROCESS_INTERVALS` (bin-length 1000) before `CollectReadCounts` — must match PON build intervals.
-- SV merge (Jasmine) requires Manta+Delly+GRIDSS to succeed; Scramble and MELT are optional (only added to vcf_list.txt if they have calls). **SvABA is currently staged but not merged** — `sv_calling.nf` passes 6 VCFs to `JASMINE_MERGE`, but `modules/jasmine/merge.nf` only decompresses `vcfs[0..4]` and builds `vcf_list.txt` from those, so `vcfs[5]` (SvABA) never reaches Jasmine. Despite `--skip_svaba` defaulting to false, the ensemble is effectively 5 callers. Fix by extending the merge script before trusting any "6-caller" claim in the README or the F1 table below.
+- SV merge (Jasmine) requires Manta+Delly+GRIDSS to succeed; Scramble and MELT are optional (only added to vcf_list.txt if they have calls). **SvABA is currently staged but not merged** — `sv_calling.nf` passes 6 VCFs to `JASMINE_MERGE`, but `modules/jasmine/merge.nf` only decompresses `vcfs[0..4]` and builds `vcf_list.txt` from those, so `vcfs[5]` (SvABA) never reaches Jasmine. `--skip_svaba` defaults to **true** (flipped 2026-07-22), so SvABA does not run at all; the ensemble is 5 callers (Manta + Delly + GRIDSS + Scramble + MELT). Re-enabling SvABA means extending the merge script to read `vcfs[5]` first, then re-benchmarking.
 - `TRA_CONSENSUS` (`bin/tra_consensus.py`) runs after Jasmine: Jasmine does not co-cluster interchromosomal breakends, so every translocation lands at SUPP=1 and the SUPP≥2 gate erased all of them (0/26 on COLO829). This step re-clusters TRA by breakend proximity (`--tra_window`, default 1000 bp) across callers and recomputes SUPP/SUPP_VEC → 24/26 recall on COLO829. It (not JASMINE_MERGE) publishes the final `sv_merged.vcf.gz`. GRIDSS still drops inter-chr pairs in `gridss_convert_bnd.py`, so it contributes no TRA vote yet (the 2 missed are Delly-only).
 - CNV consensus (`bin/cnv_consensus.py`) uses reciprocal overlap ≥0.5 to call `BOTH`/`HIGH` calls; GATK-only calls with quality ≥30 are included as `MEDIUM`.
 - Mosdepth halts the pipeline if coverage < `params.min_depth` (default 25). MELT also reuses `min_depth` as its `-c` coverage argument.
@@ -211,7 +211,7 @@ All run inside `svcaller/utils:1.3` (`params.utils_container`). Each is a standa
 | `hba_junction.py` | M8 ch3: split-read + discordant-pair alpha-cluster breakpoint search; calls zygosity from allele balance |
 | `hba_sites.py` | M8 ch4: targeted pileup at `hba_pathogenic_sites.tsv`; copy-number-aware zygosity |
 | `alpha_globin.py` | M8 ch2 + integrator: names deletion alleles (as GROUPS) and emits the `alpha_globin.tsv` contract |
-| `hba_report.py` | M8: thin, factual alpha-globin HTML card (not wired into `report.nf` yet) |
+| `hba_report.py` | M8: thin, factual alpha-globin HTML card, wired into `report.nf` (2026-07-23) via the same pre-render pattern as SMN. Succinct SMN-style card; names site hits from the panel (`HBA2:c.377` → "Hb Quong Sze"); reports measurements only |
 | `make_globin_panels.py` | Regenerate the HBA/HBB pathogenic-site panels (generator — never hand-edit the assets) |
 | `make_hba_deletion_alleles.py` | Regenerate `hba_segments.bed` + `hba_deletion_alleles.tsv` |
 | `hgvs_map.py` | HGVS `c.` → GRCh38 coordinate, with self-test |
@@ -345,8 +345,12 @@ must not name SvABA.
 
 ## Current F1 Baseline (2026-06-08, run16, GRIDSS BND→SV fix)
 
-> Run16 was *labelled* "6-caller … +SvABA" at the time. That label was wrong;
-> SvABA contributed nothing to these numbers. They are a 5-caller result.
+> Run16 was *labelled* "6-caller … +SvABA" at the time. That label was wrong on
+> BOTH counts. SvABA has never been merged, and MELT was silently failing on an
+> invalid `-reads` flag from 2026-06-05 until the `-sr` fix on 2026-07-23. So
+> these numbers are effectively a **4-caller** result: Manta + DELLY + GRIDSS +
+> Scramble. A re-benchmark with MELT actually contributing is pending; do not
+> quote these as a 5-caller F1 until that run exists.
 
 | Benchmark | F1 | Precision | Recall | TP-base | FP | comp cnt |
 |---|---|---|---|---|---|---|
@@ -387,7 +391,7 @@ validation/giab_samplesheet.csv
 | `--tiered_gridss` | false | Run GRIDSS only over Manta non-PASS regions — faster, but serial after Manta |
 | `--skip_scramble` | false | Skip Scramble MEI calling (~10 min) |
 | `--skip_melt` | false | Skip MELT MEI calling (saves ~2h; use when MELT container unavailable) |
-| `--skip_svaba` | false | Skip SvABA local-assembly caller |
+| `--skip_svaba` | true | Skip SvABA local-assembly caller. Defaults true because SvABA is staged but never merged (`vcfs[5]` unwired); running it costs ~4 CPU-h/sample for nothing |
 | `--skip_strling` | false | Skip STRling genome-wide STR scanning |
 | `--skip_alpha_globin` | false | Skip M8 alpha-globin measurement (targeted; minutes, not hours) |
 | `--hba_region` | `chr16:1-250000` | Window channel 3 scans for alpha-cluster junctions |

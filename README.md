@@ -3,7 +3,7 @@
 [![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A525.10.4-23aa62.svg)](https://www.nextflow.io/)
 [![Docker](https://img.shields.io/badge/docker-enabled-2496ED.svg?logo=docker)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/python-3.11-3776AB.svg?logo=python)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-25%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-333%20passing-brightgreen.svg)](#testing)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **A production-ready Nextflow DSL2 pipeline for calling structural variants (SVs), copy number variants (CNVs), and SMN1/SMN2 copy numbers from Illumina paired-end WGS data (PE150, ≥30×).**
@@ -359,7 +359,7 @@ bash validation/giab_benchmark.sh \
     results/HG002/HG002.sv_merged.vcf.gz
 ```
 
-**Current benchmark on HG002 (5-caller ensemble — Manta + Delly + GRIDSS + Scramble + MELT, run16; GRIDSS BND→SV fix). SvABA was never merged, so it contributed nothing to these numbers:**
+**Current benchmark on HG002 (run16, 2026-06-08; GRIDSS BND→SV fix).** These numbers predate two caller fixes and are effectively a **4-caller** result. SvABA was never merged (`vcfs[5]` is unwired in `modules/jasmine/merge.nf`), and MELT was silently failing on an invalid `-reads` flag from 2026-06-05 until the `-sr` fix on 2026-07-23, so only Manta + DELLY + GRIDSS + Scramble contributed. Keep this in mind before quoting it as a 5-caller F1; a re-benchmark with MELT contributing is pending:
 
 | Benchmark | Precision | Recall | F1 | TP-base | FP |
 |-----------|-----------|--------|-----|---------|-----|

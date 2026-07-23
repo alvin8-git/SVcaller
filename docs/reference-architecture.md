@@ -40,6 +40,8 @@ M2, M3, and M4 run in parallel on the preprocessed BAM channel. M5 and M6/M7 run
 
 **Outputs emitted:** `ch_final_bam`, `ch_markdup_metrics`, `ch_coverage` (summary TXT), `ch_depth_bed` (50 kb BED), `ch_flagstat`, `ch_insert_size`, `ch_multiqc_files`.
 
+The mosdepth summary, flagstat, and insert-size metrics publish to `results/<sample>/qc/`, so the report's QC section is reproducible after a work-dir cleanup.
+
 ## M2: SV Calling (`subworkflows/sv_calling.nf`)
 
 **Purpose:** Call structural variants using complementary callers and merge into a single VCF.
@@ -59,15 +61,24 @@ Before any caller runs, `VALIDATE_REF_BAM` (`modules/samtools/validate_ref_bam.n
 | MELT | `modules/melt/call.nf` | MEI (ALU, HERVK, LINE1, SVA) | svcaller/melt:2.2.2 (local build) |
 | SvABA | `modules/svaba/call.nf` | DEL, DUP, INV, INS (local assembly) | quay.io/biocontainers/svaba:1.2.0 |
 
-**SvABA** performs local assembly and calls `bwa_idx_load_from_disk` internally, so it
-requires the **classic** BWA index (`ref_fasta.{amb,ann,bwt,pac,sa}`) staged next to the
-reference — a *different* format from the bwa-mem2 alignment index (`.0123`/`.bwt.2bit.64`),
-not interchangeable. `SVABA_CALL` declares `path bwa_index`; the index is threaded from
-`main.nf` (`ch_bwa_index`, prefix `--bwa_index`, default `ref_fasta`) through
-`subworkflows/sv_calling.nf` so Nextflow symlinks all five files into the task work dir.
-Unless `--skip_svaba` is set, `main.nf` fails loud if the index is absent, pointing the
-operator at `bwa index <ref>`. Historically these files were never staged and a
-`2>&1 || true` masked the resulting crash, so SvABA silently produced nothing (see
+**SvABA is off by default and is not part of the ensemble.** `skip_svaba` defaults to
+`true` in `nextflow.config`, so SvABA does not run unless a user opts in with
+`--skip_svaba false`. Even when it runs, its VCF never reaches the merge: `JASMINE_MERGE`
+(`modules/jasmine/merge.nf`) decompresses and lists only `vcfs[0..4]` (Manta, Delly,
+GRIDSS, Scramble, MELT) and never references `vcfs[5]`, so the staged SvABA VCF sits in
+the task work dir and is ignored. Re-enabling it means wiring `vcfs[5]` into `vcf_list.txt`
+first; flipping `--skip_svaba false` alone changes only the runtime, not the callset. The
+ensemble is 5 callers.
+
+When a user does opt in, SvABA performs local assembly and calls `bwa_idx_load_from_disk`
+internally, so it requires the **classic** BWA index (`ref_fasta.{amb,ann,bwt,pac,sa}`)
+staged next to the reference — a *different* format from the bwa-mem2 alignment index
+(`.0123`/`.bwt.2bit.64`), not interchangeable. `SVABA_CALL` declares `path bwa_index`; the
+index is threaded from `main.nf` (`ch_bwa_index`, prefix `--bwa_index`, default
+`ref_fasta`) through `subworkflows/sv_calling.nf` so Nextflow symlinks all five files into
+the task work dir. The fail-loud on a missing index therefore triggers only when a user
+sets `--skip_svaba false`, pointing the operator at `bwa index <ref>`. Historically these
+files were never staged and a `2>&1 || true` masked the resulting crash (see
 [CHANGES.md](CHANGES.md), 2026-07-15).
 
 **Delly** outputs BCF binary even with `.vcf` extension. `DELLY_MERGE` uses `bcftools concat | bcftools sort` (inside the GATK container which includes bcftools 1.13) to convert and sort.

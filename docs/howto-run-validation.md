@@ -44,7 +44,7 @@ Run the full SV/CNV pipeline on HG002 and benchmark against the GIAB truth set t
    Monitor progress in another terminal: `tail -f /path/to/tmp/run.log`
 
 3. Wait for completion. Typical runtimes:
-   - M1 Preprocessing (incl. FILTER_CHROMS for BAM input): ~25-35 min
+   - M1 Preprocessing, BAM input: ~70 min for FILTER_CHROMS on a ~79 GB (~30x) BAM. FILTER_CHROMS is awk-bound at ~19 MB/s on a single core, so more cores do not speed it up. FASTQ inputs skip FILTER_CHROMS entirely when you use `hg38.canonical.fa`, so M1 is dominated by alignment instead.
    - M2 SV Calling (Manta + Delly + GRIDSS full mode): ~6-7 h
    - M2 with `--skip_gridss true`: ~45 min
    - Full pipeline: ~8-9 h (with GRIDSS), ~2 h (without)

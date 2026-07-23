@@ -32,7 +32,7 @@ The pipeline itself. Nothing here is machine-generated.
 
 | Path | Size | Contents |
 |---|---|---|
-| `tests/` | 228 KB | 9 pytest modules, 79 tests, ~0.5 s, no containers needed |
+| `tests/` | 228 KB | 21 pytest modules, 333 tests, no containers needed |
 
 ### C. Run definitions — tracked, small, but they encode absolute paths
 

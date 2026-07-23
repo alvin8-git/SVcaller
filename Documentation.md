@@ -30,7 +30,7 @@
 
 | | SVcaller | nf-core/sarek | DRAGEN (Illumina) | Manual (per-caller) |
 |---|---|---|---|---|
-| **SV calling** | 3-caller ensemble (Manta + Delly + GRIDSS) | Manta only (default) | Proprietary SVs | User-defined |
+| **SV calling** | 5-caller ensemble (Manta + Delly + GRIDSS core; Scramble + MELT optional) | Manta only (default) | Proprietary SVs | User-defined |
 | **CNV calling** | Dual method (CNVpytor + GATK gCNV PON) | GATK gCNV or Control-FREEC | DRAGEN CNV | User-defined |
 | **STR genotyping** | ExpansionHunter (catalog-based) | — | ExpansionHunter | User-defined |
 | **SMN1/SMN2 CN** | SMNCopyNumberCaller (built-in) | — | — | Separate tool, manual |
@@ -49,7 +49,7 @@
 
 | Strength | Detail |
 |---|---|
-| **Higher SV sensitivity** | Three independent callers (split-read, paired-end, assembly) catch different SV classes; Jasmine inner-join merge reduces false positives while retaining multi-evidence calls |
+| **Higher SV sensitivity** | Five callers cover complementary SV classes: Manta, Delly, and GRIDSS form the core (split-read, paired-end, assembly), and Scramble and MELT add mobile-element insertions. Jasmine merge retains multi-evidence calls while dropping single-caller noise |
 | **SMN1/SMN2 built-in** | Most pipelines omit SMN copy number entirely; SVcaller integrates it for SMA diagnostics without a separate workflow |
 | **Clinically oriented annotation** | AnnotSV adds OMIM, ClinVar, DGV, ACMG pathogenicity fields directly to the SV VCF — essential for diagnostic interpretation |
 | **Integrated benchmarking** | Truvari against GIAB truth sets with five size-bin breakdowns (50–300 bp, 300 bp–1 kb, 1–10 kb, >10 kb, overall) is automatic when `--giab_truth` is provided |
@@ -85,7 +85,7 @@ Have <30× coverage or WES data?              →  nf-core/sarek or CNVKit
 
 ## 2. Overview
 
-SVcaller is a Nextflow DSL2 pipeline for comprehensive short-read whole-genome sequencing (WGS) variant calling focused on structural variants (SVs), copy-number variants (CNVs), short tandem repeats (STRs), and SMN1/SMN2 copy number — all from a single GRCh38-aligned dataset at ≥30× coverage. The pipeline accepts either paired-end FASTQ files or pre-aligned BAM files per sample (mixed within the same run), performs alignment and duplicate marking, then fans out into three parallel variant-calling arms (M2: SVs + STRs, M3: CNVs, M4: SMN). SV calls from three independent callers (Manta, Delly, GRIDSS) are merged using Jasmine with an inner-join requirement — every sample must successfully complete all three callers before the merged VCF is emitted, providing fail-fast behavior on caller errors. CNV calls from two complementary methods (CNVpytor read-depth and GATK gCNV PON-based) are reconciled by a custom reciprocal-overlap merge script. Merged SV calls are annotated with AnnotSV and optionally benchmarked against GIAB truth sets using Truvari across five size bins. A per-sample HTML report integrating all variant types, QC metrics, a genome-wide circos plot, and optional benchmark statistics is produced for each sample.
+SVcaller is a Nextflow DSL2 pipeline for comprehensive short-read whole-genome sequencing (WGS) variant calling focused on structural variants (SVs), copy-number variants (CNVs), short tandem repeats (STRs), and SMN1/SMN2 copy number — all from a single GRCh38-aligned dataset at ≥30× coverage. The pipeline accepts either paired-end FASTQ files or pre-aligned BAM files per sample (mixed within the same run), performs alignment and duplicate marking, then fans out into three parallel variant-calling arms (M2: SVs + STRs, M3: CNVs, M4: SMN). SV calls come from a five-caller ensemble: Manta, Delly, and GRIDSS form the core, and Scramble and MELT add mobile-element insertions when they have calls. Jasmine merges them. The three core callers must all complete before the merged VCF is emitted, giving fail-fast behavior on caller errors. SvABA is present in the code but off by default (`skip_svaba=true`) and is not merged into the ensemble. CNV calls from two complementary methods (CNVpytor read-depth and GATK gCNV PON-based) are reconciled by a custom reciprocal-overlap merge script. Merged SV calls are annotated with AnnotSV and optionally benchmarked against GIAB truth sets using Truvari across five size bins. A per-sample HTML report integrating all variant types, QC metrics, a genome-wide circos plot, and optional benchmark statistics is produced for each sample.
 
 **Pipeline architecture:**
 
@@ -93,7 +93,7 @@ SVcaller is a Nextflow DSL2 pipeline for comprehensive short-read whole-genome s
 main.nf
 └── workflows/svcaller.nf
     ├── subworkflows/preprocess.nf      M1: FastQC → BWA-MEM2 → SAMTOOLS_SORT → Picard MarkDup → Mosdepth
-    ├── subworkflows/sv_calling.nf      M2: Manta + Delly + GRIDSS (parallel) → Jasmine; ExpansionHunter
+    ├── subworkflows/sv_calling.nf      M2: Manta + Delly + GRIDSS core + Scramble + MELT (parallel) → Jasmine; ExpansionHunter
     ├── subworkflows/cnv_calling.nf     M3: CNVpytor + GATK gCNV → cnv_consensus.py
     ├── subworkflows/smn_calling.nf     M4: SMNCopyNumberCaller
     ├── subworkflows/annotate.nf        M5: AnnotSV → gnomAD SV filter
@@ -105,7 +105,7 @@ main.nf
 - M2, M3, and M4 run in parallel on the same deduplicated BAM channel, maximising throughput on multi-core systems.
 - Reference files (FASTA, FAI, dict, intervals) are propagated as `Channel.value()` — not queue channels — so all samples in a batch share them without channel exhaustion.
 - Optional inputs (PON, intervals, AnnotSV DB, GIAB truth) use sentinel file patterns (`NO_PON`, `NO_INTERVALS`, `NO_ANNOTSV`) rather than conditional branching, keeping the workflow topology uniform.
-- All containers are verified quay.io biocontainer tags; the custom Python scripts run inside `svcaller/utils:1.0`.
+- All containers are verified quay.io biocontainer tags; the custom Python scripts run inside `svcaller/utils:1.3`.
 
 ---
 
@@ -190,7 +190,7 @@ Mosdepth is the fastest BAM-based depth calculator available for short reads. Th
 
 **Why Mosdepth over samtools depth:** mosdepth produces a compact summary in seconds; `samtools depth` emits per-base output which is hundreds of times larger and slower to parse for a WGS BAM.
 
-**Limitation:** `samtools flagstat` is not wired into the pipeline, so the mapping rate percentage shows "N/A" in the HTML QC section. Coverage depth (mosdepth) and duplication rate (Picard) are reported.
+**QC outputs:** `samtools flagstat` is wired and reports the mapping rate. mapped% is measured pre-filter (on `ch_final_bam`, which for BAM inputs is the input BAM before FILTER_CHROMS runs), so it is the true alignment rate, not a post-filter 100%. Mosdepth summary, flagstat, and Picard insert-size metrics all publish to `results/<sample>/qc/`, so the report's QC section is reproducible after a work-dir cleanup.
 
 ---
 
@@ -237,7 +237,7 @@ Aggregates all 7 per-sample HDF5 count files with GATK `CreateReadCountPanelOfNo
 
 **Subworkflow:** `subworkflows/sv_calling.nf`
 
-Three SV callers run in parallel on the deduplicated BAM, covering complementary algorithmic approaches and SV types. ExpansionHunter runs in parallel for STR genotyping. All three structural callers must complete successfully before Jasmine merge (inner join, fail-fast semantics).
+Five SV callers run in parallel on the deduplicated BAM. Manta, Delly, and GRIDSS are the core, covering complementary algorithmic approaches and SV types; Scramble and MELT add mobile-element insertions and join the merge only when they have calls. ExpansionHunter runs in parallel for STR genotyping. The three core callers must all complete successfully before Jasmine merge (inner join, fail-fast semantics). SvABA is present in the code but off by default (`skip_svaba=true`) and is not merged into the ensemble.
 
 ### 4.1 Manta
 
@@ -296,14 +296,14 @@ GRIDSS provides the assembly-based layer that split-read callers miss, particula
 | Aspect | Detail |
 |---|---|
 | Module | `modules/jasmine/merge.nf` |
-| Input | List of three per-caller VCFs per sample (Manta, Delly, GRIDSS) |
+| Input | Per-caller VCFs per sample: Manta, Delly, GRIDSS (core, always) plus Scramble and MELT when they have calls |
 | Output | Merged, deduplicated VCF with caller-support annotations |
-| Merge criterion | `min_support=2` (SV must be supported by at least 2 of 3 callers) |
-| Join semantics | Inner join — all three callers must succeed for a sample to reach this step |
+| Merge criterion | Jasmine runs at `min_support=1`; consensus gating is applied downstream (single-caller DUP/INV excluded, single-caller large SVs >10 kb and GRIDSS-only translocations rescued) |
+| Join semantics | Inner join: the three core callers (Manta, Delly, GRIDSS) must all succeed for a sample to reach this step |
 
-Jasmine (Jackpot-Aware SV Merger) clusters SVs from multiple callers by breakpoint proximity and reciprocal overlap, then generates a consensus call with caller-support annotations. Setting `min_support=2` retains calls seen by at least two callers, reducing single-caller false positives while preserving sensitivity.
+Jasmine (Jackpot-Aware SV Merger) clusters SVs from multiple callers by breakpoint proximity and reciprocal overlap, then generates a consensus call with caller-support annotations (SUPP, SUPP_VEC). It runs at `min_support=1`, so every clustered record is kept and annotated; the SUPP-based gating happens downstream, where single-caller DUP/INV are dropped while single-caller large SVs (>10 kb) and GRIDSS-only translocations are rescued. `TRA_CONSENSUS` re-clusters interchromosomal breakends after Jasmine, which does not co-cluster them.
 
-The inner-join channel pattern (`MANTA_CALL.out.vcf.join(DELLY_CALL.out.vcf).join(GRIDSS_CALL.out.vcf)`) means that if any single caller fails for a sample, that sample drops out of the merge channel and the pipeline fails fast — preventing silent partial calls from propagating to downstream steps.
+The inner-join channel pattern (`MANTA_CALL.out.vcf.join(DELLY_CALL.out.vcf).join(GRIDSS_CALL.out.vcf)`) means that if any core caller fails for a sample, that sample drops out of the merge channel and the pipeline fails fast, preventing silent partial calls from propagating to downstream steps.
 
 ### 5.5 ExpansionHunter (STRs)
 
@@ -529,13 +529,14 @@ Both JSONs are wired to the HTML report, presenting separate benchmark tables fo
 **Script:** `bin/html_report.py`  
 **Process:** `BUILD_HTML_REPORT` in `report.nf`
 
-The report joins nine input channels per sample using Nextflow's `remainder: true` join with `?: file("NO_FILE")` fallback for optional inputs:
+The report joins its input channels per sample using Nextflow's `remainder: true` join with `?: file("NO_FILE")` fallback for optional inputs:
 
 | Input | Source | HTML section |
 |---|---|---|
 | `sv_tsv` | AnnotSV filtered TSV | SV summary table + top SVs |
 | `cnv_bed` | CNV consensus BED | CNV section |
 | `smn_tsv` | SMNCopyNumberCaller TSV | SMN section (rendered by `smn_report.py`) |
+| `alpha_globin` | M8 `alpha_globin.tsv` contract | Alpha-globin (HBA1/HBA2) card (rendered by `hba_report.py`) |
 | `circos_svg` | pycirclize SVG | Genome-wide circos (inline SVG) |
 | `benchmark_json` | Truvari overall JSON | Benchmark table (if truth provided) |
 | `sizebin_json` | Truvari size-bin JSON | Size-bin benchmark table |
@@ -543,7 +544,7 @@ The report joins nine input channels per sample using Nextflow's `remainder: tru
 | `picard_metrics` | Picard MarkDup metrics | QC section: duplication rate |
 | `str_vcf` | ExpansionHunter VCF | STR loci section |
 
-The `smn_report.py` script runs first within the `BUILD_HTML_REPORT` process to generate an HTML fragment for the SMN section, which is then embedded into the full report by `html_report.py` using a Jinja2 template.
+The `smn_report.py` script runs first within the `BUILD_HTML_REPORT` process to generate an HTML fragment for the SMN section, which is then embedded into the full report by `html_report.py` using a Jinja2 template. `hba_report.py` runs the same way to pre-render the alpha-globin (HBA1/HBA2) card from the M8 `alpha_globin.tsv` contract. The card mirrors the SMN card: a headline (alpha-gene dosage plus genotype in plain terms), a 3-row body (deletion / evidence / point-mutation scan), and a muted footer naming the site panel, its version, and what was not examined. It reports the measurement only; clinical interpretation lives downstream.
 
 The final per-sample `<sample>.report.html` is a self-contained file with all content (including the circos SVG) inlined — no external assets required for viewing.
 
@@ -571,9 +572,9 @@ In Nextflow DSL2, a `Channel.fromPath()` channel (queue channel) is consumed aft
 
 AnnotSV requires complex Perl dependencies and is not available in the conda environment. It runs exclusively via Docker (`quay.io/biocontainers/annotsv:3.4.6--py313hdfd78af_0`). When `--annotsv_db` is not provided, the ANNOTSV process emits an empty TSV (correct column headers, no data rows) so downstream processes do not fail.
 
-### 9.5 samtools flagstat Not Wired
+### 9.5 samtools flagstat Wired; QC Published (resolved)
 
-The mapping rate percentage (`mapped_pct`) shows "N/A" in the HTML report QC section because `samtools flagstat` is not run as a pipeline step. Coverage depth comes from mosdepth and duplication rate from Picard. Adding a SAMTOOLS_FLAGSTAT module and wiring its output to the report would resolve this.
+`samtools flagstat` runs as the `SAMTOOLS_FLAGSTAT` process (`modules/samtools/flagstat.nf`) on `ch_final_bam`. `_parse_flagstat` in `bin/html_report.py` parses `mapped_pct` and `dup_rate`, both shown in the HTML QC section. For BAM inputs, `ch_final_bam` is the input BAM before FILTER_CHROMS runs, so mapped% is the true alignment rate measured against the reads as aligned, not a post-filter 100%. Mosdepth summary, flagstat, and Picard insert-size metrics publish to `results/<sample>/qc/`, so the QC section is reproducible after a work-dir cleanup. This is no longer a limitation.
 
 ### 9.6 Jasmine Inner-Join Fail-Fast
 
@@ -632,7 +633,7 @@ SVcaller is appropriate when:
 | `--eh_catalog` | required | ExpansionHunter repeat catalog JSON |
 | `--min_depth` | 30 | Minimum mean coverage; pipeline halts below this threshold |
 | `--outdir` | `results` | Output directory |
-| `--utils_container` | `svcaller/utils:1.0` | Docker image for Python bin/ scripts |
+| `--utils_container` | `svcaller/utils:1.3` | Docker image for Python bin/ scripts |
 | `-profile docker` | — | Use Docker for all containers (recommended; all tags verified) |
 | `-resume` | — | Resume from last successful checkpoint |
 

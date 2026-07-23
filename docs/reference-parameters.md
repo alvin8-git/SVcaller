@@ -29,6 +29,8 @@ Complete reference for all CLI parameters, samplesheet columns, and output files
 | `--skip_gridss` | Boolean | false | Skip GRIDSS (saves 4-6 h and 60 GB RAM). Manta + Delly + Scramble still run. Use for SMN validation runs or resource-constrained environments. |
 | `--skip_melt` | Boolean | false | Skip MELT MEI calling (saves ~2 h). Use when the `svcaller/melt:2.2.2` container is unavailable or when mobile element insertions are not clinically relevant. |
 | `--tiered_gridss` | Boolean | false | Run GRIDSS only on Manta residual regions (smaller input → ~2.5 h, 40 GB). Reduces sensitivity for complex rearrangements in non-Manta regions. |
+| `--skip_svaba` | Boolean | true | Off by default. SvABA is staged but not part of the ensemble: `JASMINE_MERGE` lists only `vcfs[0..4]` and never references SvABA's VCF, so even with `--skip_svaba false` its calls do not reach the merge (only the runtime changes). Re-enabling means wiring `vcfs[5]` into `vcf_list.txt` first. Opting in also requires the classic BWA index (`--bwa_index`); `main.nf` fails loud if it is absent. |
+| `--melt_min_reads` | Integer | 3 | Passed as MELT's `-sr` flag: minimum split-read support to keep a call. MELT's own `-sr` default is `0` (no filtering), so `3` is **more** stringent than stock MELT. Set `0` to maximise recall. |
 | `--sv_pon` | Path | null | GIAB 7-sample SV Panel of Normals BED. SVs matching population variants in the PON are flagged as `COMMON_SV` in the report. Use `pon/sv_pon/giab_sv_pon.bed`. |
 | `--giab_truth_v5q` | Path | null | GIAB v5.0q truth VCF.gz. Enables a second Truvari benchmark pass alongside `--giab_truth` (T2TQ100-V1.0). |
 | `--melt_refs` | Path | null | Path to MELT `me_refs/` directory. Auto-detected from the container at `/opt/melt/me_refs` if unset. Only needed when running MELT outside Docker. |
@@ -61,7 +63,7 @@ All outputs land in `{outdir}/{sample}/`:
 | File | Description |
 |------|-------------|
 | `{sample}.report.html` | Per-sample clinical HTML report. Contains QC metrics, SV summary, Circos plot, top annotated SVs, SMN copy number, STR loci, and optionally GIAB benchmark results. |
-| `{sample}.sv_merged.vcf.gz` | Merged SV calls from Manta + Delly + GRIDSS + Scramble (Jasmine merge). Tabix-indexed. |
+| `{sample}.sv_merged.vcf.gz` | Merged SV calls from the 5-caller ensemble: Manta + Delly + GRIDSS (core) plus Scramble + MELT (added only when each has calls), via Jasmine merge. Tabix-indexed. |
 | `{sample}.sv_merged.vcf.gz.tbi` | Tabix index for the merged VCF. |
 | `{sample}.filtered.tsv` | AnnotSV-annotated SV table after gnomAD SV frequency filter. Tab-separated, with ACMG classification and gene annotations. |
 | `{sample}.cnv_consensus.bed` | Consensus CNV calls from CNVpytor + GATK gCNV. Columns: chrom, start, end, cn, svtype, caller_support, confidence, quality, sample. |
@@ -69,6 +71,8 @@ All outputs land in `{outdir}/{sample}/`:
 | `{sample}.circos.svg` | Genome-wide Circos plot (SVG, embedded inline in the HTML report). |
 | `{sample}.circos.png` | Genome-wide Circos plot (PNG, 150 DPI, fallback if SVG rendering fails). |
 | `{sample}.variants.xlsx` | Excel workbook with four sheets: SVs, CNVs, STRs, SMN. Suitable for clinical reporting workflows. |
+
+QC metrics (mosdepth summary, flagstat, insert-size) publish to `{outdir}/{sample}/qc/`, so the report's QC section is reproducible after a work-dir cleanup.
 
 MultiQC HTML is written to `{outdir}/multiqc_report.html`.
 

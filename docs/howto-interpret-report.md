@@ -135,6 +135,27 @@ needs no paralog fix here: cross-mapping is negligible, so a true null would rea
 fire `null` correctly.) AMY1=2, KIV-2=6 uncalibrated. Neither HG002 nor HG001 exercises the
 `null` branch — a genuine homozygous-null sample is still needed to validate it end-to-end.
 
+### 9. Alpha-globin (HBA1/HBA2)
+
+A succinct card from the M8 alpha-globin measurement (`bin/hba_report.py`, wired into
+`subworkflows/report.nf`). It reports measurements only and makes no clinical
+interpretation. The layout mirrors the SMN card: a headline, a three-row body, and a
+muted footer.
+
+| Field | What it shows |
+|-------|---------------|
+| Alpha-gene dosage | Called alpha-gene count as "N of 4 genes", or "not resolved to a single count" when depth is ambiguous. |
+| Genotype | The measured genotype string (e.g. `aa/aa`), with a one-clause measurement note (no large deletion detected, one chromosome carries a deletion, or both do). |
+| Deletion | The deletion genotype, keeping the FULL group string. When depth cannot tell two alleles apart, it is reported as a GROUP (e.g. `--SEA|--MED`), never collapsed to one allele. |
+| Supporting evidence | What backed the deletion call: read-depth, junction read, or both. |
+| Point-mutation scan | Named hits from the pinned site panel (e.g. `HBA2:c.377` is named "Hb Quong Sze"). Only the panel positions were scanned. |
+
+The footer lists what was screened (alpha-gene dosage and the named point mutations) and,
+explicitly, what was NOT examined. Absence in this card is not the same as
+tested-and-absent: anything outside the panel was not looked at, so nothing about it is
+ruled out. The footer also records the panel version and that no clinical interpretation
+is made here.
+
 ## Verification
 
 The report was generated correctly if:
@@ -146,7 +167,7 @@ The report was generated correctly if:
 ## Troubleshooting
 
 **Mean coverage or mapped-reads percentage shows N/A**
-Check that `{sample}.flagstat.txt` was published to the output directory. The Alignment QC section shows mean coverage (mosdepth), duplicate rate (Picard), and mapped-reads percentage (samtools flagstat). If flagstat is missing, re-run the pipeline; flagstat is produced during the PREPROCESS step alongside MarkDuplicates.
+The Alignment QC section shows mean coverage (mosdepth), duplicate rate (Picard), and mapped-reads percentage (samtools flagstat). All three are wired. mosdepth summary, flagstat, and insert-size now publish to `results/<sample>/qc/`, so the QC section is reproducible after a work-dir cleanup. Look for `results/<sample>/qc/<sample>.flagstat.txt`. The mapped-reads percentage is the true alignment rate: flagstat runs on the input BAM before FILTER_CHROMS, so it is not a post-filter 100%. N/A now only appears if the `qc/` directory is missing (an interrupted run, or the sample never reached the flagstat step); re-run the pipeline to regenerate it.
 
 **SV Summary and Top Annotated SVs sections are empty**
 AnnotSV failed or produced 0-byte output. Check `--annotsv_db` path — it must point to the parent of `Annotations_Human/`, not to `Annotations_Human/` itself.
