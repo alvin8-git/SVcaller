@@ -109,6 +109,38 @@ workflow REPORT {
     ch_alpha_globin  // [ meta, alpha_globin.tsv ]   M8 alpha-globin contract (optional)
 
     main:
+    // HARDEN the meta-join. Every per-sample channel below is joined by its FULL
+    // meta map, so if an upstream stage tags some channels with an extra meta key
+    // but not others, the exact .join() silently drops that sample and only the
+    // count-guard at the end (which hard-fails the run) notices. This bit us: PICARD
+    // metrics lacked the needs_chr_filter tag its siblings carried, and every
+    // FASTQ-derived sample's report vanished. Normalizing every per-sample meta to a
+    // minimal [id:] key makes the joins depend only on the sample id, which never
+    // diverges. Nothing in REPORT, Circos, Truvari, or downstream reads any meta
+    // field other than id (verified), so this loses nothing. This normalizes circos,
+    // truvari, and the report join in one place; the remainder/NO_FILE fallbacks
+    // below still handle genuinely-absent optional inputs, and the count-guard stays
+    // as a backstop.
+    def byId = { ch -> ch.map { row -> [[id: row[0].id]] + row[1..-1] } }
+    ch_sv_tsv       = byId(ch_sv_tsv)
+    ch_cnv_bed      = byId(ch_cnv_bed)
+    ch_smn_tsv      = byId(ch_smn_tsv)
+    ch_sv_vcf       = byId(ch_sv_vcf)
+    ch_sv_tbi       = byId(ch_sv_tbi)
+    ch_str_vcf      = byId(ch_str_vcf)
+    ch_coverage     = byId(ch_coverage)
+    ch_metrics      = byId(ch_metrics)
+    ch_flagstat     = byId(ch_flagstat)
+    ch_insert_size  = byId(ch_insert_size)
+    ch_depth_bed    = byId(ch_depth_bed)
+    ch_annotsv_tsv  = byId(ch_annotsv_tsv)
+    ch_strling_tsv  = byId(ch_strling_tsv)
+    ch_rh_status    = byId(ch_rh_status)
+    ch_amy1         = byId(ch_amy1)
+    ch_gst_null     = byId(ch_gst_null)
+    ch_lpa_kiv2     = byId(ch_lpa_kiv2)
+    ch_alpha_globin = byId(ch_alpha_globin)
+
     ch_circos_in = ch_sv_vcf
         .join(ch_cnv_bed, remainder: true)
         .filter { it[1] != null }   // drop cnv_bed-only remainders (sv_vcf absent)
