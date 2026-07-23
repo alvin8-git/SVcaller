@@ -1053,6 +1053,23 @@ THAL2's Hb Quong Sze het and THAL1's absence at the same site from the real BAMs
   committed fixtures and targeted `samtools` region queries. THAL1 + THAL2
   through the real pipeline remains a prerequisite, and it is what
   § Verification above actually asks for.
+
+  > **Launched 2026-07-23.** Full end-to-end THAL1 + THAL2 run started, detached
+  > (`setsid nohup`, wrapper `/data/alvin/tmp/thal_run/run_thal.sh`, PPID=1),
+  > running the two samples **sequentially** (back-to-back, not concurrent).
+  > STEP-0 de-risk passed: THAL1's primary 25 contigs are byte-identical to
+  > `hg38.canonical.fa` (chr16 @ GRCh38 90338345); the BAM is a 3366-contig full-hg38
+  > superset restricted at runtime by `wgs_autosomal.bed`, and the pipeline's own
+  > `VALIDATE_REF_BAM` step passed for THAL1.
+  > - Sessions: `THAL1_thal`, `THAL2_thal` (explicit `-name` each).
+  > - Work dirs: `/data/alvin/SVcaller/work_THAL1`, `/data/alvin/SVcaller/work_THAL2`.
+  > - Per-sample cwd + `sheet.csv`: `/data/alvin/tmp/thal_run/THAL1`, `.../THAL2`.
+  > - Log: `/data/alvin/tmp/thal_run/run.log`.
+  > - `--outdir /data/alvin/SVcaller/results` (subworkflow appends `/${meta.id}/alpha_globin`).
+  > - Flags: `-profile docker --skip_gridss true --skip_melt true --skip_svaba true`;
+  >   `--skip_alpha_globin` **not** passed (M8 must run).
+  > - Expected contracts: `results/THAL1/alpha_globin/THAL1.alpha_globin.tsv` and
+  >   `results/THAL2/alpha_globin/THAL2.alpha_globin.tsv`.
 - **The HTML card is not wired into `report.nf`.** `REPORT` joins on the full
   meta map, where one divergent key silently drops a whole sample's report with
   no error. Adding a 23rd channel blind, with no way to run the pipeline, is how
