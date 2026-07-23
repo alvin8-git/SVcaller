@@ -1,3 +1,29 @@
+// Per-chromosome scatter assessment (optimization #4) — both callers stay MONOLITHIC.
+//
+// CNVpytor: NOT safely scatterable. The `-his` step fits the diploid RD baseline
+// genome-wide and builds one GC-correction table across the whole genome; every
+// call in the TSV is a copy number normalized to that global baseline (2.0 =
+// diploid, see cnv_consensus.load_cnvpytor col 3). Independent per-chromosome
+// roots would each self-normalize to their own median, which is provably wrong on
+// the sex chromosomes: a male chrX/chrY is haploid, so a per-chrom run makes its
+// own coverage the CN=2 level and calls the whole chromosome neutral. CNVpytor
+// also runs `-rd` over the full BAM (no interval restriction), so it sees
+// chrX/Y/M. There is no supported way to merge per-chrom .pytor roots before a
+// single global `-his`, and parallel tasks writing one root would corrupt it. The
+// only real speedup here is CNVpytor's own within-task `-j` jobs flag, which is a
+// different change and version-dependent. Left monolithic.
+//
+// GATK gCNV: NOT safely scatterable against this PON. CollectReadCounts alone is
+// interval-shardable, but DenoiseReadCounts requires the sample counts to carry
+// the EXACT interval set the PON was built on (giab_cnv_pon.hdf5 is genome-wide,
+// bin-length 1000). A single-chromosome counts file fails GATK's interval match,
+// and GATK ships no tool to concatenate per-chrom read-count HDF5 back into one
+// genome-wide file. So the denoise/model/call stages cannot shard, and the count
+// shard cannot be gathered for them. Left monolithic.
+//
+// tests/test_cnv_scatter_contract.py locks the TSV contract and the gather-by-
+// concat semantics either caller would have to preserve, so a future attempt
+// fails a test instead of silently emptying a clinical CNV sheet.
 include { CNVPYTOR_CALL           } from '../modules/cnvpytor/call'
 include { GATK_PREPROCESS_INTERVALS } from '../modules/gatk/gcnv_pon'
 include { GATK_GCNV_CALL           } from '../modules/gatk/gcnv_call'
