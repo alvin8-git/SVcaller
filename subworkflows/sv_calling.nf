@@ -17,33 +17,18 @@ include { MELT_MERGE             } from '../modules/melt/merge'
 include { MELT_STUB              } from '../modules/melt/stub'
 include { SVABA_CALL             } from '../modules/svaba/call'
 include { STRLING_CALL           } from '../modules/strling/call'
-include { SAMTOOLS_FILTER_CHROMS } from '../modules/samtools/filter_chroms'
-include { VALIDATE_REF_BAM      } from '../modules/samtools/validate_ref_bam'
 
 workflow SV_CALLING {
     take:
-    ch_bam        // [ meta, bam, bai ]
-    ch_fasta      // path
-    ch_fai        // path
-    ch_eh_catalog // path
-    ch_bwa_index  // classic bwa index files (.amb/.ann/.bwt/.pac/.sa) for SvABA
+    ch_validated_bam // [ meta, bam, bai ] — already canonical-filtered + ref-validated (svcaller.nf)
+    ch_fasta         // path
+    ch_fai           // path
+    ch_eh_catalog    // path
+    ch_bwa_index     // classic bwa index files (.amb/.ann/.bwt/.pac/.sa) for SvABA
 
     main:
-    // FILTER_CHROMS: skip for FASTQ-derived BAMs (aligned to hg38.canonical.fa — no alt contigs).
-    ch_bam.branch {
-        needs_filter: it[0].get('needs_chr_filter', true)
-        canonical:    true
-    }.set { ch_bam_branched }
-
-    SAMTOOLS_FILTER_CHROMS(ch_bam_branched.needs_filter, ch_fai)
-
-    ch_filtered_bam = SAMTOOLS_FILTER_CHROMS.out.bam
-        .mix(ch_bam_branched.canonical)
-
-    // Pre-flight: verify BAM and reference chromosomes are consistent before any caller runs.
-    // Catches hg38.fa-vs-canonical-BAM mismatch at second 0 instead of hour 4 (Manta crash).
-    VALIDATE_REF_BAM(ch_filtered_bam, ch_fai)
-    ch_validated_bam = VALIDATE_REF_BAM.out.bam
+    // FILTER_CHROMS + VALIDATE_REF_BAM were lifted to svcaller.nf so CNV/SMN/traits
+    // share the same validated BAM. This subworkflow receives it ready to use.
 
     // DELLY: fan out 5 SV types in parallel; collect groupTuple(size:5) → merge
     ch_delly_input = ch_validated_bam.combine(Channel.from(['DEL', 'INS', 'INV', 'DUP', 'BND']))

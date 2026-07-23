@@ -7,6 +7,8 @@ include { ALPHA_GLOBIN    } from '../subworkflows/alpha_globin'
 include { ANNOTATE        } from '../subworkflows/annotate'
 include { REPORT          } from '../subworkflows/report'
 include { SV_PON_ANNOTATE } from '../modules/sv_pon/annotate'
+include { SAMTOOLS_FILTER_CHROMS } from '../modules/samtools/filter_chroms'
+include { VALIDATE_REF_BAM       } from '../modules/samtools/validate_ref_bam'
 
 workflow SVCALLER {
     take:
@@ -32,20 +34,42 @@ workflow SVCALLER {
 
     ch_bam = PREPROCESS.out.bam
 
-    // M2 + M3 + M4: run in parallel on same BAM
-    SV_CALLING(ch_bam, ch_fasta, ch_fai, ch_eh_catalog, ch_bwa_index)
-    CNV_CALLING(ch_bam, ch_fasta, ch_fai, ch_dict, ch_pon, ch_intervals)
-    SMN_CALLING(ch_bam, ch_fasta, ch_fai)
+    // Canonical-chromosome filter + ref/BAM validation, lifted here from inside
+    // SV_CALLING so CNV, SMN, and CNV-traits run on the SAME validated BAM as the
+    // SV callers instead of the raw one. For a full-hg38 BAM input the raw BAM
+    // carries 3366 contigs; CNVpytor's genome-wide depth baseline is then biased by
+    // low-coverage alt/decoy contigs (canonical bins read high). FASTQ-derived BAMs
+    // are aligned to hg38.canonical.fa (no alt contigs) and skip the filter, so this
+    // is a no-op for them. It runs once (storeDir-cached) and the SV branch dominates
+    // the critical path, so nothing downstream starts later.
+    ch_bam.branch {
+        needs_filter: it[0].get('needs_chr_filter', true)
+        canonical:    true
+    }.set { ch_bam_branched }
+    SAMTOOLS_FILTER_CHROMS(ch_bam_branched.needs_filter, ch_fai)
+    ch_validated_bam = SAMTOOLS_FILTER_CHROMS.out.bam
+        .mix(ch_bam_branched.canonical)
+    VALIDATE_REF_BAM(ch_validated_bam, ch_fai)
+    ch_validated_bam = VALIDATE_REF_BAM.out.bam
+
+    // M2 + M3 + M4: run in parallel on the validated BAM
+    SV_CALLING(ch_validated_bam, ch_fasta, ch_fai, ch_eh_catalog, ch_bwa_index)
+    CNV_CALLING(ch_validated_bam, ch_fasta, ch_fai, ch_dict, ch_pon, ch_intervals)
+    SMN_CALLING(ch_validated_bam, ch_fasta, ch_fai)
 
     // Copy-number / blood-group traits: targeted normalized read depth + consensus
     // corroboration → per-sample OmniGen contract files (Rh/RHD, AMY1, GST-null, LPA KIV-2)
-    CNV_TRAITS(ch_bam, ch_trait_regions, CNV_CALLING.out.cnv_bed)
+    CNV_TRAITS(ch_validated_bam, ch_trait_regions, CNV_CALLING.out.cnv_bed)
 
-    // M8: alpha-globin (HBA1/HBA2). Runs on the same BAM as M2/M3/M4 and depends
-    // on none of them. It MEASURES: alpha-gene dosage, deletion alleles, targeted
-    // site genotypes and the scope of what was screened. It does not interpret —
-    // no thalassemia classification, no couple-level risk. That is OmniGen's,
-    // which discovers the contract by path convention at
+    // M8: alpha-globin (HBA1/HBA2). Runs on the RAW ch_bam, DELIBERATELY, not the
+    // validated BAM the other modules now use. Its GIAB depth baselines
+    // (validation/giab_alpha_baseline.tsv, assets/hba_segments.bed col 5) were
+    // calibrated on the raw BAM; querying the filtered BAM against raw-derived
+    // baselines would drift the score = ratio / baseline silently. Moving alpha to
+    // the validated BAM requires re-deriving those baselines on filtered GIAB BAMs
+    // first (a separate, validated change). It MEASURES only: alpha-gene dosage,
+    // deletion alleles, targeted site genotypes, and the scope screened. It does not
+    // interpret; OmniGen discovers the contract at
     // results/<S>/alpha_globin/<S>.alpha_globin.tsv.
     if (!params.skip_alpha_globin) {
         ALPHA_GLOBIN(ch_bam, ch_hba_segments, ch_trait_regions, ch_hba_panel,

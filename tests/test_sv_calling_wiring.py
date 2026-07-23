@@ -40,13 +40,39 @@ def test_both_str_callers_see_the_same_bam(src):
         "consensus; they must genotype the same BAM.")
 
 
-def test_raw_ch_bam_only_feeds_the_filter_branch(src):
-    """After the FILTER_CHROMS branch, no caller should take the raw ch_bam.
-    ch_bam is legitimate only in the `.branch { needs_filter ... }` that decides
-    what to filter; everything downstream runs on ch_validated_bam."""
-    # strip comments so a `// ... ch_bam ...` note does not trip the check
+def test_sv_calling_has_no_raw_bam_reference(src):
+    """FILTER_CHROMS + VALIDATE_REF_BAM were lifted to svcaller.nf. SV_CALLING now
+    receives an already-validated BAM, so `ch_bam` must not appear in its code at
+    all (comments aside); every caller uses ch_validated_bam."""
     code = "\n".join(re.sub(r"//.*$", "", ln) for ln in src.splitlines())
-    # every ch_bam occurrence must be the take decl or the branch, never CALLER(ch_bam
-    offenders = re.findall(r"([A-Z][A-Z0-9_]*)\s*\(\s*ch_bam\b", code)
-    assert not offenders, (
-        f"these run on the raw ch_bam instead of ch_validated_bam: {offenders}")
+    assert "ch_bam" not in code, \
+        "sv_calling.nf still references ch_bam; it should take ch_validated_bam only"
+
+
+# --- top-level BAM routing (svcaller.nf) --------------------------------------
+
+SVCALLER_NF = os.path.join(REPO, "workflows", "svcaller.nf")
+
+
+@pytest.fixture
+def top():
+    return open(SVCALLER_NF).read()
+
+
+@pytest.mark.parametrize("sub", ["SV_CALLING", "CNV_CALLING", "SMN_CALLING", "CNV_TRAITS"])
+def test_non_alpha_modules_run_on_the_validated_bam(top, sub):
+    """The filter is lifted here so CNV/SMN/traits see the same validated BAM as
+    the SV callers, not the raw full-hg38 BAM (whose alt contigs bias CNVpytor)."""
+    assert _first_arg(top, sub) == "ch_validated_bam", (
+        f"{sub} runs on {_first_arg(top, sub)}; it must run on ch_validated_bam")
+
+
+def test_alpha_globin_deliberately_runs_on_the_raw_bam(top):
+    """Alpha-globin is the ONE module kept on the raw ch_bam, on purpose: its GIAB
+    depth baselines were calibrated on the raw BAM, so querying the filtered BAM
+    against them would drift score = ratio / baseline. Moving it needs the baselines
+    re-derived on filtered GIAB BAMs first. If this ever changes, that re-derivation
+    must land in the same change."""
+    assert _first_arg(top, "ALPHA_GLOBIN") == "ch_bam", (
+        "ALPHA_GLOBIN must stay on the raw ch_bam until its baselines are re-derived "
+        "on filtered BAMs; see validation/giab_alpha_baseline.tsv")
