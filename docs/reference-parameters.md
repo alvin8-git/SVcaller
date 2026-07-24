@@ -85,10 +85,10 @@ Processes are labelled by resource tier in `conf/base.config`. Values shown are 
 | `process_single` | 1 | 6 GB | memory ×attempt | Report assembly, samplesheet parsing, CNV consensus, Circos |
 | `process_low` | 4 | 12 GB | cpus + memory ×attempt | mosdepth, Scramble, FastQC |
 | `process_medium` | 8 | 36 GB | cpus + memory ×attempt | CNVpytor, SMNCopyNumberCaller, AnnotSV |
-| `process_high` | 16 | 32 GB | cpus + memory ×attempt | Delly, GATK gCNV |
+| `process_high` | 16 | 32 GB | cpus + memory ×attempt | GATK gCNV |
 | `process_gridss` | 16 | 32 GB | memory only (32→64→96 GB) | GRIDSS (full BAM mode) |
 
-Several processes pin resources by name (overriding the tier): `BWAMEM2_ALIGN` (16 CPU / 24 GB), `MANTA_CALL` (16 CPU / 32 GB), `PICARD_MARKDUP` (4 CPU / 16 GB), `GATK_COLLECT_COUNTS` (4 CPU / 16 GB), `SAMTOOLS_FILTER_CHROMS` (8 CPU / 8 GB). `GRIDSS_CALL` uses `maxRetries = 3` (4 attempts: 32 → 64 → 96 GB) because it is the most likely caller to silently OOM. `SVABA_CALL` fixes CPUs at 16 so retries don't claim extra slots (SvABA is memory-bound, not CPU-bound).
+Several processes pin resources by name (overriding the tier): `BWAMEM2_ALIGN` (16 CPU / 24 GB), `MANTA_CALL` (16 CPU / 32 GB), `PICARD_MARKDUP` (4 CPU / 16 GB), `GATK_COLLECT_COUNTS` (4 CPU / 16 GB), `SAMTOOLS_FILTER_CHROMS` (8 CPU / 8 GB), `DELLY_CALL_SVTYPE` (2 CPU — carries the `process_medium` label for memory/time but `delly call` is effectively single-threaded and parallelises across 5 SV-type tasks, so an 8-CPU reservation only oversubscribes the scheduler and serialises the fan-out; the 2-CPU pin is a reservation-only change and does not alter Delly's output). `GRIDSS_CALL` uses `maxRetries = 3` (4 attempts: 32 → 64 → 96 GB) because it is the most likely caller to silently OOM. `SVABA_CALL` fixes CPUs at 16 so retries don't claim extra slots (SvABA is memory-bound, not CPU-bound).
 
 For a low-overhead workstation profile that caps these tiers so the suite runs without resource exhaustion, see [Local vs cluster profiles](#local-vs-cluster-profiles) below.
 

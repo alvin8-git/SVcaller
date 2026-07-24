@@ -1,5 +1,67 @@
 # Changes
 
+## 2026-07-24 — Class A runtime optimisation: right-size DELLY's CPU reservation
+
+Trace-based profiling of the THAL1/THAL2 run showed the wall clock inflated by a
+scheduler mismatch, not by any real compute. These are **rigor-preserving** changes:
+no caller, threshold, filter, region, or output file changes. VCFs and TSVs are
+byte-for-byte identical; only Nextflow's CPU *reservations* move.
+
+**DELLY CPU reservation right-sized (8 → 2).** `DELLY_CALL_SVTYPE` inherited the
+shared `process_medium` label (cpus=8) but `delly call` is effectively
+single-threaded — it parallelises across the 5 SV *types* (5 separate tasks fanned
+out by `subworkflows/sv_calling.nf`), not across threads within a task, and the
+script passes no thread flag. On the 64-core THAL host the 5 DELLY tasks reserved
+40 cpus which, stacked against Manta (16), Scramble (8) and the CNV callers,
+oversubscribed to ~88 cpus and forced DELLY's fan-out to queue serially — its
+5-svtype footprint stretched to ~62 min instead of the ~26 min the work actually
+takes. Added a `withName: 'DELLY_CALL_SVTYPE'` override in `conf/base.config`
+pinning cpus=2 (one worker + headroom), scoped to DELLY *only*. The other
+`process_medium` users (samtools sort/subset/filter_chroms, picard markduplicates,
+gatk gCNV, cnvpytor, annotsv, strling, scramble, jasmine, melt) are genuinely
+multi-threaded and were deliberately left untouched. Because `delly call` receives
+no thread argument, its output is unchanged — this frees scheduler slots only.
+**Expected saving: ~25–40 min/run.** Validated with `nextflow config` (parses
+clean; override resolves to `cpus = { check_max( 2, 'cpus' ) }`).
+
+### Deferred / not changed (with reasons)
+
+**mosdepth pass consolidation — DEFERRED (not safe).** The three full-BAM mosdepth
+scans cannot be folded into one pass without changing outputs. Each uses a
+*different* `--by` target and mosdepth accepts only one per invocation, emitting one
+region-set file per consumer:
+- QC `MOSDEPTH` — `--by 50000` (genome-wide 50 kb windows) + `--quantize 0:5:30:500:`
+  + the min-depth gate; feeds MultiQC/summary.
+- `TRAIT_DEPTH` — `--mapq 0 --by assets/cnv_trait_regions.bed`; feeds `cnv_traits_common.py`.
+- `HBA_DEPTH` — `--mapq 0 --by <hba_segments+CTRL bed>`; feeds `hba_depth.py`.
+
+A single pass would require restoring the deliberately-disabled per-base output
+(~4.5 GB) and rewriting all three consumer scripts, changing file provenance and the
+region-name contracts each script expects — outside the rigor-preserving envelope.
+Left as-is.
+
+**Rerun/resume overhead — OPS NOTE, no config change.** ~55 min of the THAL wall was
+rerun cost from a transient first-attempt failure, not a config defect.
+`errorStrategy` retries only on OOM/kill signals `[143,137,104,134,139]` with
+`maxRetries=2` (GRIDSS 3) — a legitimate escalate-memory-on-`task.attempt` policy,
+not an over-aggressive blanket retry. `-resume` caching is not defeated by config
+(`overwrite=true` is set only on the trace/report/timeline files, which is correct).
+No safe config fix exists; operationally, always launch detached and pass an explicit
+`-resume <session>` so a transient failure resumes instead of recomputing.
+
+**Heavy-caller guardrail — documented, defaults unchanged.** Current default state
+(`conf`/`nextflow.config`, verified 2026-07-24):
+- `skip_svaba = true` — SvABA disabled by default (staged but never merged; see the
+  2026-07-23 entry). This is the only heavy caller off by default.
+- `skip_melt = false` and `skip_gridss = false` — **MELT and GRIDSS RUN by default.**
+  The THAL1/THAL2 profiling run must have passed `--skip_melt --skip_gridss` on the
+  command line; the pipeline does *not* stub them implicitly. Their skips are already
+  explicit params selecting `MELT_STUB`/`GRIDSS_STUB` in `subworkflows/sv_calling.nf`.
+  These defaults were **left unchanged** — flipping them to `true` would drop MELT
+  MEI calls and GRIDSS SV calls from the standard ensemble, i.e. change outputs, which
+  is out of scope for a Class A change. To reproduce the fast THAL profile, pass the
+  skip flags at run time; do not bake them into defaults.
+
 ## 2026-07-23 — two callers that never ran, the alpha-globin card wired in, and QC made honest
 
 **MELT had never produced a merged call.** `modules/melt/call.nf` passed
