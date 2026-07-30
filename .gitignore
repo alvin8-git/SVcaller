@@ -79,3 +79,6 @@ docs/cnv_traits_card_demo.html
 # would otherwise silently drop it and the channel-3 tests would skip forever.
 !tests/fixtures/
 !tests/fixtures/**
+
+# graphify knowledge-graph build output (regenerate with /graphify)
+graphify-out/
