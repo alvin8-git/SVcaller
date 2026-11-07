@@ -8,7 +8,7 @@ process EXPANSIONHUNTER {
     publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.str_profile.json"
 
     input:
-    tuple val(meta), path(bam), path(bai)
+    tuple val(meta), path(bam), path(bai), path(sex_json), path(sex_txt)   // from INFER_SEX
     path fasta
     path fai
     path catalog
@@ -21,7 +21,11 @@ process EXPANSIONHUNTER {
 
     script:
     """
+    # --sex: inferred from depth (INFER_SEX); EH otherwise defaults to female, which calls chrX
+    # loci (FMR1, AR, AFF2) diploid in a male. 'unknown' was already mapped to female + a flag.
+    SEX=\$(cat ${sex_txt})
     ExpansionHunter \\
+        --sex \$SEX \\
         --reads ${bam} \\
         --reference ${fasta} \\
         --variant-catalog ${catalog} \\

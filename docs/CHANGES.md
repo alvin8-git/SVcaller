@@ -1,5 +1,22 @@
 # Changes
 
+## 2026-11-07 — ExpansionHunter per-allele sizing (spanned / flanked / unresolved)
+
+- EH reported HG002 ATXN2 22/62 and CNBP 13/51 from in-repeat and flanking reads only (alleles beyond the 150 bp
+  read, no spanning read). GIAB HG002 assembly truth shows ATXN2 ~22/29 and CNBP a 20 bp deletion, no expansion.
+- New `bin/eh_sizing.py` + process `EH_SIZING` (`modules/expansionhunter/sizing.nf`, wired in
+  `subworkflows/sv_calling.nf`, container `svcaller/utils:1.3` in `conf/docker.config`): writes
+  `<sample>.str_summary.tsv` with `allele{1,2}_sizing`, `allele{1,2}_display`, `genotype_display`, `conf`.
+  Unresolved alleles are `>=<CI lower bound>` and `conf=unresolved`. `str_profile.json` is unchanged.
+- ExpansionHunter was run without `--sex` (EH defaults to female): HG002, a male, had chrX loci diploid (FMR1 31/31).
+  New `INFER_SEX` process (`bin/infer_sex.py`, depth windows, OmniGen `vcf_qc.py` thresholds) feeds `--sex`; sex, ratios,
+  method and any unknown-sex flag go to `<sample>.sex.json` and the `str_summary.tsv` header. Male chrX loci are
+  hemizygous (`allele2` = `.`). HG002 re-run: FMR1 31, AR 28, AFF2 14; HG001 (female) unchanged. Old outputs kept as `*.pre-sex`.
+- `validation/eh_vs_q100.py` compares EH with Q100 / v5.0q truth; results in `validation/HG002_eh_vs_*.tsv` and
+  `docs/howto-validate-eh-vs-q100.md`. Tests: `tests/test_eh_sizing.py`.
+- `results/HG001` and `results/HG002` annotated standalone (`str_summary.tsv` is new; no prior summary existed, so no
+  `.pre-sizing` copy). Pipeline not re-run.
+
 ## 2026-11-07 — Missing local images: svcaller/utils:1.3 and smncopynum:1.1 rebuilt, launch guard added
 
 The HG001_md run died at `ALPHA_GLOBIN:HBA_JUNCTION` (exit 125, "pull access denied for

@@ -307,6 +307,7 @@ results/
     ├── <sample_id>.sv_merged.vcf.gz     # Ensemble SV calls (Manta+DELLY+GRIDSS+Scramble+MELT)
     ├── <sample_id>.sv_merged.vcf.gz.tbi
     ├── <sample_id>.str.vcf.gz           # STR calls (ExpansionHunter)
+    ├── <sample_id>.str_summary.tsv      # per-allele sizing class + lower-bound display (bin/eh_sizing.py)
     ├── <sample_id>.cnv_consensus.bed    # Consensus CNV calls
     ├── <sample_id>.smn.tsv              # SMN1/SMN2 copy numbers
     ├── <sample_id>.filtered.tsv         # AnnotSV-annotated, gnomAD-SV-filtered SVs + DEPTH_* columns
@@ -330,6 +331,37 @@ results/
     └── <sample_id>.truvari/             # GIAB benchmark (if --giab_truth set)
         └── summary.json
 ```
+
+### STR sizing rule (`str_summary.tsv`)
+
+`<sample>.str_profile.json` is EH's output, untouched. `bin/eh_sizing.py` (process `EH_SIZING`) reads it and
+writes `<sample>.str_summary.tsv`, one row per locus, after a `#` header note. Columns:
+`locus, repeat_unit, genotype, ci, read_length` (existing EH fields), then `allele1_est, allele1_ci,
+allele1_sizing, allele1_display, allele2_est, allele2_ci, allele2_sizing, allele2_display`
+(allele2 is `.` for haploid calls), `genotype_display, conf, spanning_reads, flanking_reads, inrepeat_reads`.
+
+| `alleleN_sizing` | Meaning |
+|---|---|
+| `spanned` | at least 2 spanning reads at exactly that repeat count |
+| `flanked` | flanking/in-repeat reads only; the allele (repeats x motif length) fits within the read length |
+| `unresolved` | estimate longer than the read length with no spanning-read support, or CI wider than 30 repeats |
+
+An `unresolved` allele is shown as `>=<lower CI bound>` in `alleleN_display` and `genotype_display` (for example
+ATXN2 `22/>=52`), and the row gets `conf=unresolved`. Otherwise `conf` is `high` (CI width of the larger
+allele <= max(6, 15% of its size)) or `low`. Read length is `ReadLength` in the json (150 for these runs);
+the thresholds (2 spanning reads, CI width 30) are constants at the top of `bin/eh_sizing.py`.
+
+Sex and chrX loci: `INFER_SEX` (`bin/infer_sex.py`, `<sample>.sex.json`) infers sex from `samtools coverage` depth
+(chrY X-degenerate 6.5-10.5 Mb and chrX 40-44 Mb versus chr1/2/3 20-24 Mb; female if chrY/auto < 0.10 and chrX/auto
+>= 0.75, male if chrY/auto >= 0.25 and chrX/auto < 0.75, else unknown, the same rule as OmniGen `vcf_qc.py`) and passes
+`--sex male|female` to ExpansionHunter (EH defaults to female, which genotypes chrX loci as diploid in a male).
+Unknown sex runs as female and sets `sex_flag` in the json and a `# FLAG` line in the summary. The inferred sex,
+ratios and method are in `<sample>.sex.json` and in the `str_summary.tsv` header comment. For a male, chrX loci
+(FMR1, AR, AFF2) are hemizygous: `allele2_*` is `.` and `genotype` has one number.
+
+Limitation statement for the report: **alleles longer than the read length cannot be sized from short reads;
+such alleles are reported as a lower bound.** It is a standing method limitation, not a per-sample result.
+Validation against GIAB HG002 assembly truth: `docs/howto-validate-eh-vs-q100.md`.
 
 ### Depth consistency check (`filtered.tsv`)
 

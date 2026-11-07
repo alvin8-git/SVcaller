@@ -62,6 +62,11 @@ SMN1 and SMN2 copy number results from SMNCopyNumberCaller. Normal is SMN1=2, SM
 
 Table of ExpansionHunter results for the catalogued repeat loci. Check `REPCN` (repeat count) against established pathogenic thresholds:
 
+**Read-length limit.** Alleles longer than the read length cannot be sized from short reads; such alleles are
+reported as a lower bound (`>=52`) with `conf=unresolved` in `<sample>.str_summary.tsv`, never as a point estimate.
+EH can print a large number for them (HG002 ATXN2 22/62; assembly truth is about 22/29), so an `unresolved` allele is
+not evidence of expansion. Confirm by long-read sequencing or repeat-primed PCR. See `docs/howto-validate-eh-vs-q100.md`.
+
 - **HTT (Huntington's):** >36 repeats is pathogenic
 - **FMR1 (Fragile X):** >200 repeats (full mutation), 55-200 (premutation)
 - **C9orf72 (ALS/FTD):** >30 repeats is a risk factor

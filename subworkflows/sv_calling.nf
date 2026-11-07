@@ -8,6 +8,8 @@ include { GRIDSS_SETUP           } from '../modules/gridss/setup'
 include { GRIDSS_STUB            } from '../modules/gridss/stub'
 include { SAMTOOLS_SUBSET        } from '../modules/samtools/subset'
 include { EXPANSIONHUNTER        } from '../modules/expansionhunter/call'
+include { INFER_SEX             } from '../modules/expansionhunter/infer_sex'
+include { EH_SIZING              } from '../modules/expansionhunter/sizing'
 include { JASMINE_MERGE          } from '../modules/jasmine/merge'
 include { TRA_CONSENSUS          } from '../modules/jasmine/tra_consensus'
 include { SCRAMBLE_CALL          } from '../modules/scramble/call'
@@ -40,7 +42,9 @@ workflow SV_CALLING {
     // STR callers (EH + STRling) genotyped DIFFERENT read sets (the raw BAM keeps
     // reads whose mate is on an alt contig; the filtered BAM drops them), and EH
     // alone skipped the VALIDATE_REF_BAM pre-flight. Both now see ch_validated_bam.
-    EXPANSIONHUNTER(ch_validated_bam, ch_fasta, ch_fai, ch_eh_catalog)
+    INFER_SEX(ch_validated_bam)
+    EXPANSIONHUNTER(ch_validated_bam.join(INFER_SEX.out.sex), ch_fasta, ch_fai, ch_eh_catalog)
+    EH_SIZING(EXPANSIONHUNTER.out.json.join(INFER_SEX.out.sex.map { m, j, t -> [m, j] }))
 
     // P6: STRling genome-wide STR expansion detection (parallel with EH)
     if (!params.skip_strling) {
@@ -142,5 +146,6 @@ workflow SV_CALLING {
     sv_vcf      = TRA_CONSENSUS.out.vcf
     sv_tbi      = TRA_CONSENSUS.out.tbi
     str_vcf     = EXPANSIONHUNTER.out.vcf
+    str_summary = EH_SIZING.out.tsv
     strling_tsv = ch_strling_tsv
 }
