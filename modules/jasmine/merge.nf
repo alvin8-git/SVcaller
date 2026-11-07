@@ -1,7 +1,8 @@
 process JASMINE_MERGE {
     tag "${meta.id}"
     label 'process_medium'
-    // Not published: TRA_CONSENSUS consumes this and publishes the final sv_merged.vcf.gz.
+    // The merged VCF is not published here: TRA_CONSENSUS consumes it and publishes the final sv_merged.vcf.gz.
+    publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.sv_callers.json"
 
     input:
     tuple val(meta), path(vcfs)   // list of VCF.gz files: [manta, delly, gridss, scramble, melt]
@@ -11,10 +12,12 @@ process JASMINE_MERGE {
     output:
     tuple val(meta), path("${meta.id}.sv_merged.vcf.gz"),     emit: vcf
     tuple val(meta), path("${meta.id}.sv_merged.vcf.gz.tbi"), emit: tbi
+    tuple val(meta), path("${meta.id}.sv_callers.json"),      emit: callers
     path "versions.yml",                                        emit: versions
 
     script:
     """
+    export PATH=${projectDir}/bin:\$PATH
     # Canonical-chromosome filter for all callers.
     # GRIDSS INFO fields are stripped to essentials (SVTYPE, MATEID, END, SVLEN, CIPOS, CIEND):
     # the full GRIDSS INFO contains multi-KB assembly sequences that cause Jasmine's merge to
@@ -86,14 +89,19 @@ process JASMINE_MERGE {
     # MELT MEI: SVTYPE already normalised to INS; PASS + canonical-chr already filtered in MELT_CALL.
     zcat ${vcfs[4]} > ${vcfs[4].baseName}
 
-    # Build vcf_list.txt. Core 3 callers always included (SUPP_VEC positions 1-3).
-    # Scramble added at position 4 if it has calls; MELT added at last position if it has calls.
-    # GRIDSS is always at position 3 so the TRA filter (substr(supp,3,1)=="1") is stable.
-    printf '%s\\n' ${vcfs[0].baseName} ${vcfs[1].baseName} ${vcfs[2].baseName} > vcf_list.txt
-    scramble_cnt=\$(grep -cv '^#' ${vcfs[3].baseName} 2>/dev/null || echo 0)
-    [ "\$scramble_cnt" -gt 0 ] && printf '%s\\n' ${vcfs[3].baseName} >> vcf_list.txt
-    melt_cnt=\$(grep -cv '^#' ${vcfs[4].baseName} 2>/dev/null || echo 0)
-    [ "\$melt_cnt" -gt 0 ] && printf '%s\\n' ${vcfs[4].baseName} >> vcf_list.txt
+    # Build vcf_list.txt = the callers that actually ran, in SUPP_VEC bit order:
+    #   Manta, Delly, [GRIDSS if --run_gridss], [Scramble if --run_scramble AND has calls], [MELT if --run_melt AND has calls]
+    # Default run (GRIDSS/MELT/Scramble off): SUPP_VEC is always Manta,Delly (width 2).
+    # caller_set.sh also writes callers.txt (bit order) and ${meta.id}.sv_callers.json.
+    caller_set.sh ${meta.id} \\
+        Manta=${vcfs[0].baseName}:always \\
+        Delly=${vcfs[1].baseName}:always \\
+        GRIDSS=${vcfs[2].baseName}:${(params.run_gridss || !params.skip_gridss) ? 'always' : 'off'} \\
+        Scramble=${vcfs[3].baseName}:${(params.run_scramble || !params.skip_scramble) ? 'ifcalls' : 'off'} \\
+        MELT=${vcfs[4].baseName}:${(params.run_melt || !params.skip_melt) ? 'ifcalls' : 'off'}
+    CALLERS=\$(paste -sd, callers.txt)
+    GRIDSS_POS=\$(grep -n '^GRIDSS\$' callers.txt | cut -d: -f1 || true)
+    GRIDSS_POS=\${GRIDSS_POS:-0}
 
     jasmine \\
         file_list=vcf_list.txt \\
@@ -104,7 +112,7 @@ process JASMINE_MERGE {
         --ignore_strand
 
     # Post-merge filters (applied in one pass):
-    # 1. GRIDSS-only TRA: single-caller TRA where position 3 of SUPP_VEC is "1" (GRIDSS).
+    # 1. GRIDSS-only TRA (only when GRIDSS ran): single-caller TRA whose GRIDSS bit is 1.
     #    Belt-and-suspenders: GRIDSS_CONVERT_BND already excludes TRA; catches any residual.
     # 2. Tiered min_support for large non-INS SVs: single-caller SVs with |SVLEN| > 10 kb
     #    that are NOT INS. INS (including MELT/Scramble MEI) are exempt since MELT is
@@ -113,10 +121,11 @@ process JASMINE_MERGE {
     #    Delly-specific FORMAT tags not declared in Manta's header, crashing bcftools/Truvari.
     # Note: blanket single-caller DUP/INV filter removed — GRIDSS DUP/INV are pre-filtered
     #       by QUAL threshold in GRIDSS_CONVERT_BND; Manta/Delly single-caller DUP/INV allowed.
-    awk 'BEGIN{OFS="\\t"}
+    awk -v callers="\$CALLERS" -v gpos="\$GRIDSS_POS" 'BEGIN{OFS="\\t"}
         /^##FORMAT/{if(/ID=GT,/)print; next}
         /^#CHROM/{
             print "##INFO=<ID=MEITYPE,Number=1,Type=String,Description=\\"Mobile element insertion type (ALU/LINE1/SVA/HERVK)\\">"
+            print "##SVcaller_callers=" callers
             print; next
         }
         /^#/{print;next}
@@ -134,7 +143,7 @@ process JASMINE_MERGE {
             }
             if(supp!=""){
                 ones=0; for(j=1;j<=length(supp);j++) if(substr(supp,j,1)=="1") ones++
-                if(is_tra && ones==1 && substr(supp,3,1)=="1") next
+                if(gpos>0 && is_tra && ones==1 && substr(supp,gpos,1)=="1") next
                 if(ones==1 && svlen>10000 && !is_ins) next
             }
             m=split(\$9,f,":"); gt_i=1

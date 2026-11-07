@@ -53,7 +53,8 @@ workflow SV_CALLING {
     // Manta always runs first; its output feeds tiered GRIDSS when enabled
     MANTA_CALL(ch_validated_bam, ch_fasta, ch_fai)
 
-    if (!params.skip_gridss) {
+    // GRIDSS/MELT are opt-in (2026-11-07): --run_gridss / --run_melt, or the old --skip_X false.
+    if (params.run_gridss || !params.skip_gridss) {
         GRIDSS_SETUP(ch_fasta, ch_fai)
 
         if (params.tiered_gridss) {
@@ -86,7 +87,7 @@ workflow SV_CALLING {
         ch_gridss_vcf = GRIDSS_STUB.out.vcf
     }
 
-    if (!params.skip_scramble) {
+    if (params.run_scramble || !params.skip_scramble) {
         SCRAMBLE_CALL(ch_validated_bam, ch_fasta, ch_fai)
         ch_scramble_vcf = SCRAMBLE_CALL.out.vcf
     } else {
@@ -94,7 +95,7 @@ workflow SV_CALLING {
         ch_scramble_vcf = SCRAMBLE_STUB.out.vcf
     }
 
-    if (!params.skip_melt) {
+    if (params.run_melt || !params.skip_melt) {
         // Fan out the 4 ME types (ALU, HERVK, LINE1, SVA) in parallel, one MELT Single
         // per task, then collect into MELT_MERGE. Same pattern as DELLY's 5 SV types.
         // groupTuple(size: 4) waits for all 4 types before merging; a crashed type
@@ -118,8 +119,10 @@ workflow SV_CALLING {
         SVABA_CALL(ch_validated_bam, ch_fasta, ch_fai, ch_bwa_index)
     }
 
-    // Collect the 5 ensemble VCFs per sample and merge with JASMINE (min_support=1).
-    // File order [manta, delly, gridss, scramble, melt] sets the SUPP_VEC bit positions.
+    // Collect the 5 ensemble VCF slots per sample and merge with JASMINE (min_support=1).
+    // GRIDSS/MELT slots hold empty stubs when not run. JASMINE_MERGE (caller_set.sh) lists only the
+    // callers that ran, in order [manta, delly, gridss?, scramble?, melt?]; that order is the SUPP_VEC
+    // bit order and is recorded in <id>.sv_callers.json and the VCF header (##SVcaller_callers=).
     ch_to_merge = MANTA_CALL.out.vcf
         .join(DELLY_MERGE.out.vcf)
         .join(ch_gridss_vcf)

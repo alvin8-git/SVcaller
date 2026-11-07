@@ -1,5 +1,51 @@
 # Changes
 
+## 2026-11-07 — Missing local images: svcaller/utils:1.3 and smncopynum:1.1 rebuilt, launch guard added
+
+The HG001_md run died at `ALPHA_GLOBIN:HBA_JUNCTION` (exit 125, "pull access denied for
+svcaller/utils") after 42 min. Nothing was wrong with the pin: `svcaller/utils:1.3` is the intended
+tag (`nextflow.config`, `conf/docker.config`, ~12 modules, VERSION.md) but the current rootless Docker
+daemon (`DOCKER_HOST=unix:///run/user/1001/docker.sock`) had no `svcaller/*` images at all. Built from
+the repo's Dockerfiles: `docker build -f Dockerfile.utils -t svcaller/utils:1.3 .` and
+`docker build -f Dockerfile.smncopynum -t svcaller/smncopynum:1.1 .` (MELT image not built; opt-in).
+No config change. New `tests/test_local_images.py`: one utils tag everywhere, and (when a daemon is
+reachable) every pinned `svcaller/*` image must exist locally, failing with the build command.
+Public biocontainers (manta, delly, annotsv, ...) are pulled on demand by Nextflow.
+
+## 2026-11-07 — Default callers are Manta + Delly; GRIDSS and MELT opt-in; SUPP_VEC order change
+
+**Downstream parsers (OmniGen) must read the caller order, not assume it.** Owner decision: the
+consumer product uses Manta + Delly only. On HG001 read depth refutes 96 % of large DEL/DUP calls,
+MELT costs ~8 h per 30x genome with 0 reportable records on the validation samples, GRIDSS has
+unbounded run time, and the SMN1/alpha-globin/DMD/HBA tiers already cover the whole-gene deletions
+that matter. Expected saving ~8 h (MELT) + 4-6 h (GRIDSS) + ~10 min (Scramble) per genome.
+
+- `nextflow.config`: new `--run_gridss`, `--run_melt` (default false); `skip_gridss`, `skip_melt` now default
+  true and still work (`--skip_gridss false` enables). Effective rule: runs iff `run_X || !skip_X`.
+  Scramble is also opt-in (`--run_scramble`, `skip_scramble` default true, same rule), so the default SUPP_VEC is always `Manta,Delly` (width 2).
+- **SUPP_VEC order** was `Manta,Delly,GRIDSS[,Scramble][,MELT]` (width 3-5). Now one bit per caller that ran:
+  `Manta,Delly,[GRIDSS],[Scramble],[MELT]`; default run is `Manta,Delly` (always width 2).
+  `bin/caller_set.sh` (new) builds `vcf_list.txt` and writes `<id>.sv_callers.json` (published);
+  `JASMINE_MERGE` adds `##SVcaller_callers=` to the VCF header. The GRIDSS-only-TRA filter now uses the real GRIDSS bit.
+  `merge.nf` still takes five VCF slots (stubs for callers that did not run); merge tolerances and filters unchanged.
+- `filtered.tsv` gains `CALLERS_RAN`, `SUPP_VEC_WIDTH`, `SUPP_CALLERS`, `CALLER_CONSENSUS` (`bin/caller_consensus.py`, in
+  `GNOMAD_SV_FILTER`; `DEPTH_*` stay the last seven columns). With only Manta+Delly in the vector, PASS needs both; otherwise
+  PASS = >=2 callers as before; single-caller rows are kept as `SINGLE_CALLER`. Old tables lack these columns; a VCF without the header gives `CALLERS_RAN=legacy`, `CALLER_CONSENSUS=NA`.
+- `bin/html_report.py` + template name the callers from `CALLERS_RAN` (legacy tables keep the old fallback).
+- Tests: `tests/test_caller_set.py` (width-2 vector, provenance list, consensus rule, defaults).
+
+## 2026-11-07 — Read-depth consistency columns on filtered.tsv
+
+HG001 deletions at VHL (chr3, 1.88 Mb), PPARG (chr3, 957 kb) were Manta+Delly-supported but read
+1.0x of their flanks. New `DEPTH_CHECK` process (`bin/depth_check.py`, wired in
+`subworkflows/annotate.nf` after `GNOMAD_SV_FILTER`) appends `DEPTH_IN`, `DEPTH_FLANK`,
+`DEPTH_GLOBAL`, `DEPTH_RATIO`, `DEPTH_RATIO_GLOBAL`, `DEPTH_SUPPORT`, `DEPTH_NOTE` to `<sample>.filtered.tsv` for DEL/DUP >= 1 kb. Annotation only;
+no rows dropped, existing columns unchanged. `GNOMAD_SV_FILTER` no longer publishes (DEPTH_CHECK
+does). `ANNOTATE` takes the validated BAM as a third input. No new dependency (samtools in the
+utils container). Two baselines (local flank and the sample\'s autosomal median): supported needs both, refuted
+needs either, so a segdup-inflated flank (HG001 NSF: in 29x, flank 46x, global 31x) is refuted
+and noted "flank inflated". Test: `tests/test_depth_check.py`.
+
 ## 2026-07-24 — Class A runtime optimisation: right-size DELLY's CPU reservation
 
 Trace-based profiling of the THAL1/THAL2 run showed the wall clock inflated by a

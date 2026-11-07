@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build per-sample SVcaller HTML report using Jinja2. Callers: Manta+Delly+GRIDSS+Scramble+MELT+STRling (SvABA staged, not merged — see test_ensemble_caller_count)."""
+"""Build per-sample SVcaller HTML report using Jinja2. SV callers: Manta+Delly default (+Scramble); GRIDSS and MELT opt-in; SvABA staged, not merged — see test_ensemble_caller_count)."""
 import argparse, csv, gzip, json, re, sys
 from datetime import date
 from pathlib import Path
@@ -163,8 +163,38 @@ _CORE_CALLERS = ("Manta", "Delly", "GRIDSS")
 _OPTIONAL_CALLERS = ("Scramble", "MELT")
 
 
+# Caller names in SUPP_VEC bit order for THIS sample, read from the filtered table's
+# CALLERS_RAN column (written by bin/caller_consensus.py from the VCF header
+# ##SVcaller_callers=). None for legacy tables, which use the fixed-order fallback below.
+_RAN_CALLERS = None
+
+
+def _load_ran_callers(sv_tsv_path) -> None:
+    global _RAN_CALLERS
+    _RAN_CALLERS = None
+    try:
+        with open(sv_tsv_path) as fh:
+            for row in csv.DictReader(fh, delimiter="\t"):
+                v = (row.get("CALLERS_RAN") or "").strip()
+                if v and v != "legacy":
+                    _RAN_CALLERS = v.split(",")
+                break
+    except (OSError, TypeError):
+        pass
+
+
+def _sv_callers_text() -> str:
+    """'Manta + Delly' for new tables; the historical full list for legacy ones."""
+    if _RAN_CALLERS:
+        return " + ".join(_RAN_CALLERS)
+    return "Manta + Delly + GRIDSS + Scramble + MELT (legacy table: callers not recorded)"
+
+
 def _supp_vec_names(n_bits: int) -> list:
     """Caller names for a SUPP_VEC of this width.
+
+    If the table records which callers ran (CALLERS_RAN) and the width matches, that
+    list is authoritative. The rest of this docstring describes the legacy fallback.
 
     The previous version indexed a fixed six-name list by bit position. That
     silently mislabels: a sample with no Scramble calls but MELT calls produces a
@@ -181,6 +211,8 @@ def _supp_vec_names(n_bits: int) -> list:
     A wider vector (a caller added later) degrades to a positional label instead
     of silently reusing a name.
     """
+    if _RAN_CALLERS and len(_RAN_CALLERS) == n_bits:
+        return list(_RAN_CALLERS)
     n_opt = n_bits - len(_CORE_CALLERS)
     if n_opt <= 0:
         return list(_CORE_CALLERS[:n_bits])
@@ -1441,6 +1473,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     # Fail-loud guards: a present-but-empty required input is a crashed upstream stage,
     # not a negative result. Absent (NO_* sentinel) inputs remain a legitimate skip.
     # (cnv-bed is optional and arrives as a NO_FILE sentinel when a sample has no CNV data.)
+    _load_ran_callers(sv_tsv_path)
     _require_nonempty(smn_html_path, "SMN HTML section (--smn-html)")
     _require_nonempty(circos_svg_path, "Circos plot (--circos-svg)")
     _require_nonempty(sv_tsv_path, "Annotated SV table (--sv-tsv)")
@@ -1516,6 +1549,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
         bootstrap_css=bootstrap_css,
         sample_id=sample_id,
         pipeline_version=pipeline_version,
+        sv_callers_text=_sv_callers_text(),
         run_date=date.today().isoformat(),
         qc=qc,
         sv_summary=sv_summary,

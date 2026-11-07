@@ -95,7 +95,7 @@ workflow SVCALLER {
     }
 
     // M5: Annotate SVs
-    ANNOTATE(ch_sv_for_annotate, ch_annotsv_db)
+    ANNOTATE(ch_sv_for_annotate, ch_annotsv_db, ch_validated_bam)
 
     // Optional truvari truth channels
     ch_truth     = params.giab_truth

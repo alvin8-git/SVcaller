@@ -18,7 +18,7 @@ Accepts FASTQ or pre-aligned BAM input. Produces a per-sample HTML report with a
 
 ## Features
 
-- **Ensemble SV calling** — **5-caller ensemble**: Manta + DELLY + GRIDSS (core, all three must succeed) plus Scramble and MELT, each added only when it has calls. Merged with JASMINE. SvABA is **not** part of the ensemble — it is skipped by default and its VCF never reaches the merge; GRIDSS BND pairs auto-converted to typed DEL/DUP/INV
+- **Ensemble SV calling** — **default caller set (2026-11-07): Manta + DELLY only**, merged with JASMINE. A Finding needs support from **both** Manta and Delly (`CALLER_CONSENSUS=PASS`); single-caller calls stay in the table, flagged `SINGLE_CALLER`. **GRIDSS, MELT and Scramble are opt-in** (`--run_gridss`, `--run_melt`, `--run_scramble`); with all on, the full **5-caller** ensemble (Manta, DELLY, GRIDSS, Scramble, MELT) is merged as before. SvABA is **not** part of the ensemble — it is skipped by default and its VCF never reaches the merge. **SUPP_VEC order changed** (see below); the caller set that ran is recorded in `<id>.sv_callers.json`, the merged-VCF header `##SVcaller_callers=` and the `CALLERS_RAN` column of `filtered.tsv`.
 - **STR genotyping** — ExpansionHunter (32 disease loci) + STRling genome-wide scanning
 - **Dual CNV calling** — CNVpytor + GATK gCNV with consensus merging
 - **SMN1/SMN2 copy number** — SMNCopyNumberCaller with 2+0 haplotype detection
@@ -30,6 +30,13 @@ Accepts FASTQ or pre-aligned BAM input. Produces a per-sample HTML report with a
 - **Reproducible** — every tool pinned in a Docker container; no conda required
 
 ---
+
+
+### Default callers, SUPP_VEC order, run time (2026-11-07)
+
+The consumer product calls SVs with **Manta + Delly** only. On HG001 read depth refutes 96 % of the large DEL/DUP calls, MELT costs ~8 h per 30x genome with 0 reportable records on the validation samples, and GRIDSS has unbounded run time; the dedicated tiers (SMN1, alpha-globin, DMD, HBA) already cover the whole-gene deletions that matter, so a Manta + Delly consensus plus the depth check is the evidence bar for a Finding. Expected run-time change: about 8 h less (MELT), 4-6 h+ less (GRIDSS) and ~10 min less (Scramble) per 30x genome versus the old 5-caller default; opt back in with `--run_melt` / `--run_gridss` / `--run_scramble`.
+
+**SUPP_VEC order (downstream parsers: read it, do not hard-code it).** One bit per caller that ran, left to right, in the order `Manta, Delly, [GRIDSS], [Scramble], [MELT]`. GRIDSS, Scramble and MELT bits exist only when opted in (Scramble/MELT only when they have calls). Default run: `SUPP_VEC` = `Manta,Delly`, always width 2. The old default was `Manta,Delly,GRIDSS[,Scramble][,MELT]` (width 3-5), so **old tables have GRIDSS at bit 3; new tables do not**. The actual order is in `<id>.sv_callers.json` (`callers_in_supp_vec_order`, `supp_vec_width`), the VCF header `##SVcaller_callers=Manta,Delly`, and per row in `filtered.tsv` columns `CALLERS_RAN`, `SUPP_VEC_WIDTH`, `SUPP_CALLERS`, `CALLER_CONSENSUS` (`PASS` | `SINGLE_CALLER` | `NA`; `CALLERS_RAN=legacy` on tables written before this change). Print "2 of 2 callers" from `SUPP_VEC_WIDTH`, not "2 of 4". Merge tolerances and filter thresholds are unchanged.
 
 ## Pipeline Overview
 
@@ -137,8 +144,10 @@ HG003,,,/data/HG003.GRCh38.bam
 | `--sv_pon` | null | GIAB 7-sample SV Panel of Normals BED for artifact flagging (see `pon/sv_pon/`) |
 | `--giab_truth` | null | GIAB T2TQ100-V1.0 truth VCF.gz for truvari benchmarking |
 | `--giab_truth_v5q` | null | GIAB v5.0q truth VCF.gz (second benchmark pass) |
-| `--skip_gridss` | `false` | Skip GRIDSS (saves 4–6 h; leaves Manta+DELLY+Scramble+MELT) |
-| `--skip_melt` | `false` | Skip MELT MEI calling (saves ~2 h when container unavailable) |
+| `--run_gridss` | `false` | Opt in to GRIDSS (unbounded run time, 4-6 h+, 60 GB RAM). Adds a SUPP_VEC bit after Delly. `--skip_gridss false` is an alias |
+| `--skip_gridss` | `true` | Legacy flag, default flipped 2026-11-07. Effective rule: GRIDSS runs iff `--run_gridss` or `--skip_gridss false` |
+| `--run_melt` | `false` | Opt in to MELT MEI calling (~8 h per 30x genome; 0 reportable records on the validation samples). `--skip_melt false` is an alias |
+| `--skip_melt` | `true` | Legacy flag, default flipped 2026-11-07. Effective rule: MELT runs iff `--run_melt` or `--skip_melt false` |
 | `--auto_cleanup` | `false` | Delete the `-work-dir` automatically on successful completion (removes the `-resume` cache) |
 | `--max_cpus` | `64` | Max CPUs any process may request (caps `task.attempt` scaling) |
 | `--max_memory` | `120.GB` | Max memory any process may request |
@@ -300,7 +309,7 @@ results/
     ├── <sample_id>.str.vcf.gz           # STR calls (ExpansionHunter)
     ├── <sample_id>.cnv_consensus.bed    # Consensus CNV calls
     ├── <sample_id>.smn.tsv              # SMN1/SMN2 copy numbers
-    ├── <sample_id>.filtered.tsv         # AnnotSV-annotated, gnomAD-SV-filtered SVs
+    ├── <sample_id>.filtered.tsv         # AnnotSV-annotated, gnomAD-SV-filtered SVs + DEPTH_* columns
     ├── <sample_id>.circos.svg           # Genome-wide Circos plot (embedded inline in HTML)
     ├── <sample_id>.circos.png
     ├── bloodgroup/
@@ -320,6 +329,43 @@ results/
     │   └── <sample_id>.insert_size_metrics.txt
     └── <sample_id>.truvari/             # GIAB benchmark (if --giab_truth set)
         └── summary.json
+```
+
+### Depth consistency check (`filtered.tsv`)
+
+Every DEL and DUP of at least 1 kb in `<sample>.filtered.tsv` is checked against read depth
+(`bin/depth_check.py`, the `DEPTH_CHECK` process, the last step before the table is published).
+Seven columns are appended after the existing ones; no row is dropped.
+
+| Column | Meaning |
+|--------|---------|
+| `DEPTH_IN` | Mean depth inside the SV, excluding 500 bp at each breakpoint |
+| `DEPTH_FLANK` | Mean depth of two flanks, each min(SV length, 100 kb), either side |
+| `DEPTH_GLOBAL` | The sample's autosomal median depth (same on every row; see below) |
+| `DEPTH_RATIO` | `DEPTH_IN / DEPTH_FLANK`, 2 decimals; `.` when the SV is < 1 kb or flank depth < 5x |
+| `DEPTH_RATIO_GLOBAL` | `DEPTH_IN / DEPTH_GLOBAL`, 2 decimals |
+| `DEPTH_SUPPORT` | `supported` / `refuted` / `inconclusive` / `na` (other SV types, or no ratio) |
+| `DEPTH_NOTE` | `flank inflated` if `DEPTH_FLANK / DEPTH_GLOBAL` >= 1.3, `flank depressed` if <= 0.7 (the segmental-duplication signature), else `.` |
+
+Per-ratio bands (one config block at the top of `bin/depth_check.py`): DEL `supported` at
+ratio <= 0.65, `refuted` at >= 0.85; DUP `supported` at >= 1.35, `refuted` at <= 1.15; between
+is inconclusive. A heterozygous deletion reads near 0.5x, a homozygous one near 0, a
+heterozygous duplication near 1.5x. Two baselines are used because a segmental duplication
+inflates the local flank and makes a normal-depth region look deleted: `DEPTH_SUPPORT` is
+`supported` only if **both** ratios are in the supported band, `refuted` if **either** is in the
+refuted band, otherwise `inconclusive` (if the flank is too shallow for a ratio, the global
+ratio alone decides). **`refuted` means the read depth contradicts the call** (for example a
+"deletion" that reads 1.0x of its flanks or of the genome-wide depth); it is evidence against
+the call, not proof it is false, and a caller-supported call is never removed.
+
+`DEPTH_GLOBAL` is the median of `samtools coverage` mean depth over 300 fixed 20 kb windows
+spaced evenly along chr1-22 (deterministic; zero-coverage windows skipped). It is printed on
+stderr and cached in a sidecar `<out.tsv>.global_depth` so re-annotation does not recompute.
+Depth uses `samtools coverage` default read filters (no duplicates, secondary, QC-fail). To
+annotate an existing result without a rerun:
+
+```bash
+bin/depth_check.py results/S/S.filtered.tsv S.bam results/S/S.filtered.depth.tsv
 ```
 
 ### Copy-number / blood-group trait contracts

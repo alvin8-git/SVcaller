@@ -71,10 +71,10 @@ process GNOMAD_SV_FILTER {
     tag "${meta.id}"
     label 'process_single'
     container 'quay.io/biocontainers/annotsv:3.4.6--py313hdfd78af_0'
-    publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.filtered.tsv"
+    // Not published: DEPTH_CHECK appends the depth columns and publishes <id>.filtered.tsv.
 
     input:
-    tuple val(meta), path(annotated_tsv)
+    tuple val(meta), path(annotated_tsv), path(sv_vcf)   // sv_vcf: header carries ##SVcaller_callers=
     val af_threshold  // default 0.01
 
     output:
@@ -87,7 +87,7 @@ import sys, csv
 with open('${annotated_tsv}') as fh:
     reader = csv.DictReader(fh, delimiter='\\t')
     fieldnames = reader.fieldnames or []
-    with open('${meta.id}.filtered.tsv', 'w') as out:
+    with open('${meta.id}.af_filtered.tsv', 'w') as out:
         writer = csv.DictWriter(out, fieldnames=fieldnames, delimiter='\\t')
         writer.writeheader()
         for row in reader:
@@ -99,5 +99,7 @@ with open('${annotated_tsv}') as fh:
             if pop_af < ${af_threshold}:
                 writer.writerow(row)
 "
+    # Append CALLERS_RAN / SUPP_VEC_WIDTH / SUPP_CALLERS / CALLER_CONSENSUS (no rows dropped)
+    caller_consensus.py ${meta.id}.af_filtered.tsv ${sv_vcf} ${meta.id}.filtered.tsv
     """
 }

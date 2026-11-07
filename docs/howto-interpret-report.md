@@ -25,7 +25,7 @@ Table of SV counts by type (DEL, DUP, INV, BND, INS) with the count of class 4/5
 **What the numbers mean:**
 - A normal 30× WGS sample typically has 8,000-15,000 SV calls after merging all callers
 - After gnomAD SV frequency filtering (`filtered.tsv`), expect 5,000-12,000 calls
-- High INV and TRA counts (>5,000 each) from a single caller (especially GRIDSS) are often artefacts — filter by `SUPP_VEC ≥ 2` to see multi-caller-supported calls only
+- High INV and TRA counts (>5,000 each) from a single caller (especially GRIDSS) are often artefacts — filter by `CALLER_CONSENSUS = PASS` (or `SUPP_VEC ≥ 2`) to see multi-caller-supported calls only
 
 ### 3. Genome-wide Circos Plot
 
@@ -81,6 +81,8 @@ Top 20 SVs sorted by AnnotSV ranking score (higher = more likely pathogenic). Co
 | Score | AnnotSV ranking score |
 | Class | ACMG class (1=benign → 5=pathogenic) |
 | OMIM | OMIM morbid gene status |
+
+**Check `DEPTH_SUPPORT` before trusting a large DEL/DUP.** The last seven columns of `filtered.tsv` compare read depth inside the call with its local flanks and with the sample's autosomal median (`DEPTH_GLOBAL`). `refuted` (either ratio about 1.0x for a DEL or DUP) means depth contradicts the caller consensus; `supported` means both ratios agree with the call (DEL <= 0.65x, DUP >= 1.35x); `DEPTH_NOTE` = `flank inflated`/`flank depressed` flags a segmental-duplication-like flank; `na` means the check does not apply (not DEL/DUP, or under 1 kb, or flank under 5x). Rows are never dropped.
 
 **Class 4/5 SVs should always be reviewed.** Check the full `filtered.tsv` for additional context (multiple transcripts, population frequency, loss-of-function status).
 
