@@ -94,6 +94,22 @@ or run without SvABA:   --skip_svaba"""
 // Event handlers must live in the main script, not nextflow.config — in the
 // config `workflow` is a ConfigObject and `onComplete` is rejected at parse time.
 workflow.onComplete {
+    // provenance.json per sample (versions of the producing tools, for OmniGen).
+    // Strictly non-blocking: any failure only logs a warning.
+    try {
+        def sheet = file(params.input)
+        def ids = sheet.splitCsv(header: true).collect { it.sample }.findAll { it }.unique()
+        if (ids) {
+            def cmd = ['python3', "${projectDir}/bin/write_provenance.py",
+                       '--outdir', "${params.outdir}", '--ref-fasta', "${params.ref_fasta}"]
+            ids.each { cmd += ['--sample', it as String] }
+            def pr = new ProcessBuilder(cmd as List<String>).redirectErrorStream(true).start()
+            pr.inputStream.eachLine { log.info it }
+            pr.waitFor()
+        }
+    } catch (Throwable t) {
+        log.warn "provenance.json not written: ${t.message}"
+    }
     if (workflow.success && params.auto_cleanup) {
         def workDir = new File(workflow.workDir.toString())
         if (workDir.exists()) {

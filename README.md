@@ -310,6 +310,7 @@ results/
     ├── <sample_id>.str_summary.tsv      # per-allele sizing class + lower-bound display (bin/eh_sizing.py)
     ├── <sample_id>.cnv_consensus.bed    # Consensus CNV calls
     ├── <sample_id>.smn.tsv              # SMN1/SMN2 copy numbers
+    ├── provenance.json                  # tool versions + images + SVcaller commit (see below)
     ├── <sample_id>.filtered.tsv         # AnnotSV-annotated, gnomAD-SV-filtered SVs + DEPTH_* columns
     ├── <sample_id>.circos.svg           # Genome-wide Circos plot (embedded inline in HTML)
     ├── <sample_id>.circos.png
@@ -331,6 +332,25 @@ results/
     └── <sample_id>.truvari/             # GIAB benchmark (if --giab_truth set)
         └── summary.json
 ```
+
+### `provenance.json` (producing-software versions)
+
+At the end of every run (`workflow.onComplete`, `bin/write_provenance.py`) one
+`<outdir>/<sample>/provenance.json` is written next to `<sample>.smn.tsv`; OmniGen reads it.
+It is non-blocking: any failure only logs a warning and never fails the run.
+
+```json
+{"pipeline": "SVcaller <git describe>", "svcaller_commit": "<HEAD, +-dirty>",
+ "generated_utc": "...", "sample": "...", "reference": {"path": "<ref_fasta>"},
+ "tools": {"manta": "1.6.0", "delly": "1.2.6", "annotsv": "3.4.6", "expansionhunter": "5.0.0",
+           "gatk": "...", "samtools": "...", "...": "..."},
+ "images": {"manta": "quay.io/biocontainers/manta:1.6.0--py27h9948957_6", "...": "..."}}
+```
+
+Each tool version is queried from the tool itself inside its own already-local container
+(`docker run --rm <image> <tool> --version`, no pulls); if the tool or image cannot answer, the
+value is `"not reported"`. The repo commit is recorded only in `svcaller_commit`, never as a
+tool version. Image tags come from `conf/docker.config`. Test: `tests/test_write_provenance.py`.
 
 ### STR sizing rule (`str_summary.tsv`)
 
