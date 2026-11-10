@@ -314,6 +314,7 @@ results/
     ├── <sample_id>.filtered.tsv         # AnnotSV-annotated, gnomAD-SV-filtered SVs + DEPTH_* columns
     ├── <sample_id>.circos.svg           # Genome-wide Circos plot (embedded inline in HTML)
     ├── <sample_id>.circos.png
+    ├── <sample_id>.trait_depth.regions.bed.gz  # raw targeted depth (trait + CTRL_* regions); read by OmniGen
     ├── bloodgroup/
     │   └── <sample_id>.rh_status.tsv    # Rh factor: RHD copy number → Rh+/- (CNV trait)
     ├── cnv_traits/
@@ -430,6 +431,7 @@ consensus BED corroborates called deletions but does not drive the call.
 
 | File | Columns |
 |------|---------|
+| `<S>.trait_depth.regions.bed.gz` | headerless 5-column BED: `chrom`, `start`, `end`, `region` (RHD, AMY1_CLUSTER, GSTM1, GSTT1, LPA_KIV2, CTRL_1..8), `mean_depth` (mosdepth `--mapq 0`) |
 | `bloodgroup/<S>.rh_status.tsv` | `sample`, `RHD_copies`, `Rh_status` (pos/neg), `confidence` |
 | `cnv_traits/<S>.amy1.tsv` | `sample`, `AMY1_copies`, `method` |
 | `cnv_traits/<S>.gst_null.tsv` | `sample`, `GSTM1` (null/present), `GSTT1` (null/present) |

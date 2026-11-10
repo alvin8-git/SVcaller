@@ -1,6 +1,7 @@
 process TRAIT_DEPTH {
     tag "${meta.id}"
     label 'process_low'
+    publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.trait_depth.regions.bed.gz"
     // container assigned in conf/docker.config: mosdepth 0.3.14 biocontainer
 
     input:

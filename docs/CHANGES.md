@@ -1,5 +1,13 @@
 # Changes
 
+## 2026-11-10 — TRAIT_DEPTH now publishes `<S>.trait_depth.regions.bed.gz`
+
+- `TRAIT_DEPTH` (`modules/traits/depth.nf`) computed the targeted-depth BED but never published it, so no run
+  produced the file OmniGen's `report_cnv_traits.py` reads for the `[CNVTRAIT-UNCAL]` AMY1 and LPA KIV-2 lines.
+  Added `publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.trait_depth.regions.bed.gz"`
+  (same pattern as the other per-sample outputs). The mosdepth command and BED contents are unchanged; the `.csi`
+  index is not a declared output and is not published.
+
 ## 2026-11-07 — ExpansionHunter per-allele sizing (spanned / flanked / unresolved)
 
 - EH reported HG002 ATXN2 22/62 and CNBP 13/51 from in-repeat and flanking reads only (alleles beyond the 150 bp
