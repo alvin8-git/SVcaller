@@ -22,6 +22,17 @@
 # concatenates BGZF blocks without recompressing) yields a canonical-sorted BAM by
 # construction, so the old conditional re-sort is gone.
 #
+# Speed (2026-11): two changes, both content-neutral (tests/test_filter_chroms.py
+# plus a samtools-view md5 of old vs new output):
+#   * parts are written at BGZF level 1 (FILTER_BGZF_LEVEL, default 1; `samtools view -1`). At the default level 6
+#     the deflate in the last pipeline stage dominated (67 s vs 29 s of wall for
+#     chr21, user time 93 s vs 50 s); the file is ~9% larger, the reads are the same.
+#   * chromosomes longer than FILTER_SHARD_BP (default 25000000) are split into
+#     position windows so chr1 no longer bounds the wall time. Each window is
+#     fetched with a region query (which also returns reads that merely overlap the
+#     window) and the awk keeps only reads whose POS lies inside it, so every read
+#     is emitted exactly once, in the original file order after `samtools cat`.
+#
 # Usage: filter_chroms.sh <in.bam> <fai> <threads> <out.bam>
 set -euo pipefail
 
@@ -63,15 +74,33 @@ samtools view -H "$BAM" | awk -v canon="$CANON" '
     }
 ' "$FAI" - > "$WORK/header.sam"
 
-# 2. Per-chromosome part: reads for the chrom, transformed, prefixed with the
-#    corrected header so `samtools cat` sees identical headers, compressed.
-export BAM WORK CANON
+# 2. Shards. One line per shard: <index> <chrom> <start> <end>; start=0 means "whole
+#    chromosome" (no POS test). Emitted in canonical order, which is also the
+#    concatenation order. Windows are [s, e] inclusive on POS.
+SHARD_BP="${FILTER_SHARD_BP:-25000000}"
+awk -v w="$SHARD_BP" '
+    $1 ~ "^chr([0-9]+|X|Y|M)$" {
+        len=$2
+        if (len <= w * 1.5) { printf "%d\t%s\t0\t0\n", ++k, $1; next }
+        nsh=int((len + w - 1) / w); step=int((len + nsh - 1) / nsh)
+        for (i=0; i<nsh; i++) {
+            s=i*step+1; e=(i+1)*step; if (i==nsh-1) e=len
+            printf "%d\t%s\t%d\t%d\n", ++k, $1, s, e
+        }
+    }' "$FAI" > "$WORK/shards.tsv"
+
+# 3. Per-shard part: reads for the shard, transformed, prefixed with the corrected
+#    header so `samtools cat` sees identical headers, compressed at level 1.
+FILTER_BGZF_LEVEL="${FILTER_BGZF_LEVEL:-1}"
+export BAM WORK CANON FILTER_BGZF_LEVEL
 filter_one() {
-    local chr="$1"
+    local idx="$1" chr="$2" lo="$3" hi="$4" region="$2"
+    [ "$lo" != 0 ] && region="$2:$3-$4"
     { cat "$WORK/header.sam"
-      samtools view "$BAM" "$chr" | awk -v canon="$CANON" '
+      samtools view "$BAM" "$region" | awk -v canon="$CANON" -v lo="$lo" -v hi="$hi" '
         BEGIN { OFS="\t"; n=split(canon,c," "); for(i=1;i<=n;i++) can[c[i]]=1 }
         {
+            if (lo != 0 && ($4 < lo || $4 > hi)) next
             for (fi=12; fi<=NF; fi++) {
                 if ($fi ~ /^SA:Z:/) {
                     n_sa=split(substr($fi,6),saparts,";"); new_sa=""
@@ -89,14 +118,15 @@ filter_one() {
             if ($7 == "*" && $8+0 != 0) $8=0
             print
         }'
-    } | samtools view -b -o "$WORK/part.$chr.bam" -
+    } | samtools view -b --output-fmt-option level="$FILTER_BGZF_LEVEL" -o "$WORK/part.$idx.bam" -
 }
 export -f filter_one
 
-printf '%s\n' "${CHROMS[@]}" | xargs -P"$THREADS" -I{} bash -c 'filter_one "$1"' _ {}
+# -n4 / -P / stdin only: the samtools biocontainer ships busybox xargs (no -a, no -L).
+xargs -P"$THREADS" -n4 bash -c 'filter_one "$@"' _ < "$WORK/shards.tsv"
 
-# 3. Concatenate the parts in canonical order (BGZF concat, no recompress), index.
+# 4. Concatenate the parts in canonical order (BGZF concat, no recompress), index.
 PARTS=()
-for chr in "${CHROMS[@]}"; do PARTS+=("$WORK/part.$chr.bam"); done
+while IFS=$'\t' read -r idx _; do PARTS+=("$WORK/part.$idx.bam"); done < "$WORK/shards.tsv"
 samtools cat -o "$OUT" "${PARTS[@]}"
-samtools index "$OUT"
+samtools index -@ "$THREADS" "$OUT"

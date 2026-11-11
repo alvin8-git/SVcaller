@@ -244,6 +244,8 @@ A 30× WGS run can leave several hundred GB of intermediates in its work directo
 
 Per-process CPU/memory/time are capped by `--max_cpus` (64), `--max_memory` (120.GB), `--max_time` (240.h). Lower them on small machines (e.g. `--max_cpus 8 --max_memory 32.GB`) so no process over-subscribes. Tiers and per-caller overrides live in `conf/base.config`.
 
+`--max_cpus` is also the per-sample **core budget**: `SAMTOOLS_FILTER_CHROMS` takes 3/4 of it, and the remaining processes are reserved at what they measurably use (most are single-threaded), so a sample keeps all its cores busy. Typical run: `--max_cpus 32 --max_memory 100.GB` (peak concurrent use is well under 100 GB). Wall time is bounded by the Delly BND task (single-threaded, ~35-60 min at 30X); extra cores beyond ~32 shorten only the BAM filter. `FILTER_SHARD_BP` (env, default `25000000`) sets the window size of the filter shards and `FILTER_BGZF_LEVEL` (env, default `1`) the compression level of the filtered BAM (`6` gives a ~8% smaller file at the cost of filter CPU). `bin/compare_results.py <A> <B> <sample>` diffs the final outputs of two runs (exit 1 on any difference). A `withName` selector that is also used in `conf/docker.config` is replaced, not merged, so per-process resources in `conf/base.config` use grouped selectors; check with `nextflow config -profile docker`.
+
 Scatter-gather is applied only where it is safe for SV/CNV calling:
 
 | Stage | Parallelization |

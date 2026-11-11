@@ -1,5 +1,39 @@
 # Changes
 
+## 2026-11-11 — Wall-time: scheduling, resource reservations, sharded BAM filter
+
+Goal: cut wall time per 30X sample with the same tools and byte-identical results. Measured on one dev box
+(HG002, 115 GB BAM, `--max_cpus 48 --max_memory 100.GB`, Docker, spinning-disk-class shared storage):
+**145 min -> 77 min**. All 20 final outputs compared identical (`bin/compare_results.py`, below).
+
+- **`withName` shadowing bug (largest effect).** A `withName` selector in `conf/base.config` whose string is also used
+  in `conf/docker.config` (which sets `container` per process) is *replaced*, not merged. The `DELLY_CALL_SVTYPE`
+  CPU pin from 2026-07-24 was therefore ignored under `-profile docker` (checked with `nextflow config`): Delly ran with
+  `process_medium` (8 CPU / 36 GB), at most two Delly tasks ran at once on a 100 GB budget, and the five types ran
+  serially in pairs (~30 min x 3 rounds). Resource overrides now use grouped selectors unique to `base.config`
+  (`'DELLY_CALL_SVTYPE|STRLING_CALL'`, `'CNVPYTOR_CALL|GATK_GCNV_CALL'`); all five Delly types now run together.
+  `MANTA_CALL`/`SVABA_CALL` blocks in `base.config` are still shadowed under docker (they equal the label values).
+- **Right-sized reservations** from measured peak RSS and %CPU (`conf/base.config`): `process_medium` 36 -> 16 GB,
+  `process_low` 12 -> 6 GB; Delly 1 CPU / 8 GB; STRling 1 CPU / 8 GB; gCNV and CNVpytor 2 CPU / 16 GB; flagstat and
+  mosdepth 4 CPU; Picard insert size 1 CPU. Retries still scale memory (x attempt). No tool argument changed.
+- **`SAMTOOLS_FILTER_CHROMS`** takes 3/4 of `--max_cpus` (min 8). `bin/filter_chroms.sh` writes its parts at BGZF
+  level 1 (`FILTER_BGZF_LEVEL`, default 1; the compress stage was 67 s vs 29 s for chr21), splits chromosomes
+  longer than `FILTER_SHARD_BP` (default 25000000) into position windows (each read is emitted once, original order),
+  and indexes with `-@`. Reads and header (minus `@PG`) are identical to the previous script
+  (`tests/test_filter_chroms.py::test_sharded_output_equals_unsharded`, plus an md5 of `samtools view` on HG002).
+  Level 1 makes the filtered BAM ~8% larger than level 6 (119 GB vs 110 GB for HG002); on slow shared storage
+  where five Delly tasks read it together set `FILTER_BGZF_LEVEL=6`.
+- Delly BND is submitted first (`subworkflows/sv_calling.nf`); `maxForks 4` removed from `DELLY_CALL_SVTYPE`.
+- New `bin/compare_results.py <A> <B> <sample>`: exits 1 if any final output differs (VCF volatile header lines
+  such as `##fileDate`/`##reference=` ignored).
+- **Evaluated and not changed (results could not be guaranteed or no wall-time gain):**
+  Delly sharding by chromosome (BND needs all chromosome pairs and is the longest task, so sharding DEL/DUP/INV/INS
+  does not shorten the critical path; sharded IDs would also differ); CNVpytor `-j` (thread output not verified);
+  Picard insert size (QC only, feeds the HTML report/MultiQC, no call; runs concurrently from t=0, ~30 min, off the
+  critical path); gCNV `CollectReadCounts` sharding (off the critical path).
+- Remaining critical path: filter (~5 min of sharded work, then a serial `samtools cat` of ~120 GB and index) ->
+  Delly BND (single-threaded, 30-45 min, I/O bound when many readers share the BAM) -> Jasmine/AnnotSV/depth check.
+
 ## 2026-11-10 — TRAIT_DEPTH now publishes `<S>.trait_depth.regions.bed.gz`
 
 - `TRAIT_DEPTH` (`modules/traits/depth.nf`) computed the targeted-depth BED but never published it, so no run

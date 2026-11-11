@@ -32,8 +32,10 @@ workflow SV_CALLING {
     // FILTER_CHROMS + VALIDATE_REF_BAM were lifted to svcaller.nf so CNV/SMN/traits
     // share the same validated BAM. This subworkflow receives it ready to use.
 
-    // DELLY: fan out 5 SV types in parallel; collect groupTuple(size:5) → merge
-    ch_delly_input = ch_validated_bam.combine(Channel.from(['DEL', 'INS', 'INV', 'DUP', 'BND']))
+    // DELLY: fan out 5 SV types in parallel. BND is listed first on purpose: it is the
+    // longest type and bounds the sample's wall time, so it must claim a slot first
+    // when cores are scarce (the merge is order-independent); collect groupTuple(size:5) → merge
+    ch_delly_input = ch_validated_bam.combine(Channel.from(['BND', 'DEL', 'INS', 'INV', 'DUP']))
     DELLY_CALL_SVTYPE(ch_delly_input, ch_fasta, ch_fai)
     DELLY_MERGE(DELLY_CALL_SVTYPE.out.vcf.groupTuple(size: 5))
 

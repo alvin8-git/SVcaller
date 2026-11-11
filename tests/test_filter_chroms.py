@@ -114,3 +114,29 @@ def test_output_is_coordinate_sorted_and_indexable(filtered, tmp_path):
     assert (str(filtered) + ".bai") and os.path.exists(str(filtered) + ".bai")
     hdr = _sh("samtools", "view", "-H", str(filtered))
     assert "SO:coordinate" in hdr
+
+
+def test_sharded_output_equals_unsharded(tmp_path):
+    """Position-window sharding (FILTER_SHARD_BP) must emit every read exactly once,
+    in the same order, including reads that straddle a window boundary."""
+    lines = ["@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:10000",
+             "@SQ\tSN:chr2\tLN:10000", f"@SQ\tSN:{ALT}\tLN:5000"]
+    for i, pos in enumerate(range(1, 9990, 37)):      # reads cross the 1000 bp windows
+        lines.append(f"a{i}\t99\tchr1\t{pos}\t60\t60M\t=\t{pos}\t0\t" + "A" * 60 + "\t" + "I" * 60)
+        lines.append(f"b{i}\t99\tchr2\t{pos}\t60\t60M\t=\t{pos}\t0\t" + "C" * 60 + "\t" + "I" * 60)
+    sam = tmp_path / "in.sam"
+    sam.write_text("\n".join(lines) + "\n")
+    bam = tmp_path / "in.bam"
+    _sh("samtools", "sort", "-o", str(bam), str(sam))
+    _sh("samtools", "index", str(bam))
+    fai = tmp_path / "ref.fa.fai"
+    fai.write_text(f"chr1\t10000\t6\t60\t61\nchr2\t10000\t10200\t60\t61\n")
+    outs = {}
+    for name, env in (("whole", {}), ("sharded", {"FILTER_SHARD_BP": "1000"})):
+        out = tmp_path / f"{name}.bam"
+        r = subprocess.run(["bash", SCRIPT, str(bam), str(fai), "2", str(out)],
+                           capture_output=True, text=True, env={**os.environ, **env})
+        assert r.returncode == 0, r.stderr
+        outs[name] = _sh("samtools", "view", str(out))
+    assert outs["whole"].count("\n") == 2 * len(range(1, 9990, 37))
+    assert outs["sharded"] == outs["whole"], "sharded filter changed the read set or order"
