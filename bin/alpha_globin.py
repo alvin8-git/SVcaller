@@ -40,6 +40,7 @@ FOUR RULES THIS FILE EXISTS TO ENFORCE. Each was a real, costly bug.
 """
 import argparse
 import hashlib
+import math
 import os
 import sys
 from pathlib import Path
@@ -50,6 +51,14 @@ SCORABLE = ("HBZ", "HBA2", "INTER_A2_A1", "HBA1")
 # HOM_LOSS_MAX_SCORE / HET_LOSS_MAX_SCORE / GAIN_MIN_SCORE (importing it would
 # pull cnv_traits_common into this container); a test ties them together.
 SCORE_BOUNDARIES = (0.25, 0.65, 1.35)
+# Copy of hba_depth.MARGINAL_WINDOW, used when a depth file has no `marginal` column.
+MARGINAL_WINDOW = 0.08
+NOTE_INTER_BORDERLINE = ("INTER_A2_A1 was borderline: -a4.2 is named with reduced "
+                        "confidence")
+NOTE_GAIN = ("gain copy number above 3 is not resolved; anti-3.7 on both "
+             "chromosomes (6 genes) reads the same")
+NOTE_A37_A42 = ("-a3.7/-a4.2 (2 genes) gives the same depth signature as "
+                "-a4.2/aa (3 genes)")
 
 # The contract's column list, in order. Frozen: docs/contracts/alpha_globin_contract.md.
 CONTRACT_COLUMNS = [
@@ -153,30 +162,49 @@ def observed_copies(depth_rows):
     return out
 
 
-def marginal_alternatives(depth_rows):
-    """{segment: [copies]} the OTHER reading(s) of each marginal segment.
+def _is_marginal(r):
+    """The row's `marginal` flag; derived from `score` (same window as
+    hba_depth.py) when the depth file has no such column."""
+    if "marginal" in r:
+        return str(r["marginal"]).lower() in ("1", "true", "yes")
+    try:
+        sc = float(r["score"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    return math.isfinite(sc) and any(
+        abs(sc - b) < MARGINAL_WINDOW for b in SCORE_BOUNDARIES)
 
-    bin/hba_depth.py's `marginal` flag says "within 0.08 of SOME decision
-    boundary", not which one. Boundaries sit between 0|1, 1|2 and 2|3 copies
-    (scores 0.25, 0.65, 1.35). When the row carries `score`, the nearest
-    boundary says which neighbouring state the segment might really be in;
-    without it (or with an unparsable score) both neighbours are offered."""
-    bounds = SCORE_BOUNDARIES
+
+def marginal_alternatives(depth_rows):
+    """{segment: [copies]} the OTHER reading(s) of each marginal segment,
+    judged from the `call`, never more than one state away.
+
+    The `marginal` flag says "near SOME boundary", not which. With a finite
+    `score` the nearest boundary picks the neighbour. If the state implied by
+    the printed (3-decimal) score disagrees with the call by one step and the
+    score is within 0.001 of that boundary, that is rounding: trust the call
+    and offer the neighbour across that boundary. Any other disagreement, a
+    missing/NaN/inf score: offer both neighbours."""
     out = {}
     for r in depth_rows or []:
         seg = r.get("segment")
-        if seg not in SCORABLE or seg not in observed_copies([r]):
-            continue
-        if str(r.get("marginal", "")).lower() not in ("1", "true", "yes"):
+        if seg not in SCORABLE or seg not in observed_copies([r]) or not _is_marginal(r):
             continue
         k = CALL_TO_COPIES[r["call"]]
+        alts = [c for c in (k - 1, k + 1) if 0 <= c <= 3]
         try:
             sc = float(r["score"])
-            i = min(range(3), key=lambda j: abs(sc - bounds[j]))
-            alts = [i + 1 if k <= i else i]
+            if math.isfinite(sc):
+                sk = sum(sc >= b for b in SCORE_BOUNDARIES)
+                if sk == k:
+                    i = min(range(3), key=lambda j: abs(sc - SCORE_BOUNDARIES[j]))
+                    alts = [i + 1 if k <= i else i]
+                elif (abs(sk - k) == 1 and
+                      abs(sc - SCORE_BOUNDARIES[min(sk, k)]) <= 0.001):
+                    alts = [sk]
         except (KeyError, TypeError, ValueError):
-            alts = [c for c in (k - 1, k + 1) if 0 <= c <= 3]
-        out[seg] = [c for c in alts if c != k]
+            pass
+        out[seg] = [c for c in alts if abs(c - k) == 1]
     return out
 
 
@@ -299,11 +327,21 @@ def _collapse_group(candidates, junction_rows):
     return None
 
 
-def _name_core(obs, alleles, junction_rows=None, compound_ok=False):
+def _name_core(obs, alleles, junction_rows=None, compound_ok=False,
+               inter_unsure=False):
     """Channel 2 on one fixed reading of the segments.
     -> (deletion_alleles, alpha_genes_called, note)."""
     if not obs:
         return "NA", "NA", "no scorable segment was measured"
+    missing = [g for g in ("HBA2", "INTER_A2_A1", "HBA1") if g not in obs]
+    if missing:
+        # A gene that was not measured can neither be intact nor lost. Never
+        # "none"/4 with a gene unmeasured. (HBZ unmeasured is tolerated: the
+        # matcher then leaves HBZ unconstrained, so --FIL|--THAI and
+        # --SEA|--MED are reported as ONE wider group, never split.)
+        return ("NA", "NA", "segment(s) {} not measured (uncalibrated or "
+                "missing), so the alpha-gene count cannot be determined"
+                .format(",".join(missing)))
 
     hits = match_genotypes(obs, alleles)
     if not hits:
@@ -311,6 +349,21 @@ def _name_core(obs, alleles, junction_rows=None, compound_ok=False):
                 "observed segment copies match no allele or combination of "
                 "alleles in the panel; reported as unresolved rather than "
                 "forced onto the nearest allele")
+
+    # -a4.2 GUARD (empirical). HBA2 depth alone dips on some libraries with no
+    # deletion, whereas every confirmed -a4.2 carrier also shows INTER_A2_A1
+    # reduced (het ratio 0.47-0.60, hom 0.19-0.21; normals 0.78-1.29). The
+    # allele table keeps INTER '?' (unconstrained), so the table alone would
+    # name -a4.2 from an HBA2 dip with INTER confidently intact. Name it only
+    # when INTER is called a loss, or intact but flagged marginal.
+    if obs.get("INTER_A2_A1") == 2 and obs.get("HBA2", 2) < 2 and not inter_unsure:
+        kept = [h for h in hits if "-a4.2" not in (h[0], h[1])]
+        if not kept:
+            return ("NA", "NA",
+                    "HBA2 depth loss without the expected drop between the "
+                    "genes (INTER_A2_A1 intact); -a4.2 is not named from an "
+                    "HBA2 dip alone")
+        hits = kept
 
     # PARSIMONY. Some genotypes cancel exactly at segment level: --SEA on one
     # chromosome and anti-3.7 (a triplication) on the other restores every
@@ -325,7 +378,10 @@ def _name_core(obs, alleles, junction_rows=None, compound_ok=False):
     # docs/CHANGES.md and in the module docstring rather than in every row,
     # because a caveat printed on every sample is a caveat nobody reads.
     fewest = min(sum(1 for n in (h[0], h[1]) if n != "aa") for h in hits)
+    dropped = [h for h in hits if sum(1 for n in (h[0], h[1]) if n != "aa") != fewest]
     hits = [h for h in hits if sum(1 for n in (h[0], h[1]) if n != "aa") == fewest]
+    a37_a42 = ({h[0] for h in hits} | {h[1] for h in hits}) == {"-a4.2", "aa"} \
+        and any({h[0], h[1]} == {"-a3.7", "-a4.2"} for h in dropped)
 
     # BLIND SPOT, stated here and in docs/CHANGES.md: a deletion on one
     # chromosome plus anti-3.7 on the other is never NAMED from depth alone. It
@@ -356,6 +412,8 @@ def _name_core(obs, alleles, junction_rows=None, compound_ok=False):
                 "and they imply different alpha-gene counts")
     elif len(slot_a) > 1 or len(slot_b) > 1:
         note = "degenerate group: depth alone cannot separate these alleles"
+    if a37_a42:
+        note = "; ".join(x for x in (note, NOTE_A37_A42) if x)
 
     haps = ["|".join(slot_a), "|".join(slot_b)]
     # Put any deletion haplotype first so 'aa' trails, matching --SEA|--MED/aa.
@@ -367,11 +425,11 @@ def _name_core(obs, alleles, junction_rows=None, compound_ok=False):
                               "alpha-gene count").lstrip("; ")
     n = genes.pop()
     if not 0 <= n <= 6:
-        # RESOLVED 2026-07-22: the contract now declares 0-6, so a triplication
-        # is reported as the 5 (or 6) genes it actually is. The old 0-4 range
-        # assumed alpha variation only ever REMOVES genes; anti-3.7 is the
-        # reciprocal product of the -a3.7 NAHR and adds one, so a carrier has 5
-        # and a homozygote 6. Emitting NA for a perfectly determined count was
+        # RESOLVED 2026-07-22: the contract declares 0-6, so a single anti-3.7
+        # is reported as the 5 genes it is. The old 0-4 range assumed alpha
+        # variation only ever REMOVES genes. KNOWN LIMIT: a homozygote (6 genes)
+        # is not resolved: `gain` maps to 3 copies only, so it is emitted as
+        # anti-3.7/aa (5 genes), with a note. Emitting NA for a perfectly determined count was
         # reporting a measurement failure that had not happened.
         #
         # This branch now catches only genuinely impossible counts — a bug in
@@ -385,70 +443,105 @@ def _name_core(obs, alleles, junction_rows=None, compound_ok=False):
     return called, str(n), note
 
 
+def _reading(o2, alleles, inter_unsure):
+    """Classify one fixed reading -> (category, (alleles, genes)).
+    category: wild_type | compound (only a deletion + anti-3.7 fits, rule 2) |
+    nomatch | valid."""
+    raw = _name_core(o2, alleles, None, True, inter_unsure)
+    if raw[0] == "NA":
+        return "nomatch", raw[:2]
+    if raw[0] == "none":
+        return "wild_type", raw[:2]
+    strict = _name_core(o2, alleles, None, False, inter_unsure)
+    if strict[0] == "NA":
+        return "compound", raw[:2]
+    return "valid", strict[:2]
+
+
 def _marginal_readings(obs, alleles, alternatives):
-    """Valid genotypes under every combination of readings of the marginal
-    segments (called state or the adjacent state). Readings obey rule 2: a
-    deletion + anti-3.7 compound is NOT a valid alternative. A reading whose
-    gene count is NA but whose alleles are named is valid (count-ambiguous).
-    -> list of (segments_changed, (alleles, genes))."""
+    """Every combination of readings of the marginal segments (called state or
+    the adjacent state) -> list of (changed_segments, toward_normal, category,
+    result). toward_normal: every changed segment moved closer to 2 copies."""
     import itertools
+    inter_unsure = 1 in (alternatives or {}).get("INTER_A2_A1", [])
     segs = [g for g in (alternatives or {}) if g in obs and alternatives[g]]
     out = []
     for combo in itertools.product(*[[None] + alternatives[g] for g in segs]):
         if all(c is None for c in combo):
             continue
-        o2 = dict(obs)
-        changed = []
+        o2, changed = dict(obs), []
         for g, c in zip(segs, combo):
             if c is not None:
                 o2[g] = c
                 changed.append(g)
-        called, genes, _ = _name_core(o2, alleles)
-        if called != "NA":
-            out.append((changed, (called, genes)))
+        cat, res = _reading(o2, alleles, inter_unsure)
+        toward = all(abs(o2[g] - 2) < abs(obs[g] - 2) for g in changed)
+        out.append((changed, toward, cat, res))
     return out
 
 
 def marginal_ambiguity(obs, alleles, alternatives):
-    """-> (kind, segments, alt_genes). kind: None (no valid alternative reading
-    gives a different genotype, so the marginal flag does not matter),
-    'wild_type' (a valid reading is aa/aa while the call is not), 'genes'
-    (valid readings differ in alpha-gene count), 'genotype' (same count,
-    different alleles) or 'na' (the call itself is undetermined and has
-    marginal segments)."""
-    # compound_ok: the raw genotype is the base, so a call that is NA only
-    # because it is a compound (rule 2) still reports its marginal dependence.
-    base = _name_core(obs, alleles, None, True)
+    """-> (kind, segments, alt_genes).
+
+    kind None: the marginal flags cannot change the call (a marginal segment
+      called INTACT whose alternative matches nothing is ignorable).
+    NA-forcing kinds (the call rests on marginal evidence):
+      'unsupported'   a loss/gain call that, read toward 2 copies, is wild type
+                      or only the banned deletion + anti-3.7 compound;
+      'normal_doubt'  a called-normal sample with a VALID deletion reading.
+    'na': the call is itself undetermined and has marginal segments.
+    Confidence-capping kinds: 'genes' (valid readings differ in gene count),
+      'genotype' (same count, other alleles), 'unmatched' (a loss/gain segment
+      read toward 2 copies matches no genotype at all: a real two-gene deletion
+      with one borderline segment must survive, so not NA)."""
+    inter_unsure = 1 in (alternatives or {}).get("INTER_A2_A1", [])
+    base_cat, base_res = _reading(obs, alleles, inter_unsure)
     marg = sorted(g for g in (alternatives or {}) if g in obs and alternatives[g])
-    if base[0] == "NA":
+    if base_cat == "nomatch":
         return ("na", marg, []) if marg else (None, [], [])
-    readings = [r for r in _marginal_readings(obs, alleles, alternatives)
-                if r[1] != base[:2]]
-    if not readings:
-        return None, [], []
-    segs = sorted({g for ch, _ in readings for g in ch})
-    if base[0] != "none":
-        wt = [r for r in readings if r[1][0] == "none"]
-        if wt:
-            return "wild_type", sorted({g for ch, _ in wt for g in ch}), []
-    alt = sorted({r[1][1] for r in readings if r[1][1] != base[1]})
-    return ("genes" if alt else "genotype"), segs, alt
+    readings = _marginal_readings(obs, alleles, alternatives)
+    names = lambda rs: sorted({g for r in rs for g in r[0]})        # noqa: E731
+    if base_cat == "wild_type":
+        valid = [r for r in readings if r[2] == "valid"]
+        return ("normal_doubt", names(valid), []) if valid else (None, [], [])
+    pure_gain = set(base_res[0].replace("/", "|").split("|")) <= {"anti-3.7", "aa"}
+    bad = [r for r in readings if r[1] and
+           r[2] in (("wild_type",) if pure_gain else ("wild_type", "compound"))]
+    if bad:
+        return "unsupported", names(bad), []
+    valid = [r for r in readings if r[2] == "valid" and r[3] != base_res]
+    if valid:
+        alt = sorted({r[3][1] for r in valid if r[3][1] != base_res[1]})
+        return ("genes" if alt else "genotype"), names(valid), alt
+    unmatched = [r for r in readings if r[1] and (
+        r[2] == "nomatch" or (pure_gain and r[2] == "compound"))]
+    if unmatched:
+        return "unmatched", names(unmatched), []
+    return None, [], []
 
 
 def _name_with_marginals(obs, alleles, junction_rows=None, alternatives=None):
     """-> (deletion_alleles, alpha_genes_called, note, ambiguity_kind)."""
-    called, genes, note = _name_core(obs, alleles, junction_rows)
+    inter_unsure = 1 in (alternatives or {}).get("INTER_A2_A1", [])
+    called, genes, note = _name_core(obs, alleles, junction_rows, False,
+                                     inter_unsure)
     kind = None
     if alternatives:
         kind, segs, alt = marginal_ambiguity(obs, alleles, alternatives)
         names = ",".join(segs)
         extra = ""
-        if kind == "wild_type":
+        if kind == "unsupported":
             return ("NA", "NA",
                     "the genotype rests only on marginal segment(s) {}: read "
-                    "the other way across the decision boundary the sample "
-                    "has no deletion; not named, and not reported as normal "
+                    "toward 2 copies it is wild type or only a deletion + "
+                    "triplication compound, which is not named from depth "
+                    "alone; not named, and not reported as normal "
                     "either".format(names), kind)
+        if kind == "normal_doubt":
+            return ("NA", "NA",
+                    "no deletion was called, but marginal segment(s) {} also "
+                    "fit a deletion reading; not reported as normal".format(names),
+                    kind)
         if kind == "na":
             extra = "marginal segment(s) {} present".format(names)
         elif called != "NA" and kind == "genes":
@@ -457,6 +550,9 @@ def _name_with_marginals(obs, alleles, junction_rows=None, alternatives=None):
         elif called != "NA" and kind == "genotype":
             extra = ("marginal segment(s) {} could change which alleles are "
                      "named (same gene count)".format(names))
+        elif called != "NA" and kind == "unmatched":
+            extra = ("marginal segment(s) {} read toward normal match no "
+                     "genotype".format(names))
         note = "; ".join(x for x in (note, extra) if x)
     return called, genes, note, kind
 
@@ -483,47 +579,34 @@ SEGMENT_SPANS = {"HBZ": (152644, 154503), "HBA2": (172876, 173710),
                  "INTER_A2_A1": (173711, 176679), "HBA1": (176680, 177522)}
 
 
-def _segment_roles(genotype, alleles):
-    """{segment: 'removed'|'tolerant'|'untouched'} the NAMED genotype expects.
-    removed = some named allele has -1 there; tolerant = 'h'/'?'/'+' (the
-    allele rearranges but does not cleanly delete it); untouched = 0 on every
-    named haplotype. A called-normal genotype leaves every segment untouched.
-    NA -> None (nothing named, so a junction can neither support nor contradict)."""
-    if genotype == "NA":
-        return None
+def junction_support(junction_rows, genotype, alleles):
+    """-> (supporting_rows, seen_not_used). The junction channel only
+    CORROBORATES: it can raise confidence and set deletion_evidence=both, and
+    can never lower confidence, make a call NA, or contradict one.
+
+    Only `confidence == high` rows count (hba_junction.py: "USE confidence ==
+    high ONLY"). A row touching no scorable segment is ignored. A high row
+    SUPPORTS the named genotype if it fully CONTAINS every segment the genotype
+    removes (-1 in a named allele, no tolerance) and overlaps no segment it
+    leaves untouched
+    (0 in every named allele; every segment for a called-normal sample). Any
+    other high row that overlaps a scorable segment is `seen_not_used` (note
+    only). junction_rows None (channel absent) -> (None, [])."""
+    if junction_rows is None:
+        return None, []
     by_name = {a["allele"]: a for a in alleles}
     names = set()
-    if genotype != "none":
+    if genotype not in ("NA", "none"):
         for hap in genotype.split("/"):
-            names.update(n for n in hap.split("|") if n != "aa")
-    roles = {}
+            names.update(n for n in hap.split("|") if n in by_name)
+    removed, untouched = set(), set()
     for g in SCORABLE:
-        cells = [str(by_name[n].get("d_" + g, "0")).strip()
-                 for n in names if n in by_name]
+        cells = [str(by_name[n].get("d_" + g, "0")).strip() for n in names]
         if "-1" in cells:
-            roles[g] = "removed"
+            removed.add(g)
         elif all(c == "0" for c in cells):
-            roles[g] = "untouched"
-        else:
-            roles[g] = "tolerant"
-    return roles
-
-
-def junction_support(junction_rows, genotype, alleles):
-    """-> (supporting_rows, contradicted). Only `confidence == high` rows count
-    (hba_junction.py: "USE confidence == high ONLY"; medium rows include the
-    recurrent soft-clip stacks); a row with no confidence column does not.
-    Judged against the NAMED genotype's signature, not against depth calls: a
-    row supports when it overlaps a segment the genotype removes and every
-    other segment it overlaps is removed or tolerant (-a3.7 leaves HBA2/HBA1
-    'h', -a4.2 leaves INTER '?'); it contradicts when it covers a segment the
-    genotype expects untouched. junction_rows None stays None (channel absent)."""
-    if junction_rows is None:
-        return None, False
-    roles = _segment_roles(genotype, alleles)
-    if roles is None:
-        return [], False
-    supporting, contradicted = [], False
+            untouched.add(g)
+    supporting, seen = [], []
     for j in junction_rows:
         if str(j.get("confidence", "")).lower() != "high":
             continue
@@ -531,39 +614,35 @@ def junction_support(junction_rows, genotype, alleles):
             lo, hi = int(j["left_bp"]), int(j["right_bp"])
         except (KeyError, TypeError, ValueError):
             continue
-        hit = [roles[g] for g, (a, b) in SEGMENT_SPANS.items()
-               if lo <= b and hi >= a]
-        if "untouched" in hit:
-            contradicted = True
-        elif "removed" in hit:
+        hit = {g for g, (a, b) in SEGMENT_SPANS.items() if lo <= b and hi >= a}
+        if not hit:
+            continue
+        inside = {g for g, (a, b) in SEGMENT_SPANS.items() if lo <= a and hi >= b}
+        if removed and removed <= inside and not (untouched & hit):
             supporting.append(j)
-    return supporting, contradicted
+        else:
+            seen.append(j)
+    return supporting, seen
 
 
-def deletion_evidence(has_depth_call, junction_rows):
-    """Which channels supported the call: depth|junction|both|none.
-    `junction_rows` must already be filtered by junction_support()."""
-    has_junction = bool(junction_rows)
-    if has_depth_call and has_junction:
-        return "both"
+def deletion_evidence(has_depth_call, supporting, any_seen):
+    """Contract values: both = a depth-named deletion AND a supporting
+    junction; depth = a depth-named deletion alone; junction = a high-
+    confidence junction overlapping a scorable segment exists but there is no
+    depth-named deletion (normal or NA); none."""
     if has_depth_call:
-        return "depth"
-    if has_junction:
-        return "junction"
-    return "none"
+        return "both" if supporting else "depth"
+    return "junction" if any_seen else "none"
 
 
-def confidence(depth_rows, junction_rows, has_depth_call, marginal,
-               genes="1"):
+def confidence(depth_rows, junction_rows, has_depth_call, marginal, genes):
     """high = depth and a supporting junction agree · medium = depth only (the
     junction file absent, or present with no SUPPORTING row) · low needs a
-    positive reason: depth missing, any NA genotype, a wild-type call that an
-    alternative marginal reading would turn into a deletion (or a contradicting
-    junction, set by build_row).
+    positive reason: depth missing, or any NA genotype. A junction never lowers it.
 
-    `marginal` is None (the flag cannot change the call), "medium" (every valid
-    reading is a loss, only the genotype/gene count differs: the loss is not in
-    doubt, so never high) or "low". `junction_rows` are SUPPORTING rows only."""
+    `marginal` is None (the flag cannot change the call), "medium" (the loss is
+    not in doubt but the genotype/gene count is: never high) or "low".
+    `junction_rows` are SUPPORTING rows only."""
     if depth_rows is None or marginal == "low" or genes == "NA":
         return "low"
     if marginal == "medium" or junction_rows is None:
@@ -632,27 +711,33 @@ def build_row(sample, depth_rows, junction_rows, site_rows, alleles, panel_path)
     obs = observed_copies(depth_rows)
     alts = marginal_alternatives(depth_rows)
     marginal = None
-    contradicted = False
 
     if depth_rows is None:
         del_alleles, genes, note = "NA", "NA", "depth channel did not run"
-        junction_rows = None if junction_rows is None else []
     else:
         del_alleles, genes, note, kind = _name_with_marginals(
             obs, alleles, junction_rows, alts)
-        if kind == "wild_type" or (kind and del_alleles == "none"):
+        if kind in ("unsupported", "normal_doubt"):
             marginal = "low"
-        elif kind:
+        elif kind in ("genes", "genotype", "unmatched"):
             marginal = "medium"
-        junction_rows, contradicted = junction_support(
-            junction_rows, del_alleles, alleles)
+    supporting, seen = junction_support(junction_rows, del_alleles, alleles)
+    if seen:
+        note = "; ".join(x for x in [note] + [
+            "junction chr16:{}-{} seen, not used".format(
+                j.get("left_bp"), j.get("right_bp")) for j in seen] if x)
 
     has_depth_call = del_alleles not in ("none", "NA")
     sites, has_nocall = site_genotypes(site_rows)
 
-    conf = confidence(depth_rows, junction_rows, has_depth_call, marginal, genes)
-    if contradicted:
-        conf = "low"
+    conf = confidence(depth_rows, supporting, has_depth_call, marginal, genes)
+    borderline_a42 = "-a4.2" in del_alleles and "INTER_A2_A1" in alts
+    if borderline_a42:
+        note = "; ".join(x for x in (note, NOTE_INTER_BORDERLINE) if x)
+    if any(r.get("call") == "gain" for r in depth_rows or []):
+        note = "; ".join(x for x in (note, NOTE_GAIN) if x)
+    if (NOTE_A37_A42 in note or borderline_a42) and conf == "high":
+        conf = "medium"
     if has_nocall and conf == "high":
         conf = "medium"
 
@@ -665,7 +750,8 @@ def build_row(sample, depth_rows, junction_rows, site_rows, alleles, panel_path)
         "alpha_genes_called": genes,
         "alpha_genes_confidence": conf,
         "deletion_alleles": del_alleles,
-        "deletion_evidence": deletion_evidence(has_depth_call, junction_rows),
+        "deletion_evidence": deletion_evidence(has_depth_call, supporting,
+                                               bool(seen)),
         "site_genotypes": sites,
         "site_panel_version": panel_version(panel_path),
         "genotype": integrated_genotype(del_alleles, site_rows),

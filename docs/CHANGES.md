@@ -26,21 +26,50 @@ in the chr16 subtelomere, so normal samples printed `evidence junction`.
 2. *Compound genotype.* A deletion allele on one chromosome plus anti-3.7 on the other is never named from depth
    alone (`NA`/`NA`, note says two-event genotype). **Known blind spot**, alongside the parsimony filter below:
    a real compensated deletion + triplication reads as normal (parsimony) or undetermined (this rule).
-3. *Junction support.* Only `confidence == high` rows count (`hba_junction.py`: "use high only"; medium rows include
-   recurrent soft-clip artefact stacks), as support or as contradiction; a row with no confidence does not count.
-   A row is judged against the NAMED genotype's signature from the allele table, not against depth calls: it
-   supports when it overlaps a segment the genotype removes (-1) and every other segment it overlaps is also
-   removed or tolerant (`h`, `?`, `+`; so a true -a3.7 junction over HBA2/HBA1 and a -a4.2 junction over INTER
-   support); it contradicts only when it covers a segment the genotype leaves untouched on every named
-   haplotype (all four for a called-normal sample). Contradiction forces confidence `low`. Not done: the junction
-   file has no allele attribution, so a junction still cannot confirm which allele a deletion is.
-4. *Confidence.* `low` needs a positive reason: depth missing, **any `NA` genotype**, a contradicting junction, or a
-   called-normal sample whose marginal segment has a valid deletion reading. Junction rows present but none
-   supporting is `medium` (depth only), as when the file is absent. Alternative marginal readings obey rule 2
-   (a deletion + anti-3.7 compound is not a valid alternative); an alternative that names alleles but has an `NA`
-   count is valid and caps confidence at `medium` with a note; a same-count, different-allele alternative caps at
-   `medium` with a note naming the segment(s); an `NA` call with marginal segments names them in the note. The
-   score boundaries are copies of `hba_depth.py`'s constants, tied by a test.
+3. *Junction channel is corroboration only (`junction_support`).* It can raise confidence (medium to high) and set
+   `deletion_evidence=both`; it never lowers confidence, never makes a call `NA`, never contradicts one (only
+   two real samples have a high-confidence junction, so a stricter matcher could not be validated). Only
+   `confidence == high` rows count (`hba_junction.py`: "use high only"). A row touching no scorable segment is
+   ignored. A row SUPPORTS the named genotype if it fully CONTAINS every segment the genotype removes (-1; no
+   tolerance) and overlaps no segment it leaves untouched (0 in every named allele; all four for a called-normal sample). Any other high row
+   overlapping a scorable segment is only noted ("junction chr16:a-b seen, not used"). `deletion_evidence`: `both`
+   (support), `depth`, `junction` (such a high row exists but depth named no deletion: normal or `NA`), `none`.
+   The junction file cannot name an allele, so an `NA` stays `NA`. Zygosity and breakpoint tolerances are not used.
+4. *Confidence.* `low` needs a positive reason: depth missing or any `NA` genotype. Junction rows present but none
+   supporting is `medium` (depth only), as when the file is absent. Marginal readings obey rule 2. `genes` is a
+   required argument of `confidence()`. The boundaries and marginal window are copies of `hba_depth.py`'s
+   constants, tied by tests. `marginal_alternatives` is judged from the `call` (one state away only): a finite
+   score picks the neighbour, a printed score within 0.001 of a boundary that disagrees with the call by one step is
+   rounding (trust the call), anything else offers both neighbours. A depth file without a `marginal` column has the
+   flag derived from `score` with the same 0.08 window.
+5. *Marginal logic, refined.* For a marginal segment called as a loss or gain, an alternative reading toward 2
+   copies that gives wild type, or only the banned deletion + anti-3.7 compound, means the call rests on marginal
+   evidence: `NA`/`NA` with a note. An alternative that matches no genotype at all caps confidence at `medium`
+   with a note (a real two-gene deletion with one borderline segment survives). A marginal segment called intact
+   whose alternative matches nothing is ignorable. Valid alternatives differing in gene count or alleles cap at
+   `medium` with a note. A called-normal sample with a VALID deletion reading on a marginal segment is `NA`/`NA`,
+   never `none`/4. No real sample in the current set is affected by that last rule.
+6. *-a4.2 guard (empirical).* HBA2 depth alone dips on some libraries with no deletion (four independent library
+   pairs), while every confirmed -a4.2 carrier (three, two confirmed on a second sequencing platform) also shows
+   INTER_A2_A1 reduced (ratio 0.47-0.60 het, 0.19-0.21 hom; normals 0.78-1.29). `-a4.2` is named only when
+   INTER_A2_A1 is called a loss, or called intact with a marginal flag whose alternative reading is ONE copy
+   (toward loss; marginal toward gain does not count); otherwise `NA`/`NA` ("HBA2 depth loss without the expected
+   drop between the genes"). The allele table keeps `?`; the guard is a named rule in `bin/alpha_globin.py`.
+7. *Unmeasured segments.* If HBA2, INTER_A2_A1 or HBA1 has no usable call the result is `NA`/`NA`, `low`, with a
+   note naming it (never `none`/4, never -a4.2 with INTER unmeasured). HBZ unmeasured is tolerated: the matcher
+   leaves HBZ unconstrained, so `--SEA|--MED|--FIL|--THAI` is reported as one wider group.
+8. *-a4.2 vs -a3.7/-a4.2.* HBA2 and INTER_A2_A1 both het_loss with HBA1 intact keeps `-a4.2/aa` (3 genes) by
+   parsimony, with a note that `-a3.7/-a4.2` (2 genes) gives the same depth, and confidence at most `medium`.
+9. *Known limit (not fixed).* Homozygous anti-3.7 (6 genes) is not resolved: `gain` maps to 3 copies only, so it is
+   emitted as `anti-3.7/aa` (5 genes). Whenever any segment is called `gain` the note says: "gain copy number above
+   3 is not resolved; anti-3.7 on both chromosomes (6 genes) reads the same".
+10. *-a4.2 with a borderline INTER_A2_A1.* Named at most `medium` (even with a supporting junction) and always with a
+   note, whenever INTER_A2_A1 is marginal (marginal loss, or intact marginal toward loss). DECLINED: making a
+   marginal het_loss INTER (score ~0.57-0.65) `NA`; confirmed het carriers read INTER 0.47-0.60 (two platforms)
+   against 0.78-1.29 in normals, so a marginal loss there is carrier-like, not a coin flip. The guard fires only
+   when HBA2 is itself called a loss. A called pure gain (anti-3.7/aa) with one borderline segment whose
+   toward-normal reading only fits a compound keeps its call at `medium` with a note; `NA` is reserved for readings
+   that reach wild type and for deletion calls resting on marginal segments.
 
 Output columns and the contract are unchanged; `NA` was already a legal value. True positives (--SEA|--MED het,
 -a3.7, -a4.2, hom -a4.2-like, anti-3.7) give the same gene counts.

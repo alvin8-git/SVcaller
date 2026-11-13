@@ -59,9 +59,9 @@ run rather than silently mis-rendering.
 |---|---|---|
 | `sample` | string | sample id, matches `meta.id` |
 | `alpha_genes_called` | int 0–6, or `NA` | functional α-gene count. **Not capped at 4** — see below |
-| `alpha_genes_confidence` | `high`\|`medium`\|`low` | `high` = depth and a supporting junction agree · `medium` = depth only (no junction file, or none supporting), or a marginal segment changes only the genotype/gene count of a loss · `low` = depth missing, **any `NA` genotype**, a contradicting junction, or a called-normal (`none`) sample whose marginal segment has a valid deletion reading |
+| `alpha_genes_confidence` | `high`\|`medium`\|`low` | `high` = depth and a supporting junction agree · `medium` = depth only (no junction file, or none supporting), a marginal segment changing only the genotype/gene count, or the -a4.2 vs -a3.7/-a4.2 ambiguity · `low` = depth missing or any `NA` genotype. A junction never lowers it |
 | `deletion_alleles` | string | e.g. `--SEA\|--MED/aa`, `none`, `NA`. `/`-separated haplotypes, `a` = intact α. **`\|` inside a haplotype means an unresolved degenerate group — see below** |
-| `deletion_evidence` | `depth`\|`junction`\|`both`\|`none` | which channels supported the call; only `confidence == high` junctions that fit the NAMED genotype's removed segments count (one covering a segment the genotype leaves untouched contradicts it instead) |
+| `deletion_evidence` | `depth`\|`junction`\|`both`\|`none` | `both` only when a `confidence == high` junction fully contains every segment the named genotype removes (no tolerance) and overlaps none it leaves untouched; `depth` = depth-named deletion alone; `junction` = a high junction overlapping a scorable segment exists but depth named no deletion (normal or `NA`); `none` |
 | `site_genotypes` | string | `;`-joined `GENE:HGVS:zygosity`, or `none` |
 | `site_panel_version` | string | `hba_pathogenic_sites.tsv@<sha1>` — the panel actually used |
 | `genotype` | string | `<deletion genotype>` optionally ` +<site findings>`, e.g. `--SEA\|--MED/aa +HBA2:c.377T>C:het`. **Never writes a site variant into a haplotype** — see below |
@@ -93,10 +93,18 @@ OmniGen must render the group as-is. Do not silently display the first member.
 
 ### When the genotype is `NA` (added 2026-11-13)
 
-`deletion_alleles` and `alpha_genes_called` are both `NA` (never `none`/4) when (1) a non-wild-type genotype
-rests only on marginal segments — reading them across their boundary gives wild type — or (2) the only fit is a
-deletion allele plus the anti-3.7 triplication, which depth alone cannot establish (known blind spot). The run
-note names the marginal segment(s) or says so.
+`deletion_alleles` and `alpha_genes_called` are both `NA` (never `none`/4) when: (1) a non-wild-type call rests on
+marginal segments (read toward 2 copies it is wild type or only a deletion + anti-3.7 compound); (2) the only
+fit is a deletion allele plus the anti-3.7 triplication (known blind spot); (3) a called-normal sample has a valid
+deletion reading on a marginal segment; (4) **-a4.2 guard**, empirical: HBA2 loss with INTER_A2_A1 not called a
+loss and not marginal toward loss (HBA2 alone dips on some libraries without a deletion; every confirmed -a4.2
+carrier also showed INTER_A2_A1 reduced, ratio 0.47-0.60 het / 0.19-0.21 hom against 0.78-1.29 in normals);
+(5) HBA2, INTER_A2_A1 or HBA1 has no usable call (HBZ unmeasured instead widens the degenerate group). The run
+note names the segment(s). The junction channel only corroborates and cannot change any of this.
+
+The guard fires only when HBA2 is itself called a loss. It is deliberately NOT extended to a marginal het_loss INTER_A2_A1 (score ~0.57-0.65): `-a4.2` is then still named, at `medium` at most (even with a supporting junction) and with a note that INTER_A2_A1 was borderline, because confirmed het carriers read INTER 0.47-0.60 (two platforms) against 0.78-1.29 in normals, so a marginal loss there is carrier-like, not a coin flip.
+
+**Known limit:** homozygous anti-3.7 (6 genes) is not resolved: `gain` maps to 3 copies only, so it is emitted as `anti-3.7/aa` (5 genes), and any `gain` call adds the note "gain copy number above 3 is not resolved; anti-3.7 on both chromosomes (6 genes) reads the same".
 
 ### The α-gene count is not capped at 4 (widened 2026-07-22)
 
@@ -104,7 +112,7 @@ note names the marginal segment(s) or says so.
 assumption that α-globin variation only ever removes genes. It does not:
 `anti-3.7` is the **reciprocal product** of the same NAHR that creates `-α3.7`,
 and it *adds* a gene. An `anti-3.7` carrier genuinely has **5**; homozygous
-`anti-3.7` has 6. The range is therefore **0–6**.
+`anti-3.7` would have 6 but is emitted as 5 today (see the known limit below). The range is therefore **0–6**.
 
 The old range forced the implementation to emit `NA` for a real, countable
 result — the allele survived in `deletion_alleles` so nothing was lost, but the
