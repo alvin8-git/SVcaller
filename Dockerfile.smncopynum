@@ -9,6 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN git clone --branch v1.1 --depth 1 \
     https://github.com/Illumina/SMNCopyNumberCaller.git /opt/smn
 
+# Low-depth no-call patch (insufficient read support -> explicit NoCall, not an IndexError).
+# Build (context is the patch dir, so the repo is not sent to the daemon):
+#   docker build -f Dockerfile.smncopynum -t svcaller/smncopynum:1.2 modules/smn_caller/patches
+COPY smn_low_depth_nocall.patch /tmp/smn_low_depth_nocall.patch
+RUN cd /opt/smn && git apply --check -p1 /tmp/smn_low_depth_nocall.patch \
+    && git apply -p1 /tmp/smn_low_depth_nocall.patch && rm /tmp/smn_low_depth_nocall.patch
+
 RUN pip install --no-cache-dir \
     "numpy>=1.16" "scipy>=1.2" "pysam>=0.15.3" "statsmodels>=0.9"
 

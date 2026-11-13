@@ -1,7 +1,7 @@
 process SMN_CALLER {
     tag "${meta.id}"
     label 'process_low'
-    container 'svcaller/smncopynum:1.1'
+    container 'svcaller/smncopynum:1.2'
     publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.smn.tsv"
 
     input:
@@ -68,7 +68,7 @@ process SMN_CALLER {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        smncopynum: 1.1
+        smncopynum: 1.2
     END_VERSIONS
     """
 }

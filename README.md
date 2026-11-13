@@ -611,7 +611,7 @@ All tools run in pinned Docker containers. No local tool installation required b
 | JASMINE | `quay.io/biocontainers/jasminesv:1.1.5--hdfd78af_0` |
 | CNVpytor | `quay.io/biocontainers/cnvpytor:1.3.1--pyhdfd78af_1` |
 | GATK | `broadinstitute/gatk:4.5.0.0` |
-| SMNCopyNumberCaller | `svcaller/smncopynum:1.1` |
+| SMNCopyNumberCaller | `svcaller/smncopynum:1.2` (v1.1 plus the low-depth no-call patch) |
 | AnnotSV | `quay.io/biocontainers/annotsv:3.4.6--py313hdfd78af_0` |
 | truvari | `quay.io/biocontainers/truvari:4.3.1--pyhdfd78af_0` |
 | Python utils / report | `svcaller/utils:1.3` (local build) |

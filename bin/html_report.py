@@ -804,7 +804,9 @@ def export_xls(all_sv_rows: list, cnv_bed_path: str, str_loci: list,
                                   else "SMA Carrier" if int(smn1) == 1
                                   else "Normal")
                     except (ValueError, TypeError):
-                        interp = ""
+                        # no-call row (SMN1_CN "None"): explicit, not a clean result and not a finding
+                        interp = ("No call (" + (row.get("Info") or "copy number not determined") + ")"
+                                  if str(smn1).strip() in ("None", "NA") else "")
                     ws_smn.append([
                         row.get("sample", row.get("Sample", "")),
                         smn1, smn2,

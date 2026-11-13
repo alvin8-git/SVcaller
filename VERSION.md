@@ -127,7 +127,7 @@
 |------|-------|
 | Python utils / report | `svcaller/utils:1.3` (rebuilt with the wired alpha-globin card) |
 | MELT | `svcaller/melt:2.2.2` |
-| SMNCopyNumberCaller | `svcaller/smncopynum:1.1` |
+| SMNCopyNumberCaller | `svcaller/smncopynum:1.2` (v1.1 plus the low-depth no-call patch) |
 
 ### Tests
 - 333 tests across 21 modules, ~5 s, no containers or network needed.

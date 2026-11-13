@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """SMN1/SMN2 copy number parsing, classification, and HTML report section generator."""
-import json, argparse
+import json, argparse, html
 from pathlib import Path
 from typing import Optional
 
@@ -53,6 +53,7 @@ def parse_smn_tsv(tsv_path: str) -> dict:
         "smn1_cn": None, "smn2_cn": None,
         "smn1_allele1": None, "smn1_allele2": None,
         "confidence": "UNKNOWN",
+        "info": "",
     }
     # ABSENT (a Nextflow NO_* sentinel) is a legitimate skip -> neutral/unknown result.
     # A PRESENT-yet-empty file is the zero-byte placeholder a crashed SMN caller leaves
@@ -75,6 +76,7 @@ def parse_smn_tsv(tsv_path: str) -> dict:
             f"caller produced no result. Refusing to default to 'Normal (CN=2)'."
         )
     d = dict(zip(header, values))
+    result["info"] = d.get("Info", "")
     try:
         result["smn1_cn"]      = int(d.get("SMN1_CN", d.get("smn1", 2)))
         result["smn2_cn"]      = int(d.get("SMN2_CN", d.get("smn2", 2)))
@@ -89,6 +91,18 @@ def parse_smn_tsv(tsv_path: str) -> dict:
 def render_html_section(sample_id: str, tsv_path: str) -> str:
     """Return an HTML string for the SMN section of the per-sample report."""
     parsed   = parse_smn_tsv(tsv_path)
+    if parsed["smn1_cn"] is None:
+        # No call (low depth "NoCall:*", "Ambiguous", skipped caller): never a default CN=2 / "Normal".
+        reason = html.escape(parsed["info"] or "no SMN copy-number call available")
+        sample_id = html.escape(sample_id)
+        return f"""
+<div class="card mb-3">
+  <div class="card-header"><h5>SMN1/SMN2 Copy Number — {sample_id}</h5></div>
+  <div class="card-body">
+    <p><span class="badge badge-secondary">No call</span>
+       &nbsp; SMN1/SMN2 copy number could not be determined ({reason}). This is not a normal result.</p>
+  </div>
+</div>"""
     smn1     = parsed["smn1_cn"] if parsed["smn1_cn"] is not None else 2
     smn2     = parsed["smn2_cn"] if parsed["smn2_cn"] is not None else 2
     a1       = parsed["smn1_allele1"] if parsed["smn1_allele1"] is not None else smn1

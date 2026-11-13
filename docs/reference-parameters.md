@@ -70,7 +70,7 @@ All outputs land in `{outdir}/{sample}/`:
 | `{sample}.sv_merged.vcf.gz.tbi` | Tabix index for the merged VCF. |
 | `{sample}.filtered.tsv` | AnnotSV-annotated SV table after gnomAD SV frequency filter. Tab-separated, with ACMG classification and gene annotations. The last seven columns (`DEPTH_IN`, `DEPTH_FLANK`, `DEPTH_GLOBAL`, `DEPTH_RATIO`, `DEPTH_RATIO_GLOBAL`, `DEPTH_SUPPORT`, `DEPTH_NOTE`) are the read-depth consistency check for DEL/DUP >= 1 kb (see README, "Depth consistency check"). |
 | `{sample}.cnv_consensus.bed` | Consensus CNV calls from CNVpytor + GATK gCNV. Columns: chrom, start, end, cn, svtype, caller_support, confidence, quality, sample. |
-| `{sample}.smn.tsv` | SMN1/SMN2 copy number table from SMNCopyNumberCaller. |
+| `{sample}.smn.tsv` | SMN1/SMN2 copy number table from SMNCopyNumberCaller. Last column `Info` is the caller tag. At very low depth the row is an explicit no-call: `SMN1_CN`, `SMN2_CN`, `isSMA`, `isCarrier` = `None`, `Info` = `NoCall:InsufficientDepth`. |
 | `{sample}.circos.svg` | Genome-wide Circos plot (SVG, embedded inline in the HTML report). |
 | `{sample}.circos.png` | Genome-wide Circos plot (PNG, 150 DPI, fallback if SVG rendering fails). |
 | `{sample}.variants.xlsx` | Excel workbook with four sheets: SVs, CNVs, STRs, SMN. Suitable for clinical reporting workflows. |

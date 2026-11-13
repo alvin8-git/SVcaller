@@ -137,7 +137,7 @@ Also in M2: **ExpansionHunter** runs in parallel on the BAM to call short tandem
 
 Tool: SMNCopyNumberCaller. Runs from the full pre-filtered BAM (before canonical chrom filtering) because SMN loci span the chr5 boundary in some reference builds.
 
-**Output emitted:** `ch_smn_tsv` — TSV with per-sample SMN1/SMN2 CN.
+**Output emitted:** `ch_smn_tsv` — TSV with per-sample SMN1/SMN2 CN. Too little read support gives an explicit no-call row (`None` values, `Info=NoCall:InsufficientDepth`) and the run continues; other caller failures still stop it.
 
 ## M5: Annotation (`subworkflows/annotate.nf`)
 

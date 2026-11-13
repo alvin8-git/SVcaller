@@ -1,5 +1,26 @@
 # Changes
 
+## 2026-11-13 — SMN caller: low-depth input is an explicit no-call, not a crash
+
+On a ~9.8x BAM (mean-depth floor lowered for a depth limit-of-detection series) `SMN_CALLER` died with
+`IndexError: list index out of range` in `caller/call_smn12.py` (`get_smn1_call_and_tag`) and ended the pipeline.
+Cause: at low depth no per-site call reaches the posterior cutoff, so the `Counter` of site calls is empty and the
+upstream code indexes `[0]` (line 137 for the loose cutoff, line 153 for the medium cutoff).
+
+- Fix is a patch to the vendored-by-clone Illumina v1.1 source, `modules/smn_caller/patches/smn_low_depth_nocall.patch`,
+  applied in `Dockerfile.smncopynum`; new image `svcaller/smncopynum:1.2` (the `:1.1` tag is untouched). Rebuild with
+  `docker build -f Dockerfile.smncopynum -t svcaller/smncopynum:1.2 modules/smn_caller/patches`. Referenced from
+  `modules/smn_caller/call.nf` and `conf/docker.config`.
+- Only the empty-site-list condition becomes a no-call: `SMN1_CN`/`SMN2_CN`/`isSMA`/`isCarrier` = `None`,
+  `Info=NoCall:InsufficientDepth`, exit 0. The TSV gains a trailing `Info` column (existing columns and values are
+  unchanged; full-depth output is identical). All other exceptions still propagate, and the `SMN_CALLER` empty/header-only/
+  no-JSON guards are unchanged.
+- `bin/smn_report.py` renders a no-call (or any row without an SMN1 copy number) as "No call"; before, `None` fell back to
+  CN=2 and "Normal".
+- Measured on a GRCh38 30x sample (SMN regions only, subsampled): 33x identical to the published call; ~10x `Info=Ambiguous`
+  (an existing no-call); ~5x crashed before (line 153) and is now `NoCall:InsufficientDepth`; ~2x crashed before (line 137),
+  now `NoCall:InsufficientDepth`.
+
 ## 2026-11-11 — Wall-time: scheduling, resource reservations, sharded BAM filter
 
 Goal: cut wall time per 30X sample with the same tools and byte-identical results. Measured on one dev box

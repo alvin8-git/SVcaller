@@ -1,6 +1,7 @@
+import os
 import sys, json, tempfile
 from pathlib import Path
-sys.path.insert(0, "/data/alvin/SVcaller/bin")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
 import pytest
 
 def test_report_contains_sample_id(tmp_path):

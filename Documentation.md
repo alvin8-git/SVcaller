@@ -409,7 +409,16 @@ SMNCopyNumberCaller is a purpose-built tool developed by Illumina that:
 3. Detects the 2+0 haplotype (two copies of SMN1 on one chromosome, zero on the other — total CN=2 but carrier status) which would be missed by simple copy-number counting.
 4. Reports confidence levels per call.
 
-**Output TSV fields parsed by `bin/smn_report.py`:** `SMN1_CN`, `SMN2_CN`, `SMN1_allele1`, `SMN1_allele2`, `Confidence`
+**Output TSV fields parsed by `bin/smn_report.py`:** `SMN1_CN`, `SMN2_CN`, `SMN1_allele1`, `SMN1_allele2`, `Confidence`, `Info`
+
+**No-call at low depth.** When read support is too thin for any SMN site to reach a confident per-site call (seen at about 5x
+and below; a ~10x sample already returns `Info=Ambiguous`), the image `svcaller/smncopynum:1.2` finishes with exit 0 and writes
+an explicit no-call row instead of crashing on an empty site list (upstream v1.1 raised `IndexError` in
+`get_smn1_call_and_tag`, which ended the whole run). The row has `SMN1_CN`, `SMN2_CN`, `isSMA` and `isCarrier` all `None` and
+`Info=NoCall:InsufficientDepth` (also in the `*.smn_detail.json` `Info` field). A no-call is never a copy number and never a
+"clean" status. Every other failure (missing or truncated BAM, any other exception) still exits non-zero or leaves no sample
+row, and the `SMN_CALLER` process guards then stop the run. The patch is `modules/smn_caller/patches/smn_low_depth_nocall.patch`,
+applied in `Dockerfile.smncopynum`. `bin/smn_report.py` renders a no-call as "No call", not as Normal.
 
 **Classification logic (from `smn_report.py`):**
 

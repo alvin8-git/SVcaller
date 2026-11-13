@@ -1,5 +1,6 @@
+import os
 import sys
-sys.path.insert(0, "/data/alvin/SVcaller/bin")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
 import pytest
 
 def test_classify_affected():
@@ -80,3 +81,48 @@ def test_smn_absent_sentinel_is_skip(tmp_path):
     sentinel = tmp_path / "NO_SMN"; sentinel.write_text("")
     parsed = parse_smn_tsv(str(sentinel))
     assert parsed["smn1_cn"] is None  # neutral/unknown, not a fabricated CN=2
+
+
+# --- Low-depth no-call (SMN caller patch, svcaller/smncopynum:1.2) -------------
+NOCALL_TSV = ("Sample\tisSMA\tisCarrier\tSMN1_CN\tSMN2_CN\tSMN2delta7-8_CN\tTotal_CN_raw\t"
+              "Full_length_CN_raw\tg.27134T>G_CN\tSMN1_CN_raw\tInfo\n"
+              "HG_TEST\tNone\tNone\tNone\tNone\t0\t4.1\t3.9\t0\t1.6,2.5\tNoCall:InsufficientDepth\n")
+
+
+def test_smn_nocall_parses_as_no_copy_number(tmp_path):
+    from smn_report import parse_smn_tsv
+    f = tmp_path / "HG.smn.tsv"; f.write_text(NOCALL_TSV)
+    parsed = parse_smn_tsv(str(f))
+    assert parsed["smn1_cn"] is None and parsed["smn2_cn"] is None
+    assert parsed["info"] == "NoCall:InsufficientDepth"
+
+
+def test_smn_nocall_render_is_not_normal(tmp_path):
+    """A no-call must render as 'No call', never the default 'Normal / CN=2'."""
+    from smn_report import render_html_section
+    f = tmp_path / "HG.smn.tsv"; f.write_text(NOCALL_TSV)
+    html = render_html_section("HG_TEST", str(f))
+    assert "No call" in html and "NoCall:InsufficientDepth" in html
+    assert "Normal" not in html and "badge-success" not in html
+
+
+
+def test_smn_nocall_render_escapes_html(tmp_path):
+    from smn_report import render_html_section
+    f = tmp_path / "HG.smn.tsv"; f.write_text(NOCALL_TSV.replace("NoCall:InsufficientDepth", "<b>x</b>"))
+    html = render_html_section("<i>S</i>", str(f))
+    assert "<b>x</b>" not in html and "<i>S</i>" not in html and "&lt;b&gt;" in html
+
+
+def test_xlsx_smn_sheet_nocall_interpretation(tmp_path):
+    openpyxl = pytest.importorskip("openpyxl")
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bin"))
+    from html_report import export_xls
+    tsv = tmp_path / "HG.smn.tsv"; tsv.write_text(NOCALL_TSV)
+    out = tmp_path / "o.xlsx"
+    export_xls([], "", [], str(tsv), str(out))
+    rows = list(openpyxl.load_workbook(out)["SMN"].iter_rows(values_only=True))
+    assert rows[1][-1] == "No call (NoCall:InsufficientDepth)"
+    good = tmp_path / "G.smn.tsv"; good.write_text("Sample\tSMN1_CN\tSMN2_CN\nS\t1\t3\n")
+    export_xls([], "", [], str(good), str(out))
+    assert list(openpyxl.load_workbook(out)["SMN"].iter_rows(values_only=True))[1][-1] == "SMA Carrier"

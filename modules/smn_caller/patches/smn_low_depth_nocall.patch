@@ -1,0 +1,63 @@
+--- a/caller/call_smn12.py
++++ b/caller/call_smn12.py
+@@ -43,6 +43,8 @@
+ POSTERIOR_CUTOFF_STRINGENT = 0.9
+ POSTERIOR_CUTOFF_MEDIUM = 0.8
+ POSTERIOR_CUTOFF_LOOSE = 0.6
++# svcaller patch: Info tag for "no per-site call reached the posterior cutoff" (low depth)
++NOCALL_TAG = "NoCall:InsufficientDepth"
+ ERROR_RATE = 0.01
+ 
+ 
+@@ -132,6 +134,11 @@
+         Counter(lsitecall_loose).items(), key=lambda kv: kv[1], reverse=True
+     )
+ 
++    # svcaller patch: at low depth no site may reach even the loose posterior cutoff.
++    # That is an explicit no-call (insufficient read support), not a crash and not a CN.
++    if not lsitecall_loose_counter:
++        return NOCALL_TAG, None, lsitecall_loose
++
+     # sliding window of three sites covering the splice site
+     # [11, 12, 13], [12, 13, 14], [13, 14, 15]
+     if lsitecall_loose_counter[0][1] >= 5:
+@@ -149,6 +156,10 @@
+                 tag = "SpliceDisagree"
+                 return tag, cn_smn1, lsitecall_loose
+ 
++    # svcaller patch: no site reached the medium cutoff -> no-call (same reason as above)
++    if not lsitecall_medium_counter:
++        return NOCALL_TAG, None, lsitecall_loose
++
+     # At least 5 sites need to agree
+     if lsitecall_medium_counter[0][1] >= 5:
+         tag = "PASS:Majority"
+@@ -290,6 +301,10 @@
+         is_carrier = get_carrier_status(
+             lsitecall_loose, cn_prob, cn_smn1, sma_likelihood_ratio
+         )
++        if tag == NOCALL_TAG:
++            # no usable site evidence: never report a status that reads as "clean"
++            is_sma = None
++            is_carrier = None
+ 
+         # targeted variant(s)
+         var_cn_confident = None
+--- a/smn_caller.py
++++ b/smn_caller.py
+@@ -193,6 +193,7 @@
+         "Full_length_CN_raw",
+         "g.27134T>G_CN",
+         "SMN1_CN_raw",
++        "Info",
+     ]
+     with open(out_tsv, "w") as tsv_output:
+         tsv_output.write("\t".join(header) + "\n")
+@@ -209,6 +210,7 @@
+                 final_call["Full_length_CN_raw"],
+                 final_call["g27134TG_CN"],
+                 ",".join([str(a) for a in final_call["SMN1_CN_raw"]]),
++                final_call["Info"],
+             ]
+             tsv_output.write("\t".join([str(a) for a in output_per_sample]) + "\n")
+ 
