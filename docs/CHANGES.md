@@ -1,5 +1,50 @@
 # Changes
 
+## 2026-11-13 — alpha-globin: no more named carriers from one marginal segment, compound genotypes, or noise junctions
+
+**Problem.** About 4 of 45 samples (including GIAB HG001, a European) were reported `--FIL|--THAI/anti-3.7`,
+a false carrier call: the only HBZ-loss genotype in the allele table is a two-gene deletion on one
+chromosome plus the anti-3.7 triplication on the other, and the whole call rested on HBZ (1.8 kb,
+`needs_own_baseline`) scoring 0.62-0.64, just under the het-loss cut and flagged `marginal`. The NIST benchmark shows
+balanced heterozygous variants across the supposedly deleted span. Separately, `deletion_evidence` returned
+`both`/`junction` whenever ANY junction row existed, and nearly every sample has 1-8 `confidence low` junction rows
+in the chr16 subtelomere, so normal samples printed `evidence junction`.
+
+**Fix (`bin/alpha_globin.py`).**
+1. *Marginal readings.* Each marginal segment is re-read as its adjacent state (the nearest boundary of `score`,
+   or both neighbours when the row has no `score`) and every combination is matched against the allele table.
+   (a) a non-wild-type call that turns into wild type under any valid reading is `NA`/`NA` with a note naming the
+   segment(s) (not `none`/4: a marginal dip is not evidence of normal); (b) all valid readings non-wild-type but
+   with different gene counts: call kept, confidence `medium` (never high; the loss is not in doubt), note gives
+   the alternative count; (c) no alternative
+   reading gives a different valid genotype: the marginal flag no longer lowers confidence. Confidence is now `low` only for: depth missing, a contradicting
+   non-low junction, a called-normal sample whose marginal segment has a valid non-wild-type reading, or `NA` from
+   1(a). Junction rows present but none supporting is `medium` (depth only), as when the file is absent
+   (previously every marginal segment forced `low`, including clear single-gene carriers, and "channels disagree"
+   fired on mere absence of a supporting junction). Note `hba_depth.py`'s `marginal` flag
+   only says "near some boundary", hence the use of `score`.
+2. *Compound genotype.* A deletion allele on one chromosome plus anti-3.7 on the other is never named from depth
+   alone (`NA`/`NA`, note says two-event genotype). **Known blind spot**, alongside the parsimony filter below:
+   a real compensated deletion + triplication reads as normal (parsimony) or undetermined (this rule).
+3. *Junction support.* Only `confidence == high` rows count (`hba_junction.py`: "use high only"; medium rows include
+   recurrent soft-clip artefact stacks), as support or as contradiction; a row with no confidence does not count.
+   A row is judged against the NAMED genotype's signature from the allele table, not against depth calls: it
+   supports when it overlaps a segment the genotype removes (-1) and every other segment it overlaps is also
+   removed or tolerant (`h`, `?`, `+`; so a true -a3.7 junction over HBA2/HBA1 and a -a4.2 junction over INTER
+   support); it contradicts only when it covers a segment the genotype leaves untouched on every named
+   haplotype (all four for a called-normal sample). Contradiction forces confidence `low`. Not done: the junction
+   file has no allele attribution, so a junction still cannot confirm which allele a deletion is.
+4. *Confidence.* `low` needs a positive reason: depth missing, **any `NA` genotype**, a contradicting junction, or a
+   called-normal sample whose marginal segment has a valid deletion reading. Junction rows present but none
+   supporting is `medium` (depth only), as when the file is absent. Alternative marginal readings obey rule 2
+   (a deletion + anti-3.7 compound is not a valid alternative); an alternative that names alleles but has an `NA`
+   count is valid and caps confidence at `medium` with a note; a same-count, different-allele alternative caps at
+   `medium` with a note naming the segment(s); an `NA` call with marginal segments names them in the note. The
+   score boundaries are copies of `hba_depth.py`'s constants, tied by a test.
+
+Output columns and the contract are unchanged; `NA` was already a legal value. True positives (--SEA|--MED het,
+-a3.7, -a4.2, hom -a4.2-like, anti-3.7) give the same gene counts.
+
 ## 2026-11-13 — SMN caller: low-depth input is an explicit no-call, not a crash
 
 On a ~9.8x BAM (mean-depth floor lowered for a depth limit-of-detection series) `SMN_CALLER` died with

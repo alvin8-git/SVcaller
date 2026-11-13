@@ -59,9 +59,9 @@ run rather than silently mis-rendering.
 |---|---|---|
 | `sample` | string | sample id, matches `meta.id` |
 | `alpha_genes_called` | int 0–6, or `NA` | functional α-gene count. **Not capped at 4** — see below |
-| `alpha_genes_confidence` | `high`\|`medium`\|`low` | depth+junction agree / depth only / marginal |
+| `alpha_genes_confidence` | `high`\|`medium`\|`low` | `high` = depth and a supporting junction agree · `medium` = depth only (no junction file, or none supporting), or a marginal segment changes only the genotype/gene count of a loss · `low` = depth missing, **any `NA` genotype**, a contradicting junction, or a called-normal (`none`) sample whose marginal segment has a valid deletion reading |
 | `deletion_alleles` | string | e.g. `--SEA\|--MED/aa`, `none`, `NA`. `/`-separated haplotypes, `a` = intact α. **`\|` inside a haplotype means an unresolved degenerate group — see below** |
-| `deletion_evidence` | `depth`\|`junction`\|`both`\|`none` | which channels supported the call |
+| `deletion_evidence` | `depth`\|`junction`\|`both`\|`none` | which channels supported the call; only `confidence == high` junctions that fit the NAMED genotype's removed segments count (one covering a segment the genotype leaves untouched contradicts it instead) |
 | `site_genotypes` | string | `;`-joined `GENE:HGVS:zygosity`, or `none` |
 | `site_panel_version` | string | `hba_pathogenic_sites.tsv@<sha1>` — the panel actually used |
 | `genotype` | string | `<deletion genotype>` optionally ` +<site findings>`, e.g. `--SEA\|--MED/aa +HBA2:c.377T>C:het`. **Never writes a site variant into a haplotype** — see below |
@@ -90,6 +90,13 @@ channel 3 supplies a junction read or the measured extent excludes the
 alternative, and record which in `deletion_evidence`.
 
 OmniGen must render the group as-is. Do not silently display the first member.
+
+### When the genotype is `NA` (added 2026-11-13)
+
+`deletion_alleles` and `alpha_genes_called` are both `NA` (never `none`/4) when (1) a non-wild-type genotype
+rests only on marginal segments — reading them across their boundary gives wild type — or (2) the only fit is a
+deletion allele plus the anti-3.7 triplication, which depth alone cannot establish (known blind spot). The run
+note names the marginal segment(s) or says so.
 
 ### The α-gene count is not capped at 4 (widened 2026-07-22)
 
