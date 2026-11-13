@@ -137,6 +137,7 @@ HG003,,,/data/HG003.GRCh38.bam
 | `--ref_fasta` | required | GRCh38 reference FASTA |
 | `--outdir` | `results` | Output directory |
 | `--min_depth` | `25` | Minimum mean coverage (fails pipeline if below) |
+| `--smn_min_depth` | `18` | SMN1/SMN2 depth floor: below this mean depth the SMN result is `NoCall:BelowValidatedDepth` (mosdepth whole-BAM mean, about 1x below the aligner's figure; acts under the default `--min_depth 25` only when that is lowered; separate from it; empirical, one HG002 downsampling series, indicative not a measured limit) |
 | `--pon` | null | GATK gCNV Panel of Normals HDF5 (see [PoN Build](#panel-of-normals)) |
 | `--intervals` | null | Preprocessed intervals BED for GATK gCNV |
 | `--annotsv_db` | null | AnnotSV annotation directory |
@@ -311,7 +312,8 @@ results/
     ├── <sample_id>.str.vcf.gz           # STR calls (ExpansionHunter)
     ├── <sample_id>.str_summary.tsv      # per-allele sizing class + lower-bound display (bin/eh_sizing.py)
     ├── <sample_id>.cnv_consensus.bed    # Consensus CNV calls
-    ├── <sample_id>.smn.tsv              # SMN1/SMN2 copy numbers
+    ├── <sample_id>.smn.tsv              # SMN1/SMN2 copy numbers (depth-floored; see --smn_min_depth)
+    ├── <sample_id>.smn.raw.tsv          # the caller's own row, only when the floor applied
     ├── provenance.json                  # tool versions + images + SVcaller commit (see below)
     ├── <sample_id>.filtered.tsv         # AnnotSV-annotated, gnomAD-SV-filtered SVs + DEPTH_* columns
     ├── <sample_id>.circos.svg           # Genome-wide Circos plot (embedded inline in HTML)

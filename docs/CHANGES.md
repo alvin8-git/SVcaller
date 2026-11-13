@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-11-13 — SMN: depth floor, a low-depth result is a no-call (`--smn_min_depth 18`)
+
+**Problem.** A GIAB HG002 downsampling series (truth SMN1=2, SMN2=2) gave a wrong `3/1` flagged `PASS:AgreeWithSum` at 14.7x
+(Total_CN_raw 4.06 was right, the split was not); 2/2 returned at 17.9x and above, and `NoCall:InsufficientDepth` only at 9.8x.
+
+**Fix.** New process `SMN_DEPTH_FLOOR` (`bin/smn_depth_floor.py`) after `SMN_CALLER`, fed the mean depth MOSDEPTH already measured. Below
+`params.smn_min_depth` (default 18, separate from `min_depth`) `isSMA`/`isCarrier`/`SMN1_CN`/`SMN2_CN` = `None`, `Info` =
+`NoCall:BelowValidatedDepth`; the caller's row is kept as `<sample>.smn.raw.tsv`. Unchanged bytes at/above the floor; `NoCall:*` rows pass
+through. The 18x value is empirical (one sample per depth), indicative only. No Docker rebuild.
+
 ## 2026-11-13 — alpha-globin: no more named carriers from one marginal segment, compound genotypes, or noise junctions
 
 **Problem.** About 4 of 45 samples (including GIAB HG001, a European) were reported `--FIL|--THAI/anti-3.7`,

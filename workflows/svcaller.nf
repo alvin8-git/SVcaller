@@ -55,7 +55,7 @@ workflow SVCALLER {
     // M2 + M3 + M4: run in parallel on the validated BAM
     SV_CALLING(ch_validated_bam, ch_fasta, ch_fai, ch_eh_catalog, ch_bwa_index)
     CNV_CALLING(ch_validated_bam, ch_fasta, ch_fai, ch_dict, ch_pon, ch_intervals)
-    SMN_CALLING(ch_validated_bam, ch_fasta, ch_fai)
+    SMN_CALLING(ch_validated_bam, ch_fasta, ch_fai, PREPROCESS.out.coverage)
 
     // Copy-number / blood-group traits: targeted normalized read depth + consensus
     // corroboration → per-sample OmniGen contract files (Rh/RHD, AMY1, GST-null, LPA KIV-2)

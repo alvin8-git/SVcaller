@@ -2,7 +2,7 @@ process SMN_CALLER {
     tag "${meta.id}"
     label 'process_low'
     container 'svcaller/smncopynum:1.2'
-    publishDir "${params.outdir}/${meta.id}", mode: 'copy', pattern: "*.smn.tsv"
+    // The published <id>.smn.tsv comes from SMN_DEPTH_FLOOR (the depth-floored result).
 
     input:
     tuple val(meta), path(bam), path(bai)

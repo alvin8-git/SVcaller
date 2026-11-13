@@ -420,6 +420,18 @@ an explicit no-call row instead of crashing on an empty site list (upstream v1.1
 row, and the `SMN_CALLER` process guards then stop the run. The patch is `modules/smn_caller/patches/smn_low_depth_nocall.patch`,
 applied in `Dockerfile.smncopynum`. `bin/smn_report.py` renders a no-call as "No call", not as Normal.
 
+**Depth floor (`--smn_min_depth`, default 18).** Below roughly 18x the caller can return a wrong SMN1/SMN2 split that still
+carries a PASS tag (GIAB HG002 downsampled, truth SMN1=2/SMN2=2, in units of the mosdepth whole-BAM `total` mean, which reads about 1x below the alignment
+pipeline's own figure: 9.20 no call from the caller; 12.26 2/2; 13.79 3/1 `PASS:AgreeWithSum`, WRONG; 16.85 2/2; 19.90 2/2; 30.9 2/2). A result that is not confident is not reported as a call, so the process `SMN_DEPTH_FLOOR`
+(`modules/smn_caller/depth_floor.nf`, script `bin/smn_depth_floor.py`) post-processes the caller's TSV using the mean depth MOSDEPTH
+already wrote (`<sample>.mosdepth.summary.txt`; nothing is re-measured). Below the floor `isSMA`, `isCarrier`, `SMN1_CN` and `SMN2_CN`
+become `None` and `Info` becomes `NoCall:BelowValidatedDepth`; the other columns stay as the caller wrote them and the caller's untouched
+row is published as `<sample>.smn.raw.tsv`. At or above the floor the TSV is byte-identical; a row already `NoCall:*` passes through.
+The floor is independent of `--min_depth` (which aborts the run, and is lowered to 5x in validation); with the default `min_depth = 25` the SMN floor only acts when `min_depth` is lowered. The caller's `<sample>.smn_detail.json` is not floored. The floor is in mosdepth `total`-mean units. The 18x value is empirical (one
+sample per depth), indicative and not a measured limit. No image rebuild: the script runs in `svcaller/utils`.
+Correct a finished result folder without re-running the caller: `smn_depth_floor.py <S>.smn.tsv --summary qc/<S>.mosdepth.summary.txt`
+(or `--depth <mean>`); the original is kept as `<S>.smn.raw.tsv`; re-running re-evaluates from that raw copy, so a wrong depth or a changed floor can be corrected.
+
 **Classification logic (from `smn_report.py`):**
 
 | SMN1 CN | SMA status | Badge |
@@ -641,6 +653,7 @@ SVcaller is appropriate when:
 | `--giab_truth` | null | GIAB truth VCF.gz; enables Truvari benchmarking |
 | `--eh_catalog` | required | ExpansionHunter repeat catalog JSON |
 | `--min_depth` | 30 | Minimum mean coverage; pipeline halts below this threshold |
+| `--smn_min_depth` | 18 | SMN no-call floor (`NoCall:BelowValidatedDepth`); does not halt the pipeline |
 | `--outdir` | `results` | Output directory |
 | `--utils_container` | `svcaller/utils:1.3` | Docker image for Python bin/ scripts |
 | `-profile docker` | — | Use Docker for all containers (recommended; all tags verified) |
