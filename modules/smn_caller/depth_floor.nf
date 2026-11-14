@@ -20,7 +20,7 @@ process SMN_DEPTH_FLOOR {
 
     script:
     """
-    smn_depth_floor.py in/${smn_tsv.name} \\
+    smn_depth_floor.py ${smn_tsv} \\
         --summary ${mosdepth_summary} \\
         --min-depth ${min_depth} \\
         --out ${meta.id}.smn.tsv \\

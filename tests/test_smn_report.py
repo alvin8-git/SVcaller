@@ -257,3 +257,14 @@ def test_floor_crlf_single_info_column(tmp_path):
     new, floored = m.floor_text(text, 5, 18)
     assert floored and new.count("Info") == 1 and new.count("\r\n") == 2
     assert new.split("\r\n")[1].split("\t")[-1] == "NoCall:BelowValidatedDepth"
+
+
+def test_depth_floor_process_does_not_double_the_staging_dir():
+    """Nextflow renders path(x, stageAs: 'in/*') as 'in/<name>' already; the script must
+    use ${smn_tsv}, not 'in/${smn_tsv.name}' (which became in/in/<name> and failed every run).
+    No process-level test harness exists in this repo, so this is a static guard."""
+    nf = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "modules", "smn_caller", "depth_floor.nf")).read()
+    assert "stageAs: 'in/*'" in nf
+    assert "in/${smn_tsv" not in nf
+    assert "smn_depth_floor.py ${smn_tsv}" in nf

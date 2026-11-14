@@ -10,6 +10,8 @@
 `NoCall:BelowValidatedDepth`; the caller's row is kept as `<sample>.smn.raw.tsv`. Unchanged bytes at/above the floor; `NoCall:*` rows pass
 through. The 18x value is empirical (one sample per depth), indicative only. No Docker rebuild.
 
+**Follow-up fix (same day).** The process script passed `in/${smn_tsv.name}`, but `stageAs: 'in/*'` already renders the name with its `in/` prefix, so the command read `in/in/<id>.smn.tsv` and every sample that reached `SMN_DEPTH_FLOOR` failed with exit 2. The script now passes `${smn_tsv}`; staging under `in/` is kept. Verified by running the process (above and below the floor) in `svcaller/utils:1.3`; `tests/test_smn_report.py` has a static guard.
+
 ## 2026-11-13 — alpha-globin: no more named carriers from one marginal segment, compound genotypes, or noise junctions
 
 **Problem.** About 4 of 45 samples (including GIAB HG001, a European) were reported `--FIL|--THAI/anti-3.7`,
