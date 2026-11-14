@@ -1,0 +1,17 @@
+flowchart TB
+    subgraph R1[" "]
+        direction LR
+        IN["Samplesheet<br/>FASTQ or BAM"] --> M1["M1 align, MarkDup,<br/>mosdepth gate"] --> F["FILTER_CHROMS<br/>(BAM input)"]
+    end
+    subgraph R2["Callers: validated BAM (M8: raw BAM)"]
+        direction LR
+        SV["M2 SV<br/>Manta+Delly"] ~~~ STR["M2 STR<br/>EH, STRling"] ~~~ CNV["M3 CNV<br/>CNVpytor, gCNV"] ~~~ SMN["M4<br/>SMN1/2"] ~~~ AG["M8<br/>alpha-globin"]
+    end
+    F --> R2
+    SV --> AN["M5 annotate<br/>PON, AnnotSV, depth"]
+    CNV --> TR["M3b traits<br/>RHD, AMY1, GST, LPA"]
+    AN --> RP["M6/M7 report: Circos, HTML, xlsx"]
+    TR --> RP
+    STR --> RP
+    SMN --> RP
+    AG --> RP

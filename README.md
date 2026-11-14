@@ -1,637 +1,333 @@
 # SVcaller
 
-[![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A525.10.4-23aa62.svg)](https://www.nextflow.io/)
-[![Docker](https://img.shields.io/badge/docker-enabled-2496ED.svg?logo=docker)](https://www.docker.com/)
-[![Python](https://img.shields.io/badge/python-3.11-3776AB.svg?logo=python)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-333%20passing-brightgreen.svg)](#testing)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+SVcaller is a Nextflow DSL2 pipeline for human whole-genome sequencing (WGS) on GRCh38. From a FASTQ pair
+or a bwa-aligned BAM it calls structural variants (SVs), copy-number variants (CNVs), short tandem repeat
+(STR) expansions, SMN1/SMN2 copy number, alpha-globin (HBA1/HBA2) gene dosage and five read-depth
+copy-number traits (RHD, AMY1, GSTM1, GSTT1, LPA KIV-2). It writes one HTML report, an Excel workbook and
+a set of small per-sample TSV files that other tools can read. It targets about 30x short-read data.
 
-**A production-ready Nextflow DSL2 pipeline for calling structural variants (SVs), copy number variants (CNVs), and SMN1/SMN2 copy numbers from Illumina paired-end WGS data (PE150, ≥30×).**
+> **Research and educational use only.** SVcaller is not a medical device and has not been clinically
+> validated. Its outputs are measurements for review by a qualified person. They are not diagnoses.
 
-Accepts FASTQ or pre-aligned BAM input. Produces a per-sample HTML report with an embedded Circos plot, annotated SV/CNV tables, SMN1/SMN2 classification, and optional GIAB benchmark metrics.
+No badges are shown: the repository has no CI and no licence file yet (see [Licence](#licence)).
 
-![SVcaller per-sample HTML report (SMAPB reference sample)](docs/img/report_overview.png)
+## What it does and does not do
 
-*Self-contained per-sample report (SMAPB, an anonymised standardized reference sample): alignment QC, genome-wide Circos plot, structural-variant and copy-number summaries, and SMN1/SMN2 classification (here a homozygous SMN1 deletion consistent with SMA). Bootstrap CSS is inlined for air-gapped clinical distribution.*
+| Does | Does not |
+|---|---|
+| Calls SVs with Manta + Delly by default, merged by Jasmine; GRIDSS, Scramble and MELT are opt-in | Call SNVs or small indels |
+| Re-clusters translocations across callers after the merge (`TRA_CONSENSUS`) | Use SvABA: it is skipped by default and its VCF is never merged |
+| Calls CNVs with CNVpytor and GATK gCNV, then merges them by reciprocal overlap | Run on whole-exome data (see [docs/wes-limitations.md](docs/wes-limitations.md)) |
+| Genotypes 32 STR loci with ExpansionHunter, plus genome-wide STRling | Size STR alleles longer than the read length; they are reported as a lower bound |
+| SMN1/SMN2 copy number (SMNCopyNumberCaller), with an explicit no-call below 18x | Support any build other than GRCh38 with `chr`-prefixed names |
+| Measures alpha-globin dosage from depth, junction reads and a fixed site panel | Name a single alpha deletion allele when depth cannot tell two apart; it reports the group (for example `--SEA\|--MED`) |
+| Checks every DEL/DUP of at least 1 kb against read depth (annotation only) | Remove a caller-supported call because depth disagrees |
+| Annotates SVs with AnnotSV, a GIAB SV panel of normals and gnomAD-SV frequency | Run AnnotSV without its 6.9 GB database (a header-only table is written instead) |
 
----
+## Pipeline
 
-## Features
+<img src="docs/img/pipeline.svg" width="1180" alt="SVcaller pipeline: pre-processing, five caller groups, annotation and report">
 
-- **Ensemble SV calling** — **default caller set (2026-11-07): Manta + DELLY only**, merged with JASMINE. A Finding needs support from **both** Manta and Delly (`CALLER_CONSENSUS=PASS`); single-caller calls stay in the table, flagged `SINGLE_CALLER`. **GRIDSS, MELT and Scramble are opt-in** (`--run_gridss`, `--run_melt`, `--run_scramble`); with all on, the full **5-caller** ensemble (Manta, DELLY, GRIDSS, Scramble, MELT) is merged as before. SvABA is **not** part of the ensemble — it is skipped by default and its VCF never reaches the merge. **SUPP_VEC order changed** (see below); the caller set that ran is recorded in `<id>.sv_callers.json`, the merged-VCF header `##SVcaller_callers=` and the `CALLERS_RAN` column of `filtered.tsv`.
-- **STR genotyping** — ExpansionHunter (32 disease loci) + STRling genome-wide scanning
-- **Dual CNV calling** — CNVpytor + GATK gCNV with consensus merging
-- **SMN1/SMN2 copy number** — SMNCopyNumberCaller with 2+0 haplotype detection
-- **Copy-number / blood-group traits** — targeted normalized read depth for Rh factor (RHD), AMY1, GSTM1/GSTT1 null, and LPA KIV-2, emitted as stable per-sample contract files
-- **Alpha-globin (HBA1/HBA2)** — M8 measures alpha-thalassemia via per-segment depth, alpha-cluster junction search, and a pinned pathogenic-site pileup; emitted as a per-sample contract and a measurement-only report card (dosage 0–4, deletion reported as a group when depth cannot separate alleles, panel-named site hits). No clinical interpretation
-- **Clinical annotation** — AnnotSV 3.4.6 with SV PON (GIAB 7-sample), gnomAD-SV AF, SegDup, and ENCODE blacklist badges
-- **Genome-wide visualization** — pycirclize Circos plot (SVs, CNV gains/losses, STR expansions, SMN locus)
-- **3-tier clinical HTML report** — ACMG SF v3.2 Tier 1, OMIM morbid Tier 2, Tier 3 with full XLS export; Bootstrap 5, embedded SVG, optional truvari GIAB benchmark
-- **Reproducible** — every tool pinned in a Docker container; no conda required
+*Figure 1. Data flow. M1 aligns FASTQ input (BAM input skips alignment and runs `FILTER_CHROMS`). The
+callers run on the validated BAM, except M8 alpha-globin, which reads the raw BAM because its depth
+baselines were calibrated on it. M3b traits use the CNV consensus as corroboration. Source:
+[docs/img/pipeline.mmd](docs/img/pipeline.mmd).*
 
----
+## Where it sits in the OmniGen suite
 
+| Repository | Role |
+|---|---|
+| OmniGen (private) | Grades and renders reports from the outputs below; never calls variants |
+| [pgx-suite](https://github.com/alvin8-git/pgx-suite) | Medicine response, HLA, blood group |
+| **SVcaller** (this repo) | SVs, CNVs, SMN1/SMN2, alpha-globin, STR expansions, depth traits |
+| [poly-suite](https://github.com/alvin8-git/poly-suite) | Polygenic scores, ancestry |
 
-### Default callers, SUPP_VEC order, run time (2026-11-07)
-
-The consumer product calls SVs with **Manta + Delly** only. On HG001 read depth refutes 96 % of the large DEL/DUP calls, MELT costs ~8 h per 30x genome with 0 reportable records on the validation samples, and GRIDSS has unbounded run time; the dedicated tiers (SMN1, alpha-globin, DMD, HBA) already cover the whole-gene deletions that matter, so a Manta + Delly consensus plus the depth check is the evidence bar for a Finding. Expected run-time change: about 8 h less (MELT), 4-6 h+ less (GRIDSS) and ~10 min less (Scramble) per 30x genome versus the old 5-caller default; opt back in with `--run_melt` / `--run_gridss` / `--run_scramble`.
-
-**SUPP_VEC order (downstream parsers: read it, do not hard-code it).** One bit per caller that ran, left to right, in the order `Manta, Delly, [GRIDSS], [Scramble], [MELT]`. GRIDSS, Scramble and MELT bits exist only when opted in (Scramble/MELT only when they have calls). Default run: `SUPP_VEC` = `Manta,Delly`, always width 2. The old default was `Manta,Delly,GRIDSS[,Scramble][,MELT]` (width 3-5), so **old tables have GRIDSS at bit 3; new tables do not**. The actual order is in `<id>.sv_callers.json` (`callers_in_supp_vec_order`, `supp_vec_width`), the VCF header `##SVcaller_callers=Manta,Delly`, and per row in `filtered.tsv` columns `CALLERS_RAN`, `SUPP_VEC_WIDTH`, `SUPP_CALLERS`, `CALLER_CONSENSUS` (`PASS` | `SINGLE_CALLER` | `NA`; `CALLERS_RAN=legacy` on tables written before this change). Print "2 of 2 callers" from `SUPP_VEC_WIDTH`, not "2 of 4". Merge tolerances and filter thresholds are unchanged.
-
-## Pipeline Overview
-
-```
-┌───────────────────────────────────────────────────────────────────────────────────┐
-│ M1 · Pre-processing                                                               │
-│ BWA-MEM2 → sort → MarkDup → mosdepth QC                                           │
-└─────────────────────────────────────────┬─────────────────────────────────────────┘
-                                          │ BAM
-         ┌─────────────────────┬──────────┴─────────┬─────────────────────┐
-         ▼                     ▼                    ▼                     ▼
-┌──────────────────┐ ┌───────────────────┐ ┌──────────────────┐ ┌───────────────────┐
-│ M2 · SV Calling  │ │ M3 · CNV + traits │ │ M4 · SMN Calling │ │ M8 · Alpha-globin │
-│ Manta  DELLY     │ │ CNVpytor          │ │ SMNCopyNumber    │ │ HBA1/HBA2 depth   │
-│ GRIDSS  Scramble │ │ GATK gCNV → BED   │ │ Caller v1.1      │ │ + junction search │
-│ MELT → JASMINE   │ │ RHD/AMY1/GSTM1    │ │                  │ │ + targeted site   │
-│ (5-caller merge) │ │ GSTT1/LPA KIV-2   │ │                  │ │ pileup            │
-└────────┬─────────┘ └─────────┬─────────┘ └────────┬─────────┘ └─────────┬─────────┘
-         │                     │                    │                     │
-         ▼                     │                    │                     │
- ┌───────────────┐
- │ M5 · Annotate │             │                    │                     │
- │ AnnotSV 3.4   │             │                    │                     │
- │ gnomAD-SV AF  │             │                    │                     │
- │ filter <1%    │             │                    │                     │
- └───────┬───────┘             │                    │                     │
-         └─────────────────────┴──────────┬─────────┴─────────────────────┘
-                                          ▼
-┌───────────────────────────────────────────────────────────────────────────────────┐
-│ M6/M7 · Visualization & Reporting                                                 │
-│ pycirclize Circos + Jinja2 HTML report + (optional) Truvari benchmark             │
-└───────────────────────────────────────────────────────────────────────────────────┘
-```
-
----
+OmniGen reads SVcaller's per-sample output folder, for example `provenance.json`,
+`<sample>.trait_depth.regions.bed.gz` and the caller columns of `filtered.tsv`.
 
 ## Requirements
 
-| Dependency | Version | Notes |
+| Item | Version or size | Checked here |
 |---|---|---|
-| [Nextflow](https://nextflow.io) | ≥ 25.10.4 | `curl -s get.nextflow.io \| bash` |
-| Docker | ≥ 24 | All tools run in containers |
-| Python | ≥ 3.11 | For local test/report scripts |
-| Java | ≥ 17 | Required by Nextflow |
+| OS | Linux x86_64 | Ubuntu, kernel 5.15 |
+| Nextflow | `>=25.10.0` (`manifest.nextflowVersion`) | 25.10.4 |
+| Java | 17 or later (for Nextflow) | not checked separately |
+| Docker | any recent release | 28.3.2 |
+| Python + pytest | only for the unit tests | Python 3.13.2 |
+| CPU / RAM | one 30x HG002 BAM ran in 77 min with `--max_cpus 48 --max_memory 100.GB` ([docs/CHANGES.md](docs/CHANGES.md), 2026-11-11) | from repo records |
+| Disk | about 120 GB for the filtered copy of a 30x BAM, plus the input BAM and intermediates; plan for at least 500 GB of scratch | estimate, not measured end to end |
 
-**System:** 16+ CPU cores, 64+ GB RAM, 500 GB disk recommended for 30× WGS.
+All tools run in pinned containers. Three images are not public and must be built locally (next section).
 
----
-
-## Quick Start
+## Installation
 
 ```bash
-# 1. Clone
 git clone https://github.com/alvin8-git/SVcaller.git
 cd SVcaller
 
-# 2. Install Nextflow (if not already installed)
-curl -s https://get.nextflow.io | bash
-sudo mv nextflow /usr/local/bin/
+# Local images (not on any registry)
+docker build -f Dockerfile.utils -t svcaller/utils:1.3 .
+docker build -f Dockerfile.smncopynum -t svcaller/smncopynum:1.2 modules/smn_caller/patches
 
-# 3. Download reference data (~60 min first time)
-bash validation/download_refs.sh
-
-# 4. Run on a sample
-nextflow run main.nf \
-    -profile docker \
-    --input /path/to/samplesheet.csv \
-    --ref_fasta /path/to/ref/GRCh38/GRCh38.fasta \
-    --outdir results
+# Only if you will use --run_melt: needs MELTv2.2.2.tar.gz in the repo root
+# (free registration at melt.igs.umaryland.edu)
+docker build -f Dockerfile.melt -t svcaller/melt:2.2.2 .
 ```
 
----
+The two `docker build` lines are taken from `Dockerfile.smncopynum` and `docs/CHANGES.md`; they were
+not re-run in this session (both images were already present). Public biocontainers are pulled by
+Nextflow on first use. `tests/test_local_images.py` fails with the build command if a pinned
+`svcaller/*` image is missing.
 
-## Input Samplesheet
+## Reference data
 
-A CSV file with one row per sample. Provide either `fastq_1`/`fastq_2` **or** `bam` — not both.
+**Link not yet published.** The suite's shared reference bundle will be hosted here:
+
+```text
+https://<REF_BUNDLE_URL>/ref.tar.gz
+sha256: <TO_BE_PUBLISHED>
+```
+
+The bundle is about 58.5 GB and holds `ref/{GRCh38, annotsv, pgsc, omnigen, mondo.sssom.tsv}`.
+SVcaller needs only `ref/GRCh38/` and, optionally, `ref/annotsv/`. The bundle contents are taken from
+the suite's deployment notes; the tarball itself was not opened in this session.
+
+| Input | Parameter | Size | Needed |
+|---|---|---|---|
+| `hg38.canonical.fa` + `.fai` + `.dict` (chr1-22, X, Y, M) | `--ref_fasta` | 3.0 GB | yes |
+| bwa-mem2 index next to the FASTA (`.0123`, `.bwt.2bit.64`, `.amb`, `.ann`, `.pac`) | inferred from `--ref_fasta` | about 16 GB | FASTQ input only |
+| Autosomal intervals BED | `--intervals` | 4 KB | with `--pon` |
+| GATK gCNV panel of normals | `--pon` | 447 MB | for GATK gCNV calls |
+| GIAB SV panel of normals BED | `--sv_pon` | 248 KB | optional |
+| AnnotSV `Annotations_Human/` | `--annotsv_db` | 6.9 GB | optional |
+| GIAB HG002 SV truth (T2TQ100-V1.0, v5.0q) | `--giab_truth`, `--giab_truth_v5q` | 9.3 MB, 46 MB | benchmark only |
+
+The two panels of normals are not in the bundle and are not committed (`pon/` is gitignored).
+
+**Building it yourself:**
+
+- **FASTA.** Use a UCSC-style GRCh38 with `chr` names, keep chr1-22, X, Y and M, then
+  `samtools faidx` and `samtools dict`. Index with bwa-mem2 for FASTQ input. The classic BWA index is
+  only needed if you re-enable SvABA. Do not use `validation/download_refs.sh` as it stands: it
+  downloads the Ensembl primary assembly, which has no `chr` prefix, and writes to a fixed
+  developer path.
+- **gCNV panel of normals.** `workflows/pon_build.nf` from GIAB HG001-HG007 BAMs
+  ([docs/howto-build-pon.md](docs/howto-build-pon.md)).
+- **SV panel of normals.** `workflows/sv_pon_build.nf` (Manta per GIAB sample, HG002 excluded,
+  SURVIVOR merge, sites seen in at least 2 samples).
+- **AnnotSV.** `INSTALL_annotations.sh` from AnnotSV 3.4.6. Pass the `Annotations_Human` folder.
+- **GIAB truth.** NIST GIAB FTP, `ReferenceSamples/giab/release/AshkenazimTrio/HG002_NA24385_son/`
+  (URLs as used in `validation/download_refs.sh`).
+
+## Quick start: smoke test
+
+```bash
+bash tests/smoke/run.sh            # writes to ./work_smoke (gitignored)
+```
+
+The smoke test runs the pipeline's own `ALPHA_GLOBIN` (M8) and `CNV_TRAITS` (M3b) subworkflows on a
+12 MB slice of GIAB HG002 committed in `tests/fixtures/smoke/`. The slice covers chr16:1-250000, the
+five trait loci and the eight control windows. It then checks nine values against the calls made on
+the full 30x HG002 BAM. It needs Docker and the `svcaller/utils:1.3` image. Measured run time: 27 s.
+Expected output:
+
+```text
+ok    HG002.rh_status.tsv col2 = 2
+ok    HG002.rh_status.tsv col3 = pos
+ok    HG002.gst_null.tsv col2 = present
+ok    HG002.gst_null.tsv col3 = present
+ok    HG002.amy1.tsv col2 = 2
+ok    HG002.lpa_kiv2.tsv col2 = 5
+ok    HG002.alpha_globin.tsv col2 = 4
+ok    HG002.alpha_globin.tsv col8 = aa/aa
+ok    HG002.alpha_globin.tsv col4 = none
+SMOKE TEST PASSED (outputs in .../results/HG002)
+```
+
+**Not covered:** alignment, `FILTER_CHROMS`, SV, CNV, STR and SMN calling, annotation and the HTML
+report. They need a whole genome. Unit tests: `pytest tests/` (475 passed in 12 s here; a few skip
+without `samtools` on `PATH`).
+
+## Usage
+
+### Samplesheet
+
+CSV with header `sample,fastq_1,fastq_2,bam`. Give a FASTQ pair or a BAM on each row, not both.
 
 ```csv
 sample,fastq_1,fastq_2,bam
-HG002,/data/HG002_R1.fastq.gz,/data/HG002_R2.fastq.gz,
-HG003,,,/data/HG003.GRCh38.bam
+HG002,/path/HG002_R1.fastq.gz,/path/HG002_R2.fastq.gz,
+HG003,,,/path/HG003.bam
 ```
 
-| Column | Required | Description |
-|--------|----------|-------------|
-| `sample` | Yes | Unique sample ID (no spaces) |
-| `fastq_1` | FASTQ mode | Absolute path to R1 FASTQ.gz |
-| `fastq_2` | FASTQ mode | Absolute path to R2 FASTQ.gz |
-| `bam` | BAM mode | Absolute path to sorted BAM |
+### Entry points
 
----
-
-## Parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `--input` | required | Path to samplesheet CSV |
-| `--ref_fasta` | required | GRCh38 reference FASTA |
-| `--outdir` | `results` | Output directory |
-| `--min_depth` | `25` | Minimum mean coverage (fails pipeline if below) |
-| `--smn_min_depth` | `18` | SMN1/SMN2 depth floor: below this mean depth the SMN result is `NoCall:BelowValidatedDepth` (mosdepth whole-BAM mean, about 1x below the aligner's figure; acts under the default `--min_depth 25` only when that is lowered; separate from it; empirical, one HG002 downsampling series, indicative not a measured limit) |
-| `--pon` | null | GATK gCNV Panel of Normals HDF5 (see [PoN Build](#panel-of-normals)) |
-| `--intervals` | null | Preprocessed intervals BED for GATK gCNV |
-| `--annotsv_db` | null | AnnotSV annotation directory |
-| `--eh_catalog` | `assets/eh_catalog.json` | ExpansionHunter variant catalog |
-| `--sv_pon` | null | GIAB 7-sample SV Panel of Normals BED for artifact flagging (see `pon/sv_pon/`) |
-| `--giab_truth` | null | GIAB T2TQ100-V1.0 truth VCF.gz for truvari benchmarking |
-| `--giab_truth_v5q` | null | GIAB v5.0q truth VCF.gz (second benchmark pass) |
-| `--run_gridss` | `false` | Opt in to GRIDSS (unbounded run time, 4-6 h+, 60 GB RAM). Adds a SUPP_VEC bit after Delly. `--skip_gridss false` is an alias |
-| `--skip_gridss` | `true` | Legacy flag, default flipped 2026-11-07. Effective rule: GRIDSS runs iff `--run_gridss` or `--skip_gridss false` |
-| `--run_melt` | `false` | Opt in to MELT MEI calling (~8 h per 30x genome; 0 reportable records on the validation samples). `--skip_melt false` is an alias |
-| `--skip_melt` | `true` | Legacy flag, default flipped 2026-11-07. Effective rule: MELT runs iff `--run_melt` or `--skip_melt false` |
-| `--auto_cleanup` | `false` | Delete the `-work-dir` automatically on successful completion (removes the `-resume` cache) |
-| `--max_cpus` | `64` | Max CPUs any process may request (caps `task.attempt` scaling) |
-| `--max_memory` | `120.GB` | Max memory any process may request |
-| `--max_time` | `240.h` | Max wall-clock time any process may request |
-
----
-
-## Running the Pipeline
-
-### FASTQ input
-
-```bash
-NXF_ANSI_LOG=false nohup nextflow run main.nf \
-    -profile docker \
-    --input samplesheet.csv \
-    --ref_fasta /path/to/hg38.canonical.fa \
-    --pon /path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
-    --annotsv_db /path/to/annotsv/Annotations_Human \
-    --sv_pon /path/to/SVcaller/pon/sv_pon/giab_sv_pon.bed \
-    --outdir results_SAMPLEID \
-    -work-dir work_SAMPLEID \
-    > /tmp/SAMPLEID_run1.log 2>&1 &
-```
-
-> **Note:** Use `hg38.canonical.fa` (chr1-22+X+Y+M only) for FASTQ inputs — this skips FILTER_CHROMS (~70 min/sample on a ~30× BAM). Use `NXF_ANSI_LOG=false` for all background runs; without it, Nextflow's ANSI renderer deadlocks the JVM when there's no TTY.
-
-### BAM input (skip alignment)
-
-```bash
-NXF_ANSI_LOG=false nohup nextflow run main.nf \
-    -profile docker \
-    --input bam_samplesheet.csv \
-    --ref_fasta /path/to/hg38.fa \
-    --pon /path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
-    --sv_pon /path/to/SVcaller/pon/sv_pon/giab_sv_pon.bed \
-    --outdir results_SAMPLEID \
-    -work-dir work_SAMPLEID \
-    > /tmp/SAMPLEID_run1.log 2>&1 &
-```
-
-> **Note:** BAM inputs always run FILTER_CHROMS to strip non-canonical @SQ headers. See [How to run BAM inputs](docs/howto-run-bam-inputs.md) for details.
-
-### With GIAB benchmarking
-
-```bash
-NXF_ANSI_LOG=false nohup nextflow run main.nf \
-    -profile docker \
-    --input samplesheet.csv \
-    --ref_fasta /path/to/hg38.canonical.fa \
-    --giab_truth /path/to/GIAB/HG002_T2TQ100-V1.0_stvar.vcf.gz \
-    --giab_truth_v5q /path/to/GIAB/HG002_v5.0q_stvar.vcf.gz \
-    --outdir results \
-    -work-dir work \
-    > HG002_run1.log 2>&1 &
-```
-
-All samples share a single unified `--outdir results` (Nextflow writes each sample
-to its own `results/<sample_id>/` subdir) and a single `-work-dir work` scratch
-directory. See [Output](#output) for the consolidated layout.
-
-### Resume a failed run
-
-```bash
-NXF_ANSI_LOG=false nohup nextflow run main.nf \
-    -profile docker \
-    --input samplesheet.csv \
-    --ref_fasta /path/to/hg38.canonical.fa \
-    -work-dir work_SAMPLEID \
-    -resume \
-    > /tmp/SAMPLEID_run2.log 2>&1 &
-```
-
----
-
-## Storage, Cleanup & Environment
-
-A 30× WGS run can leave several hundred GB of intermediates in its work directory. Three hardening rules keep disk usage bounded:
-
-1. **One `-work-dir` per sample/batch** — `work_<sampleId>` for single samples, `work_<batchName>` for batches. Never share a `work/` across runs: it causes Nextflow session-lock conflicts and blocks targeted cleanup.
-2. **Clean up after results are published** — `bash bin/nf-cleanup.sh <sampleId>` verifies outputs exist under `--outdir`, removes that sample's work dir, and prunes orphaned `.nextflow/cache` sessions. After several runs have shared one work dir, `bash bin/nf-cleanup.sh --reclaim` reclaims every superseded run's intermediates in one command (dry-run by default; add `--force` to delete) while keeping the latest successful run for `-resume`; it refuses to run while a pipeline is active. `--auto_cleanup true` deletes the work dir automatically on success (drops the `-resume` cache; one-shot runs only).
-3. **Keep the `storeDir` caches** — `${outdir}/cache/` and `${outdir}/.cache/` persist GRIDSS reference setup, GATK interval binning, and chrom-filtered BAMs across runs against the same reference. They survive `nextflow clean`; don't delete them between samples.
-4. **Mosdepth writes regions only** — `--no-per-base` is set, so the ~4.5 GB/sample per-base BED is never generated (the report consumes the 50 kb regions windows). Saves disk and mosdepth runtime.
-
-**Environment variables** for background and multi-user runs:
-
-| Variable | Purpose |
-|----------|---------|
-| `NXF_ANSI_LOG=false` | **Required** for nohup/background runs — without it Nextflow's ANSI renderer deadlocks the JVM when there is no TTY. |
-| `TMPDIR` | Redirect temp files off a small root partition (pipeline sets `/path/to/tmp` in `nextflow.config`; override per site). |
-| `NXF_HOME` | Per-user Nextflow home on shared machines — avoids plugin-cache contention. |
-| `NXF_SINGULARITY_CACHEDIR` | Per-user image cache for Singularity/Apptainer — stops concurrent runs colliding while pulling the same image. |
-
-### Resource bounds & optimization
-
-Per-process CPU/memory/time are capped by `--max_cpus` (64), `--max_memory` (120.GB), `--max_time` (240.h). Lower them on small machines (e.g. `--max_cpus 8 --max_memory 32.GB`) so no process over-subscribes. Tiers and per-caller overrides live in `conf/base.config`.
-
-`--max_cpus` is also the per-sample **core budget**: `SAMTOOLS_FILTER_CHROMS` takes 3/4 of it, and the remaining processes are reserved at what they measurably use (most are single-threaded), so a sample keeps all its cores busy. Typical run: `--max_cpus 32 --max_memory 100.GB` (peak concurrent use is well under 100 GB). Wall time is bounded by the Delly BND task (single-threaded, ~35-60 min at 30X); extra cores beyond ~32 shorten only the BAM filter. `FILTER_SHARD_BP` (env, default `25000000`) sets the window size of the filter shards and `FILTER_BGZF_LEVEL` (env, default `1`) the compression level of the filtered BAM (`6` gives a ~8% smaller file at the cost of filter CPU). `bin/compare_results.py <A> <B> <sample>` diffs the final outputs of two runs (exit 1 on any difference). A `withName` selector that is also used in `conf/docker.config` is replaced, not merged, so per-process resources in `conf/base.config` use grouped selectors; check with `nextflow config -profile docker`.
-
-Scatter-gather is applied only where it is safe for SV/CNV calling:
-
-| Stage | Parallelization |
-|-------|-----------------|
-| DELLY | internal per-chromosome scatter-gather (built in) |
-| GATK CollectReadCounts / CNVpytor | per-bin / per-chromosome — shardable |
-| ExpansionHunter | per-locus |
-| Manta / GRIDSS / SvABA | **not chunked** — breakend assembly needs whole-genome context; per-chromosome splitting drops inter-chromosomal events. Bound cost with `--tiered_gridss` or `--skip_gridss` instead. |
-
-`scratch` (node-local staging) is **off by default**. On a single-node local executor it doubles I/O on the ~130 GB filtered BAM for no benefit; enable it only on a shared-filesystem cluster via a site config (`-c site.config` setting `process.scratch = true`).
-
-For per-process resource tiers, the `local` (conda) vs `docker` profiles, and the full storage/cache reference, see [Parameter reference](docs/reference-parameters.md#storage--cache-management).
-
----
-
-## Panel of Normals
-
-GATK gCNV requires a Panel of Normals (PoN) built from ≥10 normal samples. Build once from GIAB HG001–HG007:
-
-```bash
-# 1. Edit validation/giab_samplesheet.csv with your BAM paths
-# 2. Build PoN
-NXF_ANSI_LOG=false nohup nextflow run workflows/pon_build.nf \
-    -profile docker \
-    --input validation/giab_samplesheet.csv \
-    --ref_fasta /path/to/ref/GRCh38/GRCh38.fasta \
-    --outdir /path/to/SVcaller/pon \
-    -work-dir /path/to/SVcaller/work_pon \
-    > /path/to/tmp/pon_run.log 2>&1 &
-
-# PoN output: /path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5
-```
-
-Pass it to the main pipeline with `--pon /path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5`.
-
----
-
-## Output
-
-All runs share one consolidated `results/` tree, one subdirectory per sample.
-Current occupants (see [ORGANIZATION.md](ORGANIZATION.md) for the reorg history):
-
-```
-results/
-├── HG002/                    # GIAB reference (SV/CNV/STR/SMN + blood-group traits)
-├── HG001/                    # GIAB NA12878 (30X GRCh38 + blood-group traits)
-├── COLO829/                  # tumor SV/CNV (depth traits omitted — no BAM)
-├── SMN/{SMAD,SMAM,SMAPB}/    # SMA trio
-├── _experiments/{HG002_wedge,svpon}/   # retained experimental runs
-├── pon/                      # shared Panel of Normals (single copy)
-└── cache/                    # shared reference-derived pipeline cache (gitignored)
-```
-
-Each sample subdirectory contains:
-
-```
-results/
-└── <sample_id>/
-    ├── <sample_id>.report.html          # Self-contained HTML report
-    ├── <sample_id>.variants.xlsx        # Excel workbook (SVs / CNVs / STRs / SMN sheets)
-    ├── <sample_id>.sv_merged.vcf.gz     # Ensemble SV calls (Manta+DELLY+GRIDSS+Scramble+MELT)
-    ├── <sample_id>.sv_merged.vcf.gz.tbi
-    ├── <sample_id>.str.vcf.gz           # STR calls (ExpansionHunter)
-    ├── <sample_id>.str_summary.tsv      # per-allele sizing class + lower-bound display (bin/eh_sizing.py)
-    ├── <sample_id>.cnv_consensus.bed    # Consensus CNV calls
-    ├── <sample_id>.smn.tsv              # SMN1/SMN2 copy numbers (depth-floored; see --smn_min_depth)
-    ├── <sample_id>.smn.raw.tsv          # the caller's own row, only when the floor applied
-    ├── provenance.json                  # tool versions + images + SVcaller commit (see below)
-    ├── <sample_id>.filtered.tsv         # AnnotSV-annotated, gnomAD-SV-filtered SVs + DEPTH_* columns
-    ├── <sample_id>.circos.svg           # Genome-wide Circos plot (embedded inline in HTML)
-    ├── <sample_id>.circos.png
-    ├── <sample_id>.trait_depth.regions.bed.gz  # raw targeted depth (trait + CTRL_* regions); read by OmniGen
-    ├── bloodgroup/
-    │   └── <sample_id>.rh_status.tsv    # Rh factor: RHD copy number → Rh+/- (CNV trait)
-    ├── cnv_traits/
-    │   ├── <sample_id>.amy1.tsv         # AMY1 (salivary amylase) copy number
-    │   ├── <sample_id>.gst_null.tsv     # GSTM1 / GSTT1 null (homozygous deletion) status
-    │   └── <sample_id>.lpa_kiv2.tsv     # LPA KIV-2 tandem-repeat copy number (Lp(a))
-    ├── alpha_globin/                    # M8 · alpha-globin (HBA1/HBA2)
-    │   ├── <sample_id>.alpha_globin.tsv # contract: dosage, deletion group, site genotypes
-    │   ├── <sample_id>.alpha_depth.tsv  # per-segment normalized depth
-    │   ├── <sample_id>.alpha_junction.tsv # alpha-cluster breakpoint search
-    │   └── <sample_id>.alpha_sites.tsv  # pinned pathogenic-site pileup
-    ├── qc/                              # published alignment QC (survives work-dir cleanup)
-    │   ├── <sample_id>.flagstat.txt     # mapping rate (true, measured pre-FILTER_CHROMS)
-    │   ├── <sample_id>.mosdepth.summary.txt
-    │   └── <sample_id>.insert_size_metrics.txt
-    └── <sample_id>.truvari/             # GIAB benchmark (if --giab_truth set)
-        └── summary.json
-```
-
-### `provenance.json` (producing-software versions)
-
-At the end of every run (`workflow.onComplete`, `bin/write_provenance.py`) one
-`<outdir>/<sample>/provenance.json` is written next to `<sample>.smn.tsv`; OmniGen reads it.
-It is non-blocking: any failure only logs a warning and never fails the run.
-
-```json
-{"pipeline": "SVcaller <git describe>", "svcaller_commit": "<HEAD, +-dirty>",
- "generated_utc": "...", "sample": "...", "reference": {"path": "<ref_fasta>"},
- "tools": {"manta": "1.6.0", "delly": "1.2.6", "annotsv": "3.4.6", "expansionhunter": "5.0.0",
-           "gatk": "...", "samtools": "...", "...": "..."},
- "images": {"manta": "quay.io/biocontainers/manta:1.6.0--py27h9948957_6", "...": "..."}}
-```
-
-Each tool version is queried from the tool itself inside its own already-local container
-(`docker run --rm <image> <tool> --version`, no pulls); if the tool or image cannot answer, the
-value is `"not reported"`. The repo commit is recorded only in `svcaller_commit`, never as a
-tool version. Image tags come from `conf/docker.config`. Test: `tests/test_write_provenance.py`.
-
-### STR sizing rule (`str_summary.tsv`)
-
-`<sample>.str_profile.json` is EH's output, untouched. `bin/eh_sizing.py` (process `EH_SIZING`) reads it and
-writes `<sample>.str_summary.tsv`, one row per locus, after a `#` header note. Columns:
-`locus, repeat_unit, genotype, ci, read_length` (existing EH fields), then `allele1_est, allele1_ci,
-allele1_sizing, allele1_display, allele2_est, allele2_ci, allele2_sizing, allele2_display`
-(allele2 is `.` for haploid calls), `genotype_display, conf, spanning_reads, flanking_reads, inrepeat_reads`.
-
-| `alleleN_sizing` | Meaning |
+| Entry point | Purpose |
 |---|---|
-| `spanned` | at least 2 spanning reads at exactly that repeat count |
-| `flanked` | flanking/in-repeat reads only; the allele (repeats x motif length) fits within the read length |
-| `unresolved` | estimate longer than the read length with no spanning-read support, or CI wider than 30 repeats |
+| `main.nf` | The pipeline. `--input` and `--ref_fasta` are required. There is no `--help`: without `--input` it stops with `ERROR: --input is required` |
+| `workflows/pon_build.nf` | Build the gCNV panel of normals (`--input`, `--ref_fasta`, `--intervals`, `--outdir`) |
+| `workflows/sv_pon_build.nf` | Build the SV panel of normals (`--input`, `--ref_fasta`, `--outdir`, `--min_sv_callers`) |
+| `tests/smoke/run.sh [dir]` | Smoke test (above) |
+| `validation/giab_benchmark.sh <sample> <vcf> [truth_dir]` | Standalone Truvari run against GIAB truth |
+| `bin/nf-status.sh <pidfile> <workdir> [baseline] [log]` | Status of a running pipeline from a recorded PID |
+| `bin/nf-cleanup.sh <sample>` / `--reclaim [--force]` | Remove a finished sample's work dir / reclaim superseded runs (dry-run by default) |
+| `bin/depth_check.py <filtered.tsv> <bam> <out.tsv>` | Add the depth columns to an existing table |
+| `bin/compare_results.py <A> <B> <sample>` | Diff the final outputs of two runs (exit 1 on any difference) |
 
-An `unresolved` allele is shown as `>=<lower CI bound>` in `alleleN_display` and `genotype_display` (for example
-ATXN2 `22/>=52`), and the row gets `conf=unresolved`. Otherwise `conf` is `high` (CI width of the larger
-allele <= max(6, 15% of its size)) or `low`. Read length is `ReadLength` in the json (150 for these runs);
-the thresholds (2 spanning reads, CI width 30) are constants at the top of `bin/eh_sizing.py`.
+### Main options
 
-Sex and chrX loci: `INFER_SEX` (`bin/infer_sex.py`, `<sample>.sex.json`) infers sex from `samtools coverage` depth
-(chrY X-degenerate 6.5-10.5 Mb and chrX 40-44 Mb versus chr1/2/3 20-24 Mb; female if chrY/auto < 0.10 and chrX/auto
->= 0.75, male if chrY/auto >= 0.25 and chrX/auto < 0.75, else unknown, the same rule as OmniGen `vcf_qc.py`) and passes
-`--sex male|female` to ExpansionHunter (EH defaults to female, which genotypes chrX loci as diploid in a male).
-Unknown sex runs as female and sets `sex_flag` in the json and a `# FLAG` line in the summary. The inferred sex,
-ratios and method are in `<sample>.sex.json` and in the `str_summary.tsv` header comment. For a male, chrX loci
-(FMR1, AR, AFF2) are hemizygous: `allele2_*` is `.` and `genotype` has one number.
+| Option | Default | Meaning |
+|---|---|---|
+| `--input` | required | Samplesheet |
+| `--ref_fasta` | required | GRCh38 FASTA; use `hg38.canonical.fa` for BAM input |
+| `--outdir` | `results` | One sub-folder per sample |
+| `--tmp_dir` | `$TMPDIR` or `/tmp` | Host scratch mounted into containers; point it at a large disk |
+| `--pon`, `--intervals` | none | GATK gCNV panel of normals and intervals |
+| `--sv_pon` | none | GIAB SV panel of normals BED |
+| `--annotsv_db` | none | `Annotations_Human` folder |
+| `--eh_catalog` | `assets/eh_catalog.json` | ExpansionHunter catalog (32 loci) |
+| `--giab_truth`, `--giab_truth_v5q` | none | Enables Truvari benchmarking |
+| `--min_depth` | `25` | Mean depth gate; the run stops below it |
+| `--smn_min_depth` | `18` | Below this, SMN is `NoCall:BelowValidatedDepth` |
+| `--run_gridss`, `--run_scramble`, `--run_melt` | `false` | Opt-in callers (legacy `--skip_*` flags still work) |
+| `--tiered_gridss` | `false` | GRIDSS only on Manta non-PASS regions |
+| `--skip_svaba` | `true` | Leave true: SvABA output is not merged |
+| `--skip_strling`, `--skip_alpha_globin` | `false` | Skip STRling / M8 |
+| `--tra_window` | `1000` | Breakend window (bp) for translocation consensus |
+| `--melt_min_reads` | `3` | MELT `-sr` |
+| `--auto_cleanup` | `false` | Delete the work dir on success (drops `-resume`) |
+| `--max_cpus`, `--max_memory`, `--max_time` | `64`, `120.GB`, `240.h` | Per-process caps |
+| `--utils_container` | `svcaller/utils:1.3` | Image for the Python scripts |
 
-Limitation statement for the report: **alleles longer than the read length cannot be sized from short reads;
-such alleles are reported as a lower bound.** It is a standing method limitation, not a per-sample result.
-Validation against GIAB HG002 assembly truth: `docs/howto-validate-eh-vs-q100.md`.
+All flags are listed in [docs/reference-parameters.md](docs/reference-parameters.md).
 
-### Depth consistency check (`filtered.tsv`)
-
-Every DEL and DUP of at least 1 kb in `<sample>.filtered.tsv` is checked against read depth
-(`bin/depth_check.py`, the `DEPTH_CHECK` process, the last step before the table is published).
-Seven columns are appended after the existing ones; no row is dropped.
-
-| Column | Meaning |
-|--------|---------|
-| `DEPTH_IN` | Mean depth inside the SV, excluding 500 bp at each breakpoint |
-| `DEPTH_FLANK` | Mean depth of two flanks, each min(SV length, 100 kb), either side |
-| `DEPTH_GLOBAL` | The sample's autosomal median depth (same on every row; see below) |
-| `DEPTH_RATIO` | `DEPTH_IN / DEPTH_FLANK`, 2 decimals; `.` when the SV is < 1 kb or flank depth < 5x |
-| `DEPTH_RATIO_GLOBAL` | `DEPTH_IN / DEPTH_GLOBAL`, 2 decimals |
-| `DEPTH_SUPPORT` | `supported` / `refuted` / `inconclusive` / `na` (other SV types, or no ratio) |
-| `DEPTH_NOTE` | `flank inflated` if `DEPTH_FLANK / DEPTH_GLOBAL` >= 1.3, `flank depressed` if <= 0.7 (the segmental-duplication signature), else `.` |
-
-Per-ratio bands (one config block at the top of `bin/depth_check.py`): DEL `supported` at
-ratio <= 0.65, `refuted` at >= 0.85; DUP `supported` at >= 1.35, `refuted` at <= 1.15; between
-is inconclusive. A heterozygous deletion reads near 0.5x, a homozygous one near 0, a
-heterozygous duplication near 1.5x. Two baselines are used because a segmental duplication
-inflates the local flank and makes a normal-depth region look deleted: `DEPTH_SUPPORT` is
-`supported` only if **both** ratios are in the supported band, `refuted` if **either** is in the
-refuted band, otherwise `inconclusive` (if the flank is too shallow for a ratio, the global
-ratio alone decides). **`refuted` means the read depth contradicts the call** (for example a
-"deletion" that reads 1.0x of its flanks or of the genome-wide depth); it is evidence against
-the call, not proof it is false, and a caller-supported call is never removed.
-
-`DEPTH_GLOBAL` is the median of `samtools coverage` mean depth over 300 fixed 20 kb windows
-spaced evenly along chr1-22 (deterministic; zero-coverage windows skipped). It is printed on
-stderr and cached in a sidecar `<out.tsv>.global_depth` so re-annotation does not recompute.
-Depth uses `samtools coverage` default read filters (no duplicates, secondary, QC-fail). To
-annotate an existing result without a rerun:
+### Worked example: GIAB HG002 from a BAM (not run in this session)
 
 ```bash
-bin/depth_check.py results/S/S.filtered.tsv S.bam results/S/S.filtered.depth.tsv
+export REF=/path/to/ref PROJ="$(pwd)" TMP=/path/to/scratch
+printf 'sample,fastq_1,fastq_2,bam\nHG002,,,/path/to/HG002.bam\n' > HG002.csv
+
+NXF_ANSI_LOG=false nohup nextflow run main.nf -profile docker \
+  --input HG002.csv \
+  --ref_fasta ${REF}/GRCh38/hg38.canonical.fa \
+  --intervals ${REF}/GRCh38/wgs_autosomal.bed \
+  --pon ${PROJ}/pon/pon/giab_cnv_pon.hdf5 \
+  --sv_pon ${PROJ}/pon/sv_pon/giab_sv_pon.bed \
+  --annotsv_db ${REF}/annotsv/Annotations_Human \
+  --giab_truth ${REF}/GIAB/GRCh38_HG002-T2TQ100-V1.0_stvar.vcf.gz \
+  --tmp_dir ${TMP} \
+  --outdir ${PROJ}/results_HG002 -work-dir ${PROJ}/work_HG002 \
+  > ${TMP}/HG002_run1.log 2>&1 &
+echo $! > ${TMP}/HG002.pid
 ```
 
-### Copy-number / blood-group trait contracts
+Use `NXF_ANSI_LOG=false` for every background run, use one `-work-dir` per sample, and add `-resume`
+to continue a failed run. More: [docs/howto-run-bam-inputs.md](docs/howto-run-bam-inputs.md),
+[docs/howto-run-clinical-sample.md](docs/howto-run-clinical-sample.md),
+[docs/tutorial-getting-started.md](docs/tutorial-getting-started.md).
 
-Small, stable per-sample TSVs emitted by the `CNV_TRAITS` subworkflow for
-downstream interpretation (e.g. OmniGen). Each is a targeted, normalized
-read-depth estimate from the aligned BAM (mosdepth over `assets/cnv_trait_regions.bed`,
-`--mapq 0`, normalized to copy-number-stable `CTRL_*` control regions); the CNV
-consensus BED corroborates called deletions but does not drive the call.
+## Outputs
 
-| File | Columns |
-|------|---------|
-| `<S>.trait_depth.regions.bed.gz` | headerless 5-column BED: `chrom`, `start`, `end`, `region` (RHD, AMY1_CLUSTER, GSTM1, GSTT1, LPA_KIV2, CTRL_1..8), `mean_depth` (mosdepth `--mapq 0`) |
-| `bloodgroup/<S>.rh_status.tsv` | `sample`, `RHD_copies`, `Rh_status` (pos/neg), `confidence` |
-| `cnv_traits/<S>.amy1.tsv` | `sample`, `AMY1_copies`, `method` |
-| `cnv_traits/<S>.gst_null.tsv` | `sample`, `GSTM1` (null/present), `GSTT1` (null/present) |
-| `cnv_traits/<S>.lpa_kiv2.tsv` | `sample`, `KIV2_copies`, `method` |
-
-See [docs/omnigen-additions-plan.md](docs/omnigen-additions-plan.md) for design,
-coordinates, thresholds, and calibration notes.
-
-The HTML report includes:
-- Alignment QC (coverage, duplication rate, insert size)
-- SV summary table by type and caller
-- Embedded Circos plot (SVs, CNV gains/losses, STR expansions, SMN locus, and a
-  labelled CNV-trait ring — RHD/AMY1/GSTM1/GSTT1/LPA KIV-2 — when trait TSVs are present)
-- SMN1/SMN2 copy number with SMA carrier/affected classification
-- **Tier 1** — ACMG SF v3.2 actionable SVs (≥2 callers, no PON hit)
-- **Tier 2** — OMIM morbid gene candidates, top 10 shown; full list in XLS download
-- **Tier 3** — all remaining SVs, top 10 shown; full list in XLS download
-- STR expansion loci with INREPEAT / NORMAL / INTERMEDIATE status
-- **Blood Group & Copy-Number Traits** card — Rh(D) factor (RHD copy number), AMY1 copies, GSTM1/GSTT1 null status, LPA KIV-2 copies
-- **Alpha-globin (HBA1/HBA2)** card — alpha-gene dosage (0–4), genotype, deletion group (e.g. `--SEA|--MED` when depth cannot separate the alleles), and panel-named pathogenic-site findings. Measurement only, no clinical call
-- GIAB benchmark precision/recall/F1 with per-size-bin breakdown (optional)
-
----
-
-## GIAB Benchmarking
-
-Validate SV calls against GIAB truth sets:
-
-```bash
-bash validation/giab_benchmark.sh \
-    HG002 \
-    results/HG002/HG002.sv_merged.vcf.gz
+```text
+<outdir>/<sample>/
+├── <sample>.report.html               self-contained HTML report
+├── <sample>.variants.xlsx             SV / CNV / STR / SMN sheets
+├── <sample>.sv_merged.vcf.gz(.tbi)    merged SV calls (published by TRA_CONSENSUS)
+├── <sample>.sv_callers.json           callers that ran, in SUPP_VEC order
+├── <sample>.filtered.tsv              annotated SVs + caller consensus + DEPTH_* columns
+├── <sample>.cnv_consensus.bed         CNVpytor + gCNV consensus
+├── <sample>.str.vcf.gz                ExpansionHunter calls
+├── <sample>.str_summary.tsv           per-allele sizing class and display value
+├── <sample>.sex.json                  inferred sex passed to ExpansionHunter
+├── <sample>.smn.tsv                   SMN1/SMN2 copy number (depth-floored)
+├── <sample>.smn.raw.tsv               caller's own row, only when the floor applied
+├── <sample>.trait_depth.regions.bed.gz  raw depth over trait and control regions
+├── <sample>.circos.svg / .png         genome-wide Circos plot
+├── provenance.json                    tool versions, images, SVcaller commit
+├── bloodgroup/<sample>.rh_status.tsv  RHD copies, Rh(D) status
+├── cnv_traits/<sample>.{amy1,gst_null,lpa_kiv2}.tsv
+├── alpha_globin/<sample>.alpha_{globin,depth,junction,sites}.tsv
+├── qc/                                flagstat, mosdepth summary, insert size
+└── <sample>.truvari/                  only with --giab_truth
 ```
 
-**Current benchmark on HG002 (run16, 2026-06-08; GRIDSS BND→SV fix).** These numbers predate two caller fixes and are effectively a **4-caller** result. SvABA was never merged (`vcfs[5]` is unwired in `modules/jasmine/merge.nf`), and MELT was silently failing on an invalid `-reads` flag from 2026-06-05 until the `-sr` fix on 2026-07-23, so only Manta + DELLY + GRIDSS + Scramble contributed. Keep this in mind before quoting it as a 5-caller F1; a re-benchmark with MELT contributing is pending:
+Column definitions, the `SUPP_VEC` order rule, the STR sizing rule and the depth-check bands are in
+[docs/reference-outputs.md](docs/reference-outputs.md). How to read the report:
+[docs/howto-interpret-report.md](docs/howto-interpret-report.md).
 
-| Benchmark | Precision | Recall | F1 | TP-base | FP |
-|-----------|-----------|--------|-----|---------|-----|
-| GIAB T2TQ100-V1.0 | 0.733 | 0.255 | **0.378** | 7571 | 2604 |
-| GIAB v5.0q | 0.738 | 0.259 | **0.383** | 7286 | 2449 |
+<img src="docs/img/alpha_card_HG002.png" width="760" alt="Alpha-globin report card for HG002: 4 of 4 genes, genotype aa/aa">
 
-Main gap is recall (~25%) — the callset covers ~9,700 of ~30,000 truth SVs. Precision is solid. Next target: low-QUAL Manta/Delly rescue or soft GRIDSS QUAL floor.
+*Figure 2. Alpha-globin card for GIAB HG002, rendered by `bin/hba_report.py` from the smoke-test
+output: 4 of 4 genes, `aa/aa`, no panel site variant, and an explicit list of what was not examined.*
 
----
+<img src="docs/img/circos_HG002.png" width="600" alt="Circos plot for GIAB HG002">
 
-## Demo report
+*Figure 3. Circos plot for GIAB HG002 (`bin/circos_plot.py`, rendered 2026-07-12, before the
+Manta + Delly default). Rings from outside: chromosomes, copy-ratio heatmap, CNV blocks, STR loci,
+SV ring, SMN1 and trait loci; arcs are interchromosomal SV links.*
 
-A complete, self-contained per-sample report is committed at
-**[`docs/demo/HG002_report.html`](docs/demo/HG002_report.html)** — open it in any
-browser (Bootstrap CSS and Circos SVG are inlined; no network needed).
+Full example reports for public samples: [docs/demo/HG002_report.html](docs/demo/HG002_report.html),
+[docs/demo/HG001_report.html](docs/demo/HG001_report.html),
+[docs/demo/COLO829_report.html](docs/demo/COLO829_report.html). They were generated in July 2026 and
+predate the alpha-globin card, the depth check and the Manta + Delly default. Their headings use
+clinical wording that this README does not endorse.
 
-It is rendered by `bin/html_report.py` from HG002's **real** existing outputs
-(SV tiers from `HG002.filtered.tsv`, `HG002.cnv_consensus.bed`, `HG002.smn.tsv`,
-embedded Circos plot). The **Blood Group & Copy-Number Traits** card
-(Rh(D) factor, AMY1 copies, GSTM1/GSTT1 null, LPA KIV-2) now shows **real,
-validated** values computed from targeted normalized read depth on the 30X HG002
-BAM (2026-07-12): Rh(D) **positive** (RHD CN 2), GSTM1/GSTT1 **present**, AMY1 2,
-LPA KIV-2 5. The Rh(D)-positive call agrees with the CNV consensus (no RHD
-deletion) and the GSTM1 het-deletion call agrees with GIAB v5.0q truth — see the
-validation table in [docs/omnigen-additions-plan.md](docs/omnigen-additions-plan.md).
-AMY1 and LPA KIV-2 absolute copies remain proportional-only pending calibration.
+## Validation
 
-As of 2026-07-13 the demo again carries every section, including the two whose
-inputs were lost when the `work_HG002` scratch dir was reclaimed (both stages were
-re-run, not reconstructed):
+| What | Truth | Result | Source |
+|---|---|---|---|
+| SVs, HG002 | GIAB T2TQ100-V1.0 | precision 0.733, recall 0.255, F1 0.378 | `docs/demo/HG002_report.html` (2026-07-13) |
+| SVs, HG002 | GIAB v5.0q | precision 0.738, recall 0.259, F1 0.383 | same |
+| Translocations, COLO829 | 26 published BND events | 24 of 26 recalled after `TRA_CONSENSUS` (0 of 26 before) | `CLAUDE.md` |
+| STRs, HG002, 32 loci | T2T-Q100 / v5.0q assemblies | both alleles within 1 repeat at 11 / 15 loci | [docs/howto-validate-eh-vs-q100.md](docs/howto-validate-eh-vs-q100.md) |
+| SMN1/SMN2 depth floor | HG002 downsampling | correct 2/2 from 17.9x up; wrong 3/1 at 14.7x | `docs/CHANGES.md` 2026-11-13 |
+| Traits, HG001 / HG002 | GIAB v5.0q at GSTM1 | HG002 agrees; HG001 reads 1 copy, not the often-quoted null | [docs/omnigen-additions-plan.md](docs/omnigen-additions-plan.md) |
+| Alpha-globin baselines | GIAB HG002-HG007, n = 6 | per-segment intact baselines (HBA2 0.750, HBA1 0.964) | `assets/hba_segments.bed`, `validation/giab_alpha_baseline.tsv` |
 
-- **Short Tandem Repeat (STR) Findings** — ExpansionHunter 5.0.0 over the 32-locus
-  `assets/eh_catalog.json`.
-- **Validation Benchmark** — Truvari 4.3.1 against *both* GIAB HG002 SV truth sets.
-  On this Manta+DELLY call set (`--skip_gridss`): T2TQ100-V1.0 precision 0.733 /
-  recall 0.255 / F1 0.378 (TP 7,135 · FP 2,605 · FN 22,120); v5.0q precision 0.738 /
-  recall 0.259 / F1 0.383 (TP 6,884 · FP 2,450 · FN 20,837). Recall is bounded by
-  short reads against an INS-heavy assembly truth set, with per-size-bin metrics in
-  the report.
+The SV numbers come from a run made before two caller fixes. The repository describes the caller set
+behind them in two ways (Manta + Delly in the old README, five callers in the report footer). No
+benchmark of the current Manta + Delly default has been recorded. Recall is about 25% because short
+reads miss most insertions in the assembly-based truth sets.
 
-Two more full reports are committed alongside it:
+Known limits: SMN calls need at least 18x mean depth, and that floor comes from one sample. The run
+stops below `--min_depth` (25x). AMY1 and LPA KIV-2 copy numbers are proportional and not calibrated.
+`INTER_Z_A` in the alpha-globin locus is never scored. On HG001, read depth refutes 96% of large
+DEL/DUP calls (`docs/CHANGES.md`, 2026-11-07).
 
-- **[`docs/demo/HG001_report.html`](docs/demo/HG001_report.html)** — GIAB NA12878,
-  regenerated from real 30X outputs with the trait card computed from the HG001 BAM
-  (Rh(D) **positive**, GSTM1/GSTT1 **present**, AMY1 2, KIV-2 6). Note: NA12878 is
-  often cited as a "GSTM1-null" anchor, but this BAM reads **~1 copy** at GSTM1
-  (het deletion), not a homozygous null — see the validation table in
-  [docs/omnigen-additions-plan.md](docs/omnigen-additions-plan.md).
-- **[`docs/demo/COLO829_report.html`](docs/demo/COLO829_report.html)** — COLO829
-  tumor, SV/CNV focus. The Blood Group & Copy-Number Traits card carries an explicit
-  note that depth traits were **not computed** (no aligned BAM was available).
+## Troubleshooting
 
----
+Each entry below is a failure recorded in `docs/CHANGES.md` or `CLAUDE.md`.
 
-## Documentation
+| Symptom | Cause and fix |
+|---|---|
+| Background run hangs with no task lines | Nextflow's ANSI log deadlocks without a TTY. Set `NXF_ANSI_LOG=false` |
+| `pull access denied for svcaller/utils` (exit 125) | Local image missing. Build it (see [Installation](#installation)) |
+| Manta fails hours in on a BAM input | Reference has contigs the BAM lacks. Use `hg38.canonical.fa`; `VALIDATE_REF_BAM` now fails fast on this |
+| Run stops at MOSDEPTH, coverage below threshold | Mean depth under `--min_depth` |
+| `MELT_CALL` fails | MELT image not built. Build it or leave `--run_melt` off |
+| Tool writes fill the root disk | `--tmp_dir` defaults to `/tmp`. Point it at a large disk |
+| `FILTER_CHROMS` is slow | Expected for BAM input. It is cached per sample and reference in `${outdir}/.cache/` |
 
-| Document | What it covers |
-|----------|---------------|
-| [Getting started tutorial](docs/tutorial-getting-started.md) | First run from scratch to open report |
-| [How to run a clinical sample](docs/howto-run-clinical-sample.md) | End-to-end guide for a new patient sample (samplesheet → results → cleanup) |
-| [How to run BAM inputs](docs/howto-run-bam-inputs.md) | Pre-aligned BAM guidance including FILTER_CHROMS verification and parallel runs |
-| [How to run the GIAB validation](docs/howto-run-validation.md) | Benchmarking against GIAB HG002 truth set |
-| [How to build a Panel of Normals](docs/howto-build-pon.md) | GATK gCNV PON construction |
-| [How to interpret the HTML report](docs/howto-interpret-report.md) | Clinical interpretation of all report sections and Circos rings |
-| [Parameter reference](docs/reference-parameters.md) | All CLI flags, samplesheet format, output files, resource labels |
-| [Architecture reference](docs/reference-architecture.md) | Module-by-module technical description with I/O and design notes |
-| [Design decisions](docs/explanation-design.md) | Why the pipeline is built the way it is (channel patterns, sentinel files, PON choices, FILTER_CHROMS @SQ fix, no-empty-placeholder rule) |
-| [Changes](docs/CHANGES.md) | Notable behavioural changes and the incidents that motivated them |
+A failed caller never publishes an empty output file. The run stops instead. See
+[docs/explanation-design.md](docs/explanation-design.md).
 
----
+## Licence
 
-## Failure semantics — no empty placeholders
+No `LICENSE` file is present. Until the owner adds one, no licence is granted. The previous README
+said MIT, but no licence file backed it.
 
-**A failed caller never publishes an output file.** If a stage cannot produce a real
-result, it exits non-zero and the run stops (`errorStrategy = 'finish'`, see
-`conf/base.config`). SVcaller will not write a zero-byte or fabricated-empty artifact
-to `results/`.
-
-This matters because a downstream consumer cannot distinguish the two on disk. An
-earlier version of this pipeline used `|| touch <output>` fallbacks, so a crashed SMN
-caller published an empty `smn.tsv`, exited 0, and a consumer report rendered it as
-*"0 Carrier findings — Clear"* for a real person. See [docs/CHANGES.md](docs/CHANGES.md)
-for the full incident write-up.
-
-The distinction the pipeline maintains:
-
-- **A legitimate empty result is still published.** A VCF with a proper header and zero
-  variant rows means "we looked and found nothing" — that is a real, valid answer.
-- **An intentionally skipped stage is explicit.** Use `--skip_melt`, `--skip_scramble`,
-  `--skip_svaba` or `--skip_gridss`. These route to a dedicated `*_STUB` process that
-  emits a well-formed header-only VCF. This is the *only* sanctioned way to run without
-  a caller.
-- **A crashed or missing caller is a hard failure.** It is never silently downgraded to
-  an empty result.
-
-Practical consequence: if MELT is not installed, `MELT_CALL` now fails with an error
-telling you to install it or pass `--skip_melt` — it no longer emits an empty VCF that
-reads as "no mobile element insertions found".
-
----
-
-## Testing
-
-```bash
-# Install test dependencies
-pip install pytest pycirclize matplotlib jinja2 openpyxl pandas
-
-# Run all unit tests
-pytest tests/ -v
-```
-
-Tests cover: samplesheet validation, CNV consensus merging, SMN classification, Circos plot parsing, HTML report rendering, and CNV/blood-group trait interpreters (Rh/RHD, AMY1, GSTM1/GSTT1 null, LPA KIV-2 — arithmetic on synthetic depth fixtures, consensus cross-check against the real HG002 consensus BED, and contract-schema round-trips).
-
-`tests/test_no_empty_placeholders.py` is a regression guard for the empty-placeholder
-incident described above: it statically asserts that no module reintroduces an
-`|| touch <output>` fallback, an `echo '{}' >` placeholder, or a `|| true` that swallows
-a caller's exit code.
-
----
-
-## Docker Containers
-
-All tools run in pinned Docker containers. No local tool installation required beyond Docker itself.
-
-| Module | Container |
-|--------|-----------|
-| BWA-MEM2 | `quay.io/biocontainers/bwa-mem2:2.2.1--he70b90d_8` |
-| samtools | `quay.io/biocontainers/samtools:1.23.1--ha83d96e_0` |
-| Picard MarkDup | `quay.io/biocontainers/picard:3.2.0--hdfd78af_0` |
-| mosdepth | `quay.io/biocontainers/mosdepth:0.3.14--h05c3d44_0` |
-| FastQC | `quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0` |
-| Manta | `quay.io/biocontainers/manta:1.6.0--py27h9948957_6` |
-| DELLY | `quay.io/biocontainers/delly:1.2.6--hdcf5f25_4` |
-| GRIDSS | `gridss/gridss:2.13.2` |
-| Scramble | `quay.io/biocontainers/scramble:1.0.2--h031d066_1` |
-| MELT | `svcaller/melt:2.2.2` (local build — requires registration) |
-| SvABA | `quay.io/biocontainers/svaba:1.2.0--h69ac913_1` |
-| ExpansionHunter | `quay.io/biocontainers/expansionhunter:5.0.0--hc26b3af_5` |
-| STRling | `quay.io/biocontainers/strling:0.5.2--hbbffb53_1` |
-| JASMINE | `quay.io/biocontainers/jasminesv:1.1.5--hdfd78af_0` |
-| CNVpytor | `quay.io/biocontainers/cnvpytor:1.3.1--pyhdfd78af_1` |
-| GATK | `broadinstitute/gatk:4.5.0.0` |
-| SMNCopyNumberCaller | `svcaller/smncopynum:1.2` (v1.1 plus the low-depth no-call patch) |
-| AnnotSV | `quay.io/biocontainers/annotsv:3.4.6--py313hdfd78af_0` |
-| truvari | `quay.io/biocontainers/truvari:4.3.1--pyhdfd78af_0` |
-| Python utils / report | `svcaller/utils:1.3` (local build) |
-
----
-
-## Genome Build
-
-GRCh38 / hg38 only. `chr`-prefixed chromosome names required.
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE).
-
----
+Third-party tools run from their own containers under their own licences, including Manta, Delly,
+GRIDSS, Scramble, Jasmine, CNVpytor, GATK, ExpansionHunter, STRling, SMNCopyNumberCaller, AnnotSV,
+Truvari, samtools, mosdepth, Picard and bwa-mem2. MELT is free for academic use after registration
+and is not redistributed here. Check each tool's licence before use.
 
 ## Citation
 
-If you use SVcaller in your research, please cite the individual tools (Manta, DELLY, GRIDSS, CNVpytor, GATK, SMNCopyNumberCaller, AnnotSV, ExpansionHunter) as appropriate for your analysis.
+There is no `CITATION.cff` yet. Please cite the tools above as relevant to your analysis.
+
+## Changes and documentation
+
+Behaviour changes and the incidents behind them: [docs/CHANGES.md](docs/CHANGES.md). Design:
+[docs/explanation-design.md](docs/explanation-design.md). Module reference:
+[docs/reference-architecture.md](docs/reference-architecture.md). Contributing:
+[CONTRIBUTING.md](CONTRIBUTING.md).
