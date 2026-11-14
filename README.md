@@ -9,7 +9,10 @@ a set of small per-sample TSV files that other tools can read. It targets about 
 > **Research and educational use only.** SVcaller is not a medical device and has not been clinically
 > validated. Its outputs are measurements for review by a qualified person. They are not diagnoses.
 
-No badges are shown: the repository has no CI and no licence file yet (see [Licence](#licence)).
+[![Nextflow](https://img.shields.io/badge/nextflow%20DSL2-%E2%89%A525.10.0-23aa62.svg)](https://www.nextflow.io/)
+[![run with docker](https://img.shields.io/badge/run%20with-docker-0db7ed.svg?logo=docker)](https://www.docker.com/)
+[![Genome](https://img.shields.io/badge/genome-GRCh38-blue.svg)](#reference-data)
+[![Use](https://img.shields.io/badge/use-research%20%26%20education-lightgrey.svg)](#svcaller)
 
 ## What it does and does not do
 
