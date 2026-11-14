@@ -654,6 +654,7 @@ SVcaller is appropriate when:
 | `--eh_catalog` | required | ExpansionHunter repeat catalog JSON |
 | `--min_depth` | 30 | Minimum mean coverage; pipeline halts below this threshold |
 | `--smn_min_depth` | 18 | SMN no-call floor (`NoCall:BelowValidatedDepth`); does not halt the pipeline |
+| `--delly_inv_max_time` | 2h | Cap on `delly call -t INV` only. Duration (`2h`, `90m`, `7200s`) or bare seconds (`7200`); `0`/`false`/empty = none; under 1 s, negative or unparsable aborts at start. Exceeded: the sample continues without delly INV calls; `<sample>/<sample>.sv_not_assessed.tsv` records `sample, caller, svtype, reason, limit` (header only = completed) |
 | `--outdir` | `results` | Output directory |
 | `--utils_container` | `svcaller/utils:1.3` | Docker image for Python bin/ scripts |
 | `-profile docker` | — | Use Docker for all containers (recommended; all tags verified) |

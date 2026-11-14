@@ -2,10 +2,12 @@
 nextflow.enable.dsl = 2
 
 include { SVCALLER } from './workflows/svcaller'
+include { delly_inv_cap_seconds } from './modules/delly/call'
 
 def validate_params() {
     if (!params.input)     error "ERROR: --input is required"
     if (!params.ref_fasta) error "ERROR: --ref_fasta is required"
+    delly_inv_cap_seconds(params.delly_inv_max_time)   // fail fast on a bad cap
 }
 
 workflow {

@@ -1,6 +1,6 @@
 include { MANTA_CALL             } from '../modules/manta/call'
 include { MANTA_RESIDUAL_REGIONS } from '../modules/manta/residual_regions'
-include { DELLY_CALL_SVTYPE      } from '../modules/delly/call'
+include { DELLY_CALL_SVTYPE; delly_inv_cap_seconds } from '../modules/delly/call'
 include { DELLY_MERGE            } from '../modules/delly/merge'
 include { GRIDSS_CALL            } from '../modules/gridss/call'
 include { GRIDSS_CONVERT_BND     } from '../modules/gridss/convert_bnd'
@@ -35,7 +35,9 @@ workflow SV_CALLING {
     // DELLY: fan out 5 SV types in parallel. BND is listed first on purpose: it is the
     // longest type and bounds the sample's wall time, so it must claim a slot first
     // when cores are scarce (the merge is order-independent); collect groupTuple(size:5) → merge
+    // The INV cap (params.delly_inv_max_time) rides along as an input value; the other types get 0.
     ch_delly_input = ch_validated_bam.combine(Channel.from(['BND', 'DEL', 'INS', 'INV', 'DUP']))
+        .map { meta, bam, bai, t -> [meta, bam, bai, t, t == 'INV' ? delly_inv_cap_seconds(params.delly_inv_max_time) : 0] }
     DELLY_CALL_SVTYPE(ch_delly_input, ch_fasta, ch_fai)
     DELLY_MERGE(DELLY_CALL_SVTYPE.out.vcf.groupTuple(size: 5))
 
