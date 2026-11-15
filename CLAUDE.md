@@ -466,3 +466,29 @@ When spawning subagents (Agent/Task tool), the routing block is automatically in
 | `ctx stats` | Call the `ctx_stats` MCP tool and display the full output verbatim |
 | `ctx doctor` | Call the `ctx_doctor` MCP tool, run the returned shell command, display as checklist |
 | `ctx upgrade` | Call the `ctx_upgrade` MCP tool, run the returned shell command, display as checklist |
+
+## Owner decisions (OmniGen suite)
+
+Decisions the owner made while working across the OmniGen suite (OmniGen, pgx-suite, SVcaller, poly-suite). They hold in every session in this repo.
+
+### Suite-wide
+1. Reference data is never written from memory. Coordinates, repeat catalogs, thresholds, allele-function tables and gene lists come from a cited authoritative file (STRchive, CPIC/PharmVar, ClinGen, GIAB...) and carry a test comparing the repo's table with that source. Reason: hg19 coordinates and uncited thresholds written from memory were shown as "normal" on every report.
+2. Every new or changed pipeline step is proven by running it on real input in its real container before commit; script-level tests alone are not proof. Reason: a new SMN step passed its tests and failed on every production sample.
+3. ERROR is never NEGATIVE: a step that did not run, failed, abstained or was capped is reported as such, never as normal, clean or none found. Absent, empty and failed outputs are distinct.
+4. A result that is not confident, or that has evidence against it, is not reported as a finding. Reason: unconfident results read as findings to the person holding the report.
+5. Reportability follows curation: ClinGen, ACMG SF, GenCC and PanelApp decide gene-condition pairs; ClinVar is cited, never decisive; CPIC/PharmGKB for medicine response. Deterministic lookups only; no LLM or ad-hoc ACMG curation.
+6. What short reads at ~30x cannot resolve is stated in the report's "not covered" disclaimer, not hidden.
+7. Changes to this repo are made by an agent working in this repo, which also updates this repo's docs. Reason: the repo's docs must stay true to its code.
+8. The owner approves every commit and push; run `/code-review medium` before each push.
+9. Temporary files go in a per-project folder outside `/tmp`, one sub-folder per task. Long jobs run detached. Never `pkill -f`.
+10. Public repo: no private sample names, paths, hostnames or credentials in code, docs or examples (GIAB ids HG001-HG007 are fine).
+
+### SVcaller
+- SMN1/SMN2 copy number is an explicit no-call (`NoCall:BelowValidatedDepth`) below 18x mean depth (`smn_min_depth`, default 18). Reason: the floor comes from one GIAB HG002 downsampling series (wrong 3/1 PASS at 14.7x), so it is indicative, not a measured limit.
+- delly inversion calling is capped (`delly_inv_max_time`, default `2h`; 0/empty = no cap). A capped sample continues without delly inversions and is recorded in `<id>.sv_not_assessed.tsv` (header only = completed). Never shown as "no inversions". Reason: inversion calling sat in assembly for 7+ h on some samples.
+- Alpha-globin (`bin/alpha_globin.py`): junction reads only corroborate (never lower confidence or contradict a call); `-a4.2` is named only with the drop between HBA2 and HBA1 (HBA2 depth loss with that segment intact is not named); unmeasured or borderline evidence is "not determined", never a carrier. The HBZ segment uses a fixed baseline (0.760, GIAB n=6, range 0.628-0.904) and must not by itself make a call (known gap). Reason: a depth dip alone appears in normal libraries.
+- `min_depth` (default 25) has no measured basis; lowering it is for validation runs only. Reason: it is a guard that aborts the run, not a validated limit.
+- Output contract read by OmniGen: `<id>.smn.tsv`, `<id>.filtered.tsv`, `<id>.str_profile.json`, `<id>.str_summary.tsv`, `<id>.sv_not_assessed.tsv`, `alpha_globin/`. Changing a column or file name breaks OmniGen.
+- Known defects in the repeat catalog `assets/eh_catalog.json` (from the owner's gap audit; not re-verified here): entries with hg19 or wrong coordinates (ATXN1, ATXN8OS, PPP2R2B, SAMD12, CACNA1A, NIPA1, EIF4A3, RILPL1, STARD7) and compound repeats modelled as pure (CNBP, HTT, ATXN7, NOP56, MARCHF6, FXN, RFC1, DAB1). To be rebuilt from STRchive hg38 with a comparison test (suite rule 1). Do not add or edit catalog entries from memory.
+- `GNOMAD_SV_FILTER` (`modules/annotsv/annotate.nf`) reads `B_gain_AFmax` first and falls back to `B_loss_AFmax` only when that column is absent, so the loss frequency is not used for deletions (known gap). Reason: the filter then keys on gain frequency for every row.
+- Deletions/duplications under ~3 kb affecting one or a few exons are often missed at 30x (inherent limit; keep in the "not covered" disclaimer).
