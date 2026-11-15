@@ -1,5 +1,66 @@
 # Changes
 
+## 2026-11-15 - population-AF filter reads the column of the SV's own type; provenance.json on failed runs
+
+**Problem 1 (audit items 4 and 5).** `GNOMAD_SV_FILTER` used `row.get('B_gain_AFmax', row.get('B_loss_AFmax','0'))`. AnnotSV fills all four `B_gain/B_loss/B_ins/B_inv` column groups for every SV (`AnnotSV-benignsv.tcl`, `benignSVannotation`: benign records with AF >= `-benignAF` 0.01 that completely contain the SV, `bedtools -f 1.0`), so the gain column was read for every type. On HG002 (3.4.6 output, 44,895 rows): 2,725 of 5,466 full-mode DELs were dropped because a common *gain* region contained them (a PASS Delly DEL inside a large gain region vanished), while common *deletions* were kept whenever no gain contained them. INS, INV and TRA had the same flaw.
+
+**Fix.** The filter moved to `bin/sv_af_filter.py` with a type map: DEL->`B_loss_AFmax`, DUP->`B_gain_AFmax`, INS->`B_ins_AFmax`, INV->`B_inv_AFmax`; other types (TRA/BND) have no AF column and are kept. HG002 full rows kept, before -> after: DEL 2741 -> 708 (298 restored, 2331 common deletions now removed), DUP 707 -> 707 (unchanged), INS 943 -> 214, INV 617 -> 234, TRA 1181 -> 2707 (all kept). The other reason a merged-VCF DEL has no row is intended: AnnotSV runs with `-SVminSize 50`, so calls under 50 bp never reach the table (4,759 DELs on HG002). Tests: `tests/test_sv_af_filter.py`.
+
+**Problem 2.** `provenance.json not written: arraycopy: element type mismatch` (commit bdf3625): the `onComplete` command list held GStrings, which `ProcessBuilder(List<String>)` rejects, so no run ever wrote it. After that, on a failed run Nextflow interrupts the `onComplete` thread during shutdown, killing the 8 s writer.
+
+**Fix.** `main.nf`: `write_provenance()` builds a `List<String>`, runs at workflow start and again in `onComplete`.
+
+## 2026-11-15 - repeat-expansion catalog rebuilt from STRchive hg38; compound loci graded on the disease block
+
+**Problem (gap audit 2026-11-15).** `assets/eh_catalog.json` was typed by hand. Four entries used hg19 coordinates (ATXN1, ATXN8OS, PPP2R2B, SAMD12), five matched neither build (CACNA1A, NIPA1, EIF4A3, RILPL1, STARD7), six regions were too narrow (AFF2, AR, ATN1, ATXN3, C9ORF72, TBP), FGF14 too wide, and eight compound repeats were modelled as one pure motif (CNBP, HTT, ATXN7, NOP56, MARCHF6, FXN, RFC1, DAB1), so a count was in the wrong unit (CNBP: whole tract / CCTG; RFC1: AAAAG instead of the pathogenic AAGGG).
+
+**Fix.** The catalog is now generated, not edited: `bin/make_eh_catalog.py` reads the pinned STRchive hg38 catalogs in `assets/sources/` (release v2.28.0, commit `e964fa88df3b2189ee478cbd6eaad15bb28e3a0a`, `assets/sources/PROVENANCE.md`) and `assets/eh_locus_map.tsv` (our LocusId -> STRchive id; the 32 LocusIds are unchanged) and writes `assets/eh_catalog.json` plus `assets/eh_graded_variants.tsv`. Compound loci use STRchive's multi-block `LocusStructure` with its `VariantId`s (ExpansionHunter catalog syntax: Illumina/ExpansionHunter `docs/04_VariantCatalogFiles.md`). 11 loci are multi-block (ATXN7, ATXN8OS, CNBP, FXN, HTT, NOP56, RFC1, MARCHF6, SAMD12, STARD7, DAB1); ExpansionHunter now reports 44 variants for the 32 loci. `eh_graded_variants.tsv` names, per locus, the variant that is the disease block (STRchive `PathologicRegion`), its motif in disease orientation (`DisplayRU`) and STRchive's NormalMax / PathologicMin.
+
+**`bin/eh_sizing.py`.** Reads the graded-variant table (`--graded`, staged by `modules/expansionhunter/sizing.nf`) and writes ONE row per locus, for the graded variant, in repeat units of that block: CNBP is the CAGG (= CCTG) count, RFC1 the AAGGG count. The other blocks stay in `<id>.str_profile.json`. `str_summary.tsv` gains two columns at the END, `variant_id` and `disease_motif`; every existing column keeps its name, position and meaning, so readers that parse by header name are unaffected. A multi-block locus without a graded entry, or a profile that lacks the graded variant (made with an older catalog), is refused with exit 1 instead of guessed.
+
+**Consumers that read `str_profile.json` directly** now see several Variants for the 11 compound loci under `LocusResults.<LocusId>.Variants`; only the graded one (`eh_graded_variants.tsv`) is the disease repeat. Thresholds: see the owner-decision paragraph below.
+
+**Proof.** ExpansionHunter 5.0.0 container (`conf/docker.config`), GIAB HG002 BAM, old and new catalog, then `eh_sizing.py` (also inside `svcaller/utils:1.3`), compared with HG002 v5.0q / T2T-Q100 truth. Of the nine wrong-position loci, six now give measured, spanned calls (ATXN1 31/32, ATXN8OS 16/17, CACNA1A 12/12, PPP2R2B 11/11, NIPA1 9/9, RILPL1 10/11); SAMD12 and STARD7 report 0 copies of the pathogenic block with no reads (shown as `>=0`, unresolved) and EIF4A3's 20-bp motif only bounds the count (`>=7/>=8`); CNBP 13/>=46 became 15/16 (normal); ATXN2 22/>=52 became 23/31 spanned; TBP 2/14 became 37/38.  Tests: `tests/test_eh_catalog.py` (every entry equals its STRchive source, source bytes pinned by sha256, generator output equals the committed files), `tests/test_eh_sizing.py` (compound locus).
+
+**Owner decisions applied (2026-11-15).** (A) AR and AFF2 regions come from the Illumina ExpansionHunter catalog (`variant_catalog/grch38/variant_catalog.json`, commit `7ff9aa5335fdb5b3124cc0f365a64bb7a185803a`, carried in `assets/sources/`), marked as an explicit override in `assets/eh_locus_map.tsv` and checked by `tests/test_eh_catalog.py`: STRchive's 103/149 bp regions made EH count the region length (HG002 AR 40, AFF2 50 flanked). With the override HG002 gives AR 27 (truth 23/27, hemizygous male) and AFF2 19 (low-confidence no longer; truth by region length 19/20, pure CCG run 14/15). (B) `assets/str_disease_ranges.tsv` is now generated from STRchive v2.28.0 (`bin/make_str_ranges.py`, source `assets/sources/STRchive-loci.json`, `tests/test_str_ranges.py`) in repeat units of the graded block: `normal_max` = STRchive benign_max, `path_min` = pathogenic_min, new columns `intermediate_min/max`, `graded_variant`, `strchive_id`, `source` (release, locus page, first references). Existing column names are kept (`premut_max` is blank). BEAN1, MARCHF6, SAMD12, STARD7 have no STRchive normal maximum and the intermediate range is absent for 8 loci; those cells are blank and the `notes` column says so. Disease labels now follow STRchive (RILPL1 = OPDM4, STARD7 = FAME2; FAME4 is YEATS2).
+
+## 2026-11-15 - alpha-globin: HBZ is informational (15 of 64 samples were "not resolved")
+
+**Problem.** HBZ (chr16:152643-154503) read `het_loss` in 12 of 58 independent samples, and in 11 of the 15 `NA` samples it was the only reason
+(HBA2, INTER_A2_A1, HBA1 intact, or a -a4.2 het pattern). A het loss of HBZ beside intact genes matches
+no allele, so the call was `NA`. This was the other side of 4384ce3, which turned the same inputs from a false
+3-gene carrier into `NA`.
+
+**Evidence.** (1) No panel allele removes HBZ alone: --FIL and --THAI take HBZ together with HBA2, INTER_A2_A1 and
+HBA1; --SEA and --MED lie inside the cluster and spare HBZ; -a3.7 and -a4.2 are crossovers between the Z and X boxes
+of the duplicated alpha genes, downstream of HBZ (Higgs 2013, Cold Spring Harb Perspect Med 3:a011718,
+doi 10.1101/cshperspect.a011718, PMC3530043; allele extents in `assets/hba_deletion_alleles.tsv`, basis `literature`).
+HBZ therefore matters only to split --SEA|--MED from --FIL|--THAI (South-East Asian alleles). (2) HBZ cannot be
+calibrated: across 58 independent samples the ratio is one continuum (min 0.40, p10 0.46, median 0.60, p90 0.85, max
+2.5 with a gain; GIAB HG001-HG007 0.47-0.87), against the fixed baseline 0.760 from 6 GIAB samples; a het loss
+would read about 0.38, so 12 of 58 normals sit at or below the het-loss cut. HBZ is uncorrelated with the genes
+(HG001's HBZ is the lowest GIAB value while its INTER_A2_A1 is intact; the NIST benchmark shows heterozygous
+variants across the span).
+
+**Change (`bin/alpha_globin.py`, `_hbz_usable`).** An HBZ `het_loss`, and any marginal HBZ reading, is treated
+as not measured; a clear `intact`, `hom_loss` or `gain` still counts (intact excludes --FIL|--THAI; a gained HBZ
+vetoes the anti-3.7 triplication, which spares HBZ). A --SEA/--MED carrier whose HBZ reads low is no longer
+narrowed to --FIL|--THAI: the reported group is `--SEA|--MED|--FIL|--THAI`. Unchanged: junctions only
+corroborate, -a4.2 needs the between-gene drop, marginal and unmeasured segments are not determined, no carrier on
+one marginal segment. `assets/hba_segments.bed` is untouched (the depth file still reports HBZ).
+
+**Owner decision (same day): depth-only single-copy -a3.7/-a4.2 is not determined.** Such a call with no
+supporting high-confidence junction is emitted as `alpha_genes_called=NA`, confidence `low`, `deletion_alleles=NA`,
+`deletion_evidence=depth`, the allele in the new 12th column `suspected_allele` and the segment ratios in the note
+("depth pattern suggests -a4.2 (HBA2 x, INTER_A2_A1 y, HBA1 z); no breakpoint junction; confirm by gap-PCR or
+MLPA"). Two-copy calls (C-5839 -a4.2/-a4.2) and --SEA|--MED etc. are unchanged. Replay vs the HBZ-only
+version: only three clinical samples changed. OmniGen's `report_alpha_globin.load_contract` reads the new
+file unchanged.
+
+**Proof.** `alpha_globin.py` replayed old vs new on the stored depth/junction/sites files of 66 samples (58
+independent): `NA` 15 to 5; 10 `NA` samples now 4 genes, 1 now -a4.2/aa (3 genes, medium); 55 unchanged,
+including HG002-HG007, THAL1 (--SEA|--MED/aa) and THAL2 (none).
+
 ## 2026-11-14 - delly INV step: time cap (`--delly_inv_max_time 2h`), explicit "not assessed" record
 
 **Problem.** On two ~55-60x samples `delly call -t INV` ran 7-8 h in "Split-read assembly" (one thread, no I/O) while DEL/DUP/INS/BND finished in ~80 min; normal samples take ~30 min for INV. Cause of the extra inversion-like split reads not established.
@@ -577,13 +638,13 @@ caveat printed on every sample — a caveat on every sample is a caveat nobody r
   runtime.
 - **No genome-wide variant calling.** Channel 4 is a pileup at fixed coordinates only.
 
-## 2026-07-16 — Portability: stop hardcoding `/data/alvin/tmp`
+## 2026-07-16 — Portability: stop hardcoding a host-specific scratch path
 
 **Problem.** Two configs baked a host-specific path into every run, breaking the pipeline
 on any other machine:
 
-- `conf/docker.config`: `docker.runOptions = '--rm -v /data/alvin/tmp:/tmp'`
-- `nextflow.config`: `env.TMPDIR = '/data/alvin/tmp'`
+- `conf/docker.config`: `docker.runOptions = '--rm -v <fixed host scratch path>:/tmp'`
+- `nextflow.config`: `env.TMPDIR = '<fixed host scratch path>'`
 
 **Fix.** Introduced a `params.tmp_dir` that defaults to `System.getenv('TMPDIR') ?: '/tmp'`.
 Both the Docker bind mount (`--rm -v ${params.tmp_dir}:/tmp`) and `env.TMPDIR = params.tmp_dir`

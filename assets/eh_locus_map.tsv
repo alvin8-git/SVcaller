@@ -1,0 +1,39 @@
+# OmniGen/SVcaller LocusId -> STRchive locus id (hg38 catalogs in assets/sources/). Read by bin/make_eh_catalog.py.
+# The LocusId on the left is the key OmniGen reads in <id>.str_profile.json; it does not change when STRchive renames a locus.
+# Optional 3rd column `region_source=illumina`: take LocusStructure and ReferenceRegion from Illumina/ExpansionHunter
+# variant_catalog/grch38/variant_catalog.json (commit 7ff9aa5335fdb5b3124cc0f365a64bb7a185803a; 'chr' prefix added) instead of STRchive.
+# OWNER DECISION 2026-11-15 for AR and AFF2 only: STRchive's regions (AR 103 bp, AFF2 149 bp) are wider than the pure repeat, so EH
+# counts the region length (HG002 AR 40, AFF2 50); Illumina's give the repeat count (HG002 AR 27, AFF2 19). Thresholds still come from STRchive.
+locus	strchive_id	region_source
+FMR1	FXS_FMR1
+AFF2	FRAXE_AFF2	illumina
+AR	SBMA_AR	illumina
+ATN1	DRPLA_ATN1
+ATXN1	SCA1_ATXN1
+ATXN2	SCA2_ATXN2
+ATXN3	SCA3_ATXN3
+ATXN7	SCA7_ATXN7
+ATXN8OS	SCA8_ATXN8OS
+ATXN10	SCA10_ATXN10
+CACNA1A	SCA6_CACNA1A
+CNBP	DM2_CNBP
+C9ORF72	FTDALS1_C9orf72
+DMPK	DM1_DMPK
+FXN	FRDA_FXN
+HTT	HD_HTT
+NIPA1	ALS_NIPA1
+NOTCH2NLC	NIID_NOTCH2NLC
+NOP56	SCA36_NOP56
+PABPN1	OPMD_PABPN1
+PPP2R2B	SCA12_PPP2R2B
+RFC1	CANVAS_RFC1
+TBP	SCA17_TBP
+BEAN1	SCA31_BEAN1
+EIF4A3	RCPS_EIF4A3
+MARCHF6	FAME3_MARCHF6
+SAMD12	FAME1_SAMD12
+RILPL1	OPDM4_RILPL1
+STARD7	FAME2_STARD7
+CSTB	EPM1_CSTB
+FGF14	SCA27B_FGF14
+DAB1	SCA37_DAB1

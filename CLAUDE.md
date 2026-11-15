@@ -239,7 +239,7 @@ Each module under `modules/<tool>/` follows: `input` tuple â†’ `script` block â†
 bin/nf-status.sh <pidfile> <workdir> [failure-baseline] [runlog]
 ```
 
-Record the PID at launch (`echo $! > /data/alvin/tmp/<run>.pid`). The script
+Record the PID at launch (`echo $! > <scratch dir>/<run>.pid`). The script
 reports liveness from `kill -0` and per-task state from `.exitcode` files, and
 with a baseline file it reports only *new* failures, resolving each to its
 process name and stderr.
@@ -492,3 +492,7 @@ Decisions the owner made while working across the OmniGen suite (OmniGen, pgx-su
 - Known defects in the repeat catalog `assets/eh_catalog.json` (from the owner's gap audit; not re-verified here): entries with hg19 or wrong coordinates (ATXN1, ATXN8OS, PPP2R2B, SAMD12, CACNA1A, NIPA1, EIF4A3, RILPL1, STARD7) and compound repeats modelled as pure (CNBP, HTT, ATXN7, NOP56, MARCHF6, FXN, RFC1, DAB1). To be rebuilt from STRchive hg38 with a comparison test (suite rule 1). Do not add or edit catalog entries from memory.
 - `GNOMAD_SV_FILTER` (`modules/annotsv/annotate.nf`) reads `B_gain_AFmax` first and falls back to `B_loss_AFmax` only when that column is absent, so the loss frequency is not used for deletions (known gap). Reason: the filter then keys on gain frequency for every row.
 - Deletions/duplications under ~3 kb affecting one or a few exons are often missed at 30x (inherent limit; keep in the "not covered" disclaimer).
+- Alpha-globin: a single-copy -a3.7/-a4.2 seen in depth alone without a breakpoint junction is not determined,
+  never a carrier, and is recorded in `suspected_allele`; HBZ depth is informational only, it cannot be
+  calibrated at 30x. Two-copy depth calls and large multi-segment deletions (--SEA|--MED etc.) are unchanged.
+- **Repeat expansions (2026-11-15).** Catalog and thresholds come from STRchive v2.28.0 (commit e964fa88df3b2189ee478cbd6eaad15bb28e3a0a); the AR and AFF2 regions come from the Illumina ExpansionHunter catalog (commit 7ff9aa5335fdb5b3124cc0f365a64bb7a185803a) because STRchive's are wider than the pure repeat; each compound locus is graded on one block (`assets/eh_graded_variants.tsv`). `assets/eh_catalog.json` and `assets/str_disease_ranges.tsv` are generated (`bin/make_eh_catalog.py`, `bin/make_str_ranges.py`) from `assets/sources/`; never edit them by hand. `assets/str_disease_ranges.legacy.tsv` is the previous (pre-2026-11-15) table and belongs to output made with the old catalog. Version gate: `bin/html_report.py` uses the new table only when every graded-variant record of the STR VCF sits on the region in `assets/eh_graded_variants.tsv` (old catalog -> legacy table, a mix aborts); for `str_summary.tsv` the equivalent is the `variant_id` column (present = new catalog). Premutation labels exist only where STRchive's text calls intermediate alleles a premutation (`premut_min/max`, `bin/make_str_ranges.py`).

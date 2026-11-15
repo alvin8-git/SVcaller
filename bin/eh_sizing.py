@@ -15,10 +15,19 @@ Hemizygous loci: when the sample is male (SampleParameters.Sex in the EH json), 
 EH run with --sex male already reports one; if a diploid call is found (older runs that defaulted to female)
 the larger allele is kept and allele2 is printed as '.'.
 
-Usage: eh_sizing.py <sample.str_profile.json> <out.tsv> [--sex-json <sample.sex.json>]
+Compound (multi-block) loci: the catalog (assets/eh_catalog.json, built from STRchive by bin/make_eh_catalog.py) models
+e.g. CNBP as (CAGG)*(CAGA)*(CA)* and EH reports one Variant per block, each counted in its OWN motif.  The disease-relevant
+block is named in assets/eh_graded_variants.tsv; this script writes ONE row per locus for that block only, so a threshold
+is compared in repeat units of the disease motif (CNBP: CCTG units, RFC1: AAGGG units), never the whole tract divided by
+one motif.  The other blocks stay in <sample>.str_profile.json.  Column `variant_id` names the variant the row describes.
+
+Usage: eh_sizing.py <sample.str_profile.json> <out.tsv> [--sex-json <sample.sex.json>] [--graded <eh_graded_variants.tsv>]
   --sex-json  adds the inferred sex, its depth ratios and method (bin/infer_sex.py) to the header comment
+  --graded    graded-variant table; default assets/eh_graded_variants.tsv beside this script's repo.  Without it every
+              variant is reported, which is refused for a profile that has a multi-block locus.
 """
 import json
+import os
 import re
 import sys
 
@@ -31,7 +40,9 @@ DEFAULT_READ_LEN = 150    # used only if the json carries no ReadLength
 COLUMNS = ["locus", "repeat_unit", "genotype", "ci", "read_length",
            "allele1_est", "allele1_ci", "allele1_sizing", "allele1_display",
            "allele2_est", "allele2_ci", "allele2_sizing", "allele2_display",
-           "genotype_display", "conf", "spanning_reads", "flanking_reads", "inrepeat_reads"]
+           "genotype_display", "conf", "spanning_reads", "flanking_reads", "inrepeat_reads",
+           "variant_id", "disease_motif"]      # last two appended 2026-11: parsers that read by header name are unaffected
+DEFAULT_GRADED = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "eh_graded_variants.tsv")
 
 HEADER_NOTE = [
     "# str_summary.tsv: ExpansionHunter calls with per-allele sizing (bin/eh_sizing.py). EH json untouched.",
@@ -40,7 +51,16 @@ HEADER_NOTE = [
     "# unresolved alleles are shown as '>=<CI lower bound>' (alleleN_display / genotype_display), never a point estimate;",
     "# conf=unresolved when any allele is unresolved, else high|low (CI width of the larger allele <= max(6, 15%) = high).",
     "# alleles longer than the read length cannot be sized from short reads; they are reported as a lower bound.",
+    "# one row per locus: the graded variant (variant_id) in repeat units of disease_motif (assets/eh_graded_variants.tsv).",
 ]
+
+
+def load_graded(path):
+    """{locus: {variant_id, disease_motif}} from assets/eh_graded_variants.tsv; a missing or malformed file raises."""
+    rows = [l.rstrip("\n").split("\t") for l in open(path) if l.strip() and not l.startswith("#")]
+    if len(rows) < 2 or not {"locus", "variant_id", "disease_motif"} <= set(rows[0]):
+        raise SystemExit(f"ERROR: {path} is empty or lacks locus/variant_id/disease_motif columns")
+    return {d["locus"]: d for d in (dict(zip(rows[0], r)) for r in rows[1:])}
 
 
 def parse_counts(s):
@@ -107,12 +127,24 @@ def classify_variant(vv, read_len, hemizygous=False):
     return dict(alleles=al, conf=conf, genotype_display="/".join(a["display"] for a in al))
 
 
-def summarise(profile):
-    """Yield one dict per locus (column name -> value)."""
+def summarise(profile, graded=None):
+    """Yield one dict per locus (column name -> value).  graded = load_graded() result: only the graded variant of a
+    listed locus is reported, and a profile that lacks it is refused (stale profile or catalog)."""
     male = str(profile.get("SampleParameters", {}).get("Sex", "")).lower() == "male"
     for loc, ld in profile["LocusResults"].items():
         read_len = int(ld.get("ReadLength") or DEFAULT_READ_LEN)
-        for vid, vv in ld.get("Variants", {}).items():
+        variants = ld.get("Variants", {})
+        g = (graded or {}).get(loc)
+        if g and g["variant_id"] not in variants:
+            raise SystemExit(f"ERROR: locus {loc}: graded variant {g['variant_id']} is not in the profile "
+                             f"(variants {sorted(variants)}); the profile was made with a different catalog than "
+                             "assets/eh_graded_variants.tsv")
+        if g is None and len(variants) > 1:
+            raise SystemExit(f"ERROR: locus {loc} has {len(variants)} variants and is not in the graded-variant table; "
+                             "which block is the disease repeat cannot be guessed")
+        for vid, vv in variants.items():
+            if g and vid != g["variant_id"]:
+                continue
             hemi = male and vv.get("ReferenceRegion", "").split(":")[0] in ("chrX", "X")
             r = classify_variant(vv, read_len, hemi)
             if r is None:
@@ -123,7 +155,8 @@ def summarise(profile):
                    "read_length": read_len, "genotype_display": r["genotype_display"], "conf": r["conf"],
                    "spanning_reads": vv.get("CountsOfSpanningReads", ""),
                    "flanking_reads": vv.get("CountsOfFlankingReads", ""),
-                   "inrepeat_reads": vv.get("CountsOfInrepeatReads", "")}
+                   "inrepeat_reads": vv.get("CountsOfInrepeatReads", ""),
+                   "variant_id": vid, "disease_motif": g["disease_motif"] if g else vv.get("RepeatUnit", "")}
             for i in (1, 2):
                 if i <= len(r["alleles"]):
                     a = r["alleles"][i - 1]
@@ -137,16 +170,29 @@ def summarise(profile):
 
 
 def main(argv):
-    sex_json = None
-    if len(argv) == 5 and argv[3] == "--sex-json":
-        sex_json, argv = argv[4], argv[:3]
+    sex_json, graded_path = None, None
+    argv = list(argv)
+    for flag in ("--sex-json", "--graded"):
+        if flag in argv:
+            i = argv.index(flag)
+            if i + 1 >= len(argv):
+                sys.exit(__doc__)
+            val = argv[i + 1]
+            del argv[i:i + 2]
+            if flag == "--sex-json":
+                sex_json = val
+            else:
+                graded_path = val
     if len(argv) != 3:
         sys.exit(__doc__)
+    if graded_path is None and os.path.exists(DEFAULT_GRADED):
+        graded_path = DEFAULT_GRADED
+    graded = load_graded(graded_path) if graded_path else None
     with open(argv[1]) as fh:
         profile = json.load(fh)
     if not profile.get("LocusResults"):
         sys.exit(f"ERROR: {argv[1]} has no LocusResults; refusing to write a summary")
-    rows = list(summarise(profile))
+    rows = list(summarise(profile, graded))
     with open(argv[2], "w") as out:
         out.write("\n".join(HEADER_NOTE) + "\n")
         eh_sex = profile.get("SampleParameters", {}).get("Sex", "unknown")

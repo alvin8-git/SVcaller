@@ -1,0 +1,23 @@
+##fileformat=VCFv4.1
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the variant">
+##INFO=<ID=REF,Number=1,Type=Integer,Description="Reference copy number">
+##INFO=<ID=REPID,Number=1,Type=String,Description="Repeat identifier as specified in the variant catalog">
+##INFO=<ID=RL,Number=1,Type=Integer,Description="Reference length in bp">
+##INFO=<ID=RU,Number=1,Type=String,Description="Repeat unit in the reference orientation">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">
+##INFO=<ID=VARID,Number=1,Type=String,Description="Variant identifier as specified in the variant catalog">
+##FORMAT=<ID=ADFL,Number=1,Type=String,Description="Number of flanking reads consistent with the allele">
+##FORMAT=<ID=ADIR,Number=1,Type=String,Description="Number of in-repeat reads consistent with the allele">
+##FORMAT=<ID=ADSP,Number=1,Type=String,Description="Number of spanning reads consistent with the allele">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=LC,Number=1,Type=Float,Description="Locus coverage">
+##FORMAT=<ID=REPCI,Number=1,Type=String,Description="Confidence interval for REPCN">
+##FORMAT=<ID=REPCN,Number=1,Type=String,Description="Number of repeat units spanned by the allele">
+##FORMAT=<ID=SO,Number=1,Type=String,Description="Type of reads that support the allele; can be SPANNING, FLANKING, or INREPEAT meaning that the reads span, flank, or are fully contained in the repeat">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	HG002.bwa.sortdup.bqsr
+chr3	129172576	.	A	<STR15>,<STR16>	.	PASS	END=129172656;REF=20;RL=80;RU=CAGG;VARID=DM2_CNBP;REPID=DM2_CNBP	GT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC	1/2:SPANNING/SPANNING:15/16:15-15/16-16:11/5:23/24:0/0:37.783784
+chr3	129172656	.	G	<STR7>,<STR9>	.	PASS	END=129172696;REF=10;RL=40;RU=CAGA;VARID=DM2_CNBP_CAGA;REPID=DM2_CNBP_CAGA	GT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC	1/2:SPANNING/SPANNING:7/9:7-7/9-9:9/14:16/17:0/0:37.783784
+chr3	129172696	.	A	<STR22>,<STR26>	.	PASS	END=129172734;REF=19;RL=38;RU=CA;VARID=DM2_CNBP_CA;REPID=DM2_CNBP_CA	GT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC	1/2:SPANNING/SPANNING:22/26:22-22/26-26:13/9:18/21:0/0:37.783784
+chr4	3074876	.	C	<STR24>	.	PASS	END=3074927;REF=17;RL=51;RU=CAG;VARID=HD_HTT;REPID=HD_HTT	GT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC	0/1:SPANNING/SPANNING:17/24:17-17/24-24:7/4:23/29:0/0:20.675676
+chr4	3074933	.	G	<STR10>	.	PASS	END=3074969;REF=12;RL=36;RU=CCG;VARID=HD_HTT_CCG;REPID=HD_HTT_CCG	GT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC	1/1:SPANNING/SPANNING:10/10:10-10/10-10:21/21:9/9:0/0:20.675676
+chrX	147912049	.	C	<STR33>	.	PASS	END=147912111;REF=20;RL=62;RU=CGG;VARID=FMR1;REPID=FMR1	GT:SO:REPCN:REPCI:ADSP:ADFL:ADIR:LC	1:SPANNING:33:33-33:4:22:0:13.216216

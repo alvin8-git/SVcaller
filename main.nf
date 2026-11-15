@@ -10,8 +10,65 @@ def validate_params() {
     delly_inv_cap_seconds(params.delly_inv_max_time)   // fail fast on a bad cap
 }
 
+// provenance.json per sample (versions of the producing tools, for OmniGen).
+// Strictly non-blocking: any failure only logs a warning.
+// Two stages. At START a minimal provenance.json is written in-process (no docker, no
+// image pulls, milliseconds): when a run fails, Nextflow interrupts the onComplete
+// thread during shutdown and kills the ~8 s version probes, so a failed run would
+// otherwise leave no provenance.json. onComplete then replaces it with the full
+// document (tool versions probed in their own images) on a best-effort basis.
+def sample_ids() {
+    file(params.input).splitCsv(header: true).collect { it.sample }.findAll { it }.unique()
+}
+
+def write_provenance_stub() {
+    try {
+        def commit = 'not reported'
+        try {
+            def g = new ProcessBuilder(['git', '-C', projectDir.toString(), 'rev-parse', 'HEAD'])
+                .redirectErrorStream(true).start()
+            def out = g.inputStream.text.trim()
+            if (g.waitFor() == 0 && out) commit = out
+        } catch (Throwable ignored) { }
+        sample_ids().each { s ->
+            def d = new File("${params.outdir}/${s}".toString())
+            d.mkdirs()
+            def doc = [pipeline: "SVcaller ${workflow.manifest.version ?: ''}".trim(),
+                       svcaller_commit: commit,
+                       generated_utc: new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'", TimeZone.getTimeZone('UTC')),
+                       sample: s, reference: [path: params.ref_fasta.toString()],
+                       tools: [:], images: [:],
+                       note: 'minimal record written at start; tool versions not reported (run did not finish)']
+            new File(d, 'provenance.json').text =
+                groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(doc)) + "\n"
+        }
+    } catch (Throwable t) {
+        log.warn "provenance stub not written: ${t.message}"
+    }
+}
+
+def write_provenance() {
+    try {
+        def ids = sample_ids()
+        if (ids) {
+            // Every element must be a java.lang.String: "${...}" is a GString, and
+            // ProcessBuilder(List) then fails with "arraycopy: element type mismatch".
+            List<String> cmd = ['python3', "${projectDir}/bin/write_provenance.py".toString(),
+                                '--outdir', "${params.outdir}".toString(),
+                                '--ref-fasta', "${params.ref_fasta}".toString()]
+            ids.each { cmd.addAll(['--sample', it.toString()]) }
+            def pr = new ProcessBuilder(cmd).redirectErrorStream(true).start()
+            pr.inputStream.eachLine { log.info it }
+            pr.waitFor()
+        }
+    } catch (Throwable t) {
+        log.warn "provenance.json not written: ${t.message}"
+    }
+}
+
 workflow {
     validate_params()
+    write_provenance_stub()
 
     // Parse samplesheet → channel of [meta, fq1|null, fq2|null, bam|null]
     ch_input = Channel
@@ -96,22 +153,8 @@ or run without SvABA:   --skip_svaba"""
 // Event handlers must live in the main script, not nextflow.config — in the
 // config `workflow` is a ConfigObject and `onComplete` is rejected at parse time.
 workflow.onComplete {
-    // provenance.json per sample (versions of the producing tools, for OmniGen).
-    // Strictly non-blocking: any failure only logs a warning.
-    try {
-        def sheet = file(params.input)
-        def ids = sheet.splitCsv(header: true).collect { it.sample }.findAll { it }.unique()
-        if (ids) {
-            def cmd = ['python3', "${projectDir}/bin/write_provenance.py",
-                       '--outdir', "${params.outdir}", '--ref-fasta', "${params.ref_fasta}"]
-            ids.each { cmd += ['--sample', it as String] }
-            def pr = new ProcessBuilder(cmd as List<String>).redirectErrorStream(true).start()
-            pr.inputStream.eachLine { log.info it }
-            pr.waitFor()
-        }
-    } catch (Throwable t) {
-        log.warn "provenance.json not written: ${t.message}"
-    }
+    // Replace the start-of-run stub with the full document (see write_provenance()).
+    write_provenance()
     if (workflow.success && params.auto_cleanup) {
         def workDir = new File(workflow.workDir.toString())
         if (workDir.exists()) {

@@ -67,6 +67,19 @@ CONTRACT_COLUMNS = [
     "screened", "not_screened", "interpretation_complete",
 ]
 
+# Written after the frozen columns. OmniGen reads the 11 above by name, so an extra
+# trailing column does not disturb it. Empty unless a single-copy -a3.7/-a4.2 was
+# seen in depth alone (OWNER DECISION 2026-11-15, see SUSPECT_ALLELES).
+SUSPECTED_COLUMN = "suspected_allele"
+# deletion_evidence value of a suspected row. Deliberately not `depth`, which the
+# contract defines as a depth-NAMED deletion: this row names none.
+EVIDENCE_SUSPECTED = "suspected_depth"
+OUTPUT_COLUMNS = CONTRACT_COLUMNS + [SUSPECTED_COLUMN]
+# OWNER DECISION: a single-copy -a3.7 or -a4.2 resting on depth alone, with no
+# supporting breakpoint junction, is not determined (never a carrier). Two-copy
+# calls and the large multi-segment deletions are unaffected.
+SUSPECT_ALLELES = ("-a3.7/aa", "-a4.2/aa")
+
 # Not a variable. SVcaller measures; it must never be able to claim it interpreted.
 CONTRACT_INTERPRETATION_COMPLETE = "false"
 
@@ -145,8 +158,31 @@ def parse_alleles(path):
     return rows
 
 
+def _hbz_usable(r):
+    """HBZ is informational. Only a het_loss reading, or any marginal reading,
+    is discarded (treated as not measured). A clear intact, hom_loss or gain
+    still counts: intact excludes --FIL|--THAI, and a gain beside gained genes
+    shows a whole-region amplification, not the anti-3.7 triplication that
+    spares HBZ.
+
+    Why (2026-11 audit, 58 independent samples): HBZ's intact ratio is one
+    continuum, 0.40-0.87 (median 0.60, GIAB HG001-HG007 0.47-0.87), against a
+    fixed baseline of 0.760 that was set from 6 GIAB samples. A het loss would
+    read ~0.38, so the normals at the low end are inseparable from a loss.
+    The segment is not calibratable and it is not independent evidence: no
+    allele in the panel removes HBZ alone (--FIL and --THAI take HBZ together
+    with HBA2, INTER_A2_A1 and HBA1; -a3.7/-a4.2 lie downstream of it; --SEA
+    and --MED spare it). So an HBZ loss beside intact genes matches no
+    allele and only ever produced NA (false 3-gene calls before 4384ce3).
+    An unusable HBZ is treated as not measured, which the matcher already
+    handles by reporting the wider --SEA|--MED|--FIL|--THAI group."""
+    if r.get("call") == "het_loss":
+        return False          # the only call that lies inside the normal spread
+    return not _is_marginal(r)
+
+
 def observed_copies(depth_rows):
-    """{segment: copies} from channel 1, for scorable segments only.
+    """{segment: copies} from channel 1, for scorable segments only (HBZ: see _hbz_usable).
 
     Segments flagged do_not_average / uncalibrated, and any segment the depth
     caller could not score, are OMITTED rather than assumed intact. Omission is
@@ -156,6 +192,8 @@ def observed_copies(depth_rows):
         seg = r.get("segment")
         if seg not in SCORABLE:
             continue                      # INTER_Z_A: do_not_average, rule 3
+        if seg == "HBZ" and not _hbz_usable(r):
+            continue                      # HBZ is informational, see _hbz_usable
         c = CALL_TO_COPIES.get(r.get("call"))
         if c is not None:
             out[seg] = c
@@ -741,6 +779,17 @@ def build_row(sample, depth_rows, junction_rows, site_rows, alleles, panel_path)
     if has_nocall and conf == "high":
         conf = "medium"
 
+    suspected = ""
+    if del_alleles in SUSPECT_ALLELES and not supporting:
+        suspected = del_alleles
+        seg = {r.get("segment"): r.get("score") for r in depth_rows or []}
+        note = "; ".join(x for x in (
+            "depth pattern suggests {} (score: HBA2 {}, INTER_A2_A1 {}, HBA1 {}); no "
+            "breakpoint junction; confirm by gap-PCR or MLPA".format(
+                del_alleles.split("/")[0], seg.get("HBA2"),
+                seg.get("INTER_A2_A1"), seg.get("HBA1")), note) if x)
+        del_alleles, genes, conf, has_depth_call = "NA", "NA", "low", True
+
     screened, not_screened = [], list(NEVER_SCREENED)
     (screened if depth_rows is not None else not_screened).append(TIER_DELETIONAL)
     (screened if site_rows is not None else not_screened).append(TIER_SITES)
@@ -750,21 +799,23 @@ def build_row(sample, depth_rows, junction_rows, site_rows, alleles, panel_path)
         "alpha_genes_called": genes,
         "alpha_genes_confidence": conf,
         "deletion_alleles": del_alleles,
-        "deletion_evidence": deletion_evidence(has_depth_call, supporting,
-                                               bool(seen)),
+        "deletion_evidence": (EVIDENCE_SUSPECTED if suspected else
+                              deletion_evidence(has_depth_call, supporting,
+                                                bool(seen))),
         "site_genotypes": sites,
         "site_panel_version": panel_version(panel_path),
         "genotype": integrated_genotype(del_alleles, site_rows),
         "screened": ",".join(screened) if screened else "none",
         "not_screened": ",".join(not_screened),
         "interpretation_complete": CONTRACT_INTERPRETATION_COMPLETE,
+        SUSPECTED_COLUMN: suspected,
     }, note
 
 
 def write_contract(out_path, row):
     with open(out_path, "w") as fh:
-        fh.write("\t".join(CONTRACT_COLUMNS) + "\n")
-        fh.write("\t".join(str(row[c]) for c in CONTRACT_COLUMNS) + "\n")
+        fh.write("\t".join(OUTPUT_COLUMNS) + "\n")
+        fh.write("\t".join(str(row[c]) for c in OUTPUT_COLUMNS) + "\n")
 
 
 def main(argv=None):

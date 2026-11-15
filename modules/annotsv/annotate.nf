@@ -82,23 +82,8 @@ process GNOMAD_SV_FILTER {
 
     script:
     """
-    python3 -c "
-import sys, csv
-with open('${annotated_tsv}') as fh:
-    reader = csv.DictReader(fh, delimiter='\\t')
-    fieldnames = reader.fieldnames or []
-    with open('${meta.id}.af_filtered.tsv', 'w') as out:
-        writer = csv.DictWriter(out, fieldnames=fieldnames, delimiter='\\t')
-        writer.writeheader()
-        for row in reader:
-            pop_af_str = row.get('B_gain_AFmax', row.get('B_loss_AFmax', '0')) or '0'
-            try:
-                pop_af = float(pop_af_str)
-            except ValueError:
-                pop_af = 0.0
-            if pop_af < ${af_threshold}:
-                writer.writerow(row)
-"
+    # AF column chosen per SV type (DEL->B_loss, DUP->B_gain, INS->B_ins, INV->B_inv); see bin/sv_af_filter.py
+    sv_af_filter.py ${annotated_tsv} ${meta.id}.af_filtered.tsv ${af_threshold}
     # Append CALLERS_RAN / SUPP_VEC_WIDTH / SUPP_CALLERS / CALLER_CONSENSUS (no rows dropped)
     caller_consensus.py ${meta.id}.af_filtered.tsv ${sv_vcf} ${meta.id}.filtered.tsv
     """

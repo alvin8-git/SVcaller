@@ -133,3 +133,44 @@ def test_cli_header_carries_sex_and_method(tmp_path):
     subprocess.run([sys.executable, os.path.join(REPO, "bin", "eh_sizing.py"), str(src), str(out), "--sex-json", str(sj)], check=True)
     txt = out.read_text()
     assert "# sex inferred: male" in txt and "method: depth windows" in txt and "SampleParameters.Sex): male" in txt
+
+
+def _compound_profile():
+    """CNBP as EH reports it with the STRchive catalog: three blocks, each counted in its own motif."""
+    def v(gt, ru, region):
+        return dict(variant(gt, "%s-%s/%s-%s" % (gt.split("/")[0], gt.split("/")[0], gt.split("/")[1], gt.split("/")[1]),
+                            span="(%s, 5), (%s, 5)" % tuple(gt.split("/")), ru=ru), ReferenceRegion=region)
+    return {"LocusResults": {"CNBP": {"ReadLength": 150, "Variants": {
+        "DM2_CNBP": v("15/16", "CAGG", "chr3:129172576-129172656"),
+        "DM2_CNBP_CAGA": v("7/9", "CAGA", "chr3:129172656-129172696"),
+        "DM2_CNBP_CA": v("22/26", "CA", "chr3:129172696-129172734")}}}}
+
+
+def test_compound_locus_reports_only_the_graded_block_in_its_own_motif(tmp_path):
+    graded = es.load_graded(os.path.join(REPO, "assets", "eh_graded_variants.tsv"))
+    rows = list(es.summarise(_compound_profile(), graded))
+    assert len(rows) == 1                                   # one row per locus, contract with OmniGen unchanged
+    r = rows[0]
+    assert r["locus"] == "CNBP" and r["variant_id"] == "DM2_CNBP" and r["genotype"] == "15/16"
+    assert r["repeat_unit"] == "CAGG" and r["disease_motif"] == "CAGG"
+    assert "26" not in r["genotype"] and "22" not in r["genotype"]    # never the CA block or the whole tract
+
+
+def test_compound_locus_without_a_graded_table_is_refused():
+    try:
+        list(es.summarise(_compound_profile(), {}))
+    except SystemExit as ex:
+        assert "not in the graded-variant table" in str(ex)
+    else:
+        raise AssertionError("a multi-block locus must not be guessed")
+
+
+def test_stale_profile_missing_the_graded_variant_is_refused():
+    p = {"LocusResults": {"CNBP": {"ReadLength": 150, "Variants": {"CNBP": variant("13/46", "20-20/46-90", ru="CCTG")}}}}
+    graded = es.load_graded(os.path.join(REPO, "assets", "eh_graded_variants.tsv"))
+    try:
+        list(es.summarise(p, graded))
+    except SystemExit as ex:
+        assert "different catalog" in str(ex)
+    else:
+        raise AssertionError("old-catalog profile with the new graded table must fail loudly")

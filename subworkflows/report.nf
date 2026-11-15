@@ -19,6 +19,10 @@ process BUILD_HTML_REPORT {
                      path(strling_tsv), path(sv_vcf),
                      path(rh_status_tsv), path(amy1_tsv), path(gst_null_tsv), path(lpa_kiv2_tsv),
                      path(alpha_tsv)
+    // STR threshold tables + graded-variant table, staged (not read from projectDir) so -resume re-renders when they change
+    path str_ranges
+    path str_ranges_legacy
+    path str_graded
 
     output:
     tuple val(meta), path("${meta.id}.report.html"),    emit: html
@@ -65,6 +69,9 @@ process BUILD_HTML_REPORT {
         --circos-svg       ${circos_svg} \\
         --out              ${meta.id}.report.html \\
         --pipeline-version ${workflow.manifest.version} \\
+        --str-ranges        ${str_ranges} \\
+        --str-ranges-legacy ${str_ranges_legacy} \\
+        --str-graded        ${str_graded} \\
         ${bench_arg} \\
         ${sizebin_arg} \\
         ${bench_v5q_arg} \\
@@ -270,7 +277,10 @@ workflow REPORT {
         //         benchmark_json_v5q, sizebin_json_v5q, strling_tsv, sv_vcf,
         //         rh_status, amy1, gst_null, lpa_kiv2, alpha_globin]
 
-    BUILD_HTML_REPORT(ch_report_in)
+    BUILD_HTML_REPORT(ch_report_in,
+                      file("${projectDir}/assets/str_disease_ranges.tsv", checkIfExists: true),
+                      file("${projectDir}/assets/str_disease_ranges.legacy.tsv", checkIfExists: true),
+                      file("${projectDir}/assets/eh_graded_variants.tsv", checkIfExists: true))
 
     // Fail-fast guard: every sample entering REPORT (one sv_tsv each) must produce an
     // HTML report. A meta-mismatch or missing-channel join used to drop samples silently

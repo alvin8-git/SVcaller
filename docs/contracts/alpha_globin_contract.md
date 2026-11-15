@@ -61,13 +61,18 @@ run rather than silently mis-rendering.
 | `alpha_genes_called` | int 0–6, or `NA` | functional α-gene count. **Not capped at 4** — see below |
 | `alpha_genes_confidence` | `high`\|`medium`\|`low` | `high` = depth and a supporting junction agree · `medium` = depth only (no junction file, or none supporting), a marginal segment changing only the genotype/gene count, or the -a4.2 vs -a3.7/-a4.2 ambiguity · `low` = depth missing or any `NA` genotype. A junction never lowers it |
 | `deletion_alleles` | string | e.g. `--SEA\|--MED/aa`, `none`, `NA`. `/`-separated haplotypes, `a` = intact α. **`\|` inside a haplotype means an unresolved degenerate group — see below** |
-| `deletion_evidence` | `depth`\|`junction`\|`both`\|`none` | `both` only when a `confidence == high` junction fully contains every segment the named genotype removes (no tolerance) and overlaps none it leaves untouched; `depth` = depth-named deletion alone; `junction` = a high junction overlapping a scorable segment exists but depth named no deletion (normal or `NA`); `none` |
+| `deletion_evidence` | `depth`\|`junction`\|`both`\|`suspected_depth`\|`none` | `both` only when a `confidence == high` junction fully contains every segment the named genotype removes (no tolerance) and overlaps none it leaves untouched; `depth` = depth-named deletion alone; `suspected_depth` = a single-copy -a3.7/-a4.2 seen in depth alone with no supporting junction, NOT named (the row is `NA`, see `suspected_allele`); `junction` = a high junction overlapping a scorable segment exists but depth named no deletion (normal or `NA`); `none` |
 | `site_genotypes` | string | `;`-joined `GENE:HGVS:zygosity`, or `none` |
 | `site_panel_version` | string | `hba_pathogenic_sites.tsv@<sha1>` — the panel actually used |
 | `genotype` | string | `<deletion genotype>` optionally ` +<site findings>`, e.g. `--SEA\|--MED/aa +HBA2:c.377T>C:het`. **Never writes a site variant into a haplotype** — see below |
 | `screened` | string | `,`-joined tier ids actually run |
 | `not_screened` | string | `,`-joined tier ids explicitly NOT run |
 | `interpretation_complete` | `false` | always false from SVcaller; it measures, it does not interpret |
+
+
+### Optional trailing column
+
+`suspected_allele` (12th column, after the 11 frozen ones; readers that take columns by name are unaffected): empty, or e.g. `-a4.2/aa`. Set only when a single-copy -a3.7/-a4.2 was seen in depth alone with no supporting junction; the row is then `NA`/`NA`/`low` with `deletion_evidence=suspected_depth`.
 
 ### Depth cannot name every allele — report the group, never pick one
 
@@ -99,7 +104,7 @@ fit is a deletion allele plus the anti-3.7 triplication (known blind spot); (3) 
 deletion reading on a marginal segment; (4) **-a4.2 guard**, empirical: HBA2 loss with INTER_A2_A1 not called a
 loss and not marginal toward loss (HBA2 alone dips on some libraries without a deletion; every confirmed -a4.2
 carrier also showed INTER_A2_A1 reduced, ratio 0.47-0.60 het / 0.19-0.21 hom against 0.78-1.29 in normals);
-(5) HBA2, INTER_A2_A1 or HBA1 has no usable call (HBZ unmeasured instead widens the degenerate group). The run
+(5) HBA2, INTER_A2_A1 or HBA1 has no usable call (HBZ unmeasured instead widens the degenerate group; an HBZ het_loss or marginal HBZ counts as unmeasured, see docs/CHANGES.md 2026-11-15). The run
 note names the segment(s). The junction channel only corroborates and cannot change any of this.
 
 The guard fires only when HBA2 is itself called a loss. It is deliberately NOT extended to a marginal het_loss INTER_A2_A1 (score ~0.57-0.65): `-a4.2` is then still named, at `medium` at most (even with a supporting junction) and with a note that INTER_A2_A1 was borderline, because confirmed het carriers read INTER 0.47-0.60 (two platforms) against 0.78-1.29 in normals, so a marginal loss there is carrier-like, not a coin flip.

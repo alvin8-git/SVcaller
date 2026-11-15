@@ -7,7 +7,11 @@ from jinja2 import Environment, FileSystemLoader
 
 
 TEMPLATE_DIR = Path(__file__).parent.parent / "assets"
-STR_RANGES_PATH = TEMPLATE_DIR / "str_disease_ranges.tsv"
+STR_RANGES_PATH = TEMPLATE_DIR / "str_disease_ranges.tsv"                 # STRchive v2.28.0 catalogue (new)
+STR_RANGES_LEGACY_PATH = TEMPLATE_DIR / "str_disease_ranges.legacy.tsv"   # the catalogue before 2026-11-15
+STR_GRADED_PATH = TEMPLATE_DIR / "eh_graded_variants.tsv"                 # per locus: graded variant, its region, all variants
+# The pipeline stages all three as process inputs (subworkflows/report.nf) so -resume re-renders when one changes; the
+# script-relative paths are only the default for standalone use and tests.
 CNV_SYNDROMES_PATH = TEMPLATE_DIR / "cnv_syndromes.tsv"
 
 # Canonical autosomes + sex chrs for per-chr QC table
@@ -237,11 +241,57 @@ def _parse_supp_vec(info_str: str) -> dict:
     return {"supp": supp, "supp_vec": supp_vec, "callers": "/".join(callers) or "?"}
 
 
-def _load_str_ranges() -> dict:
+def _load_str_graded(path=None) -> dict:
+    """eh_graded_variants.tsv -> {"by_variant": {variant_id: row}, "by_locus": {locus: row}}; missing file raises."""
+    by_variant, by_locus = {}, {}
+    with open(path or STR_GRADED_PATH) as fh:
+        for row in csv.DictReader((l for l in fh if not l.startswith("#")), delimiter="\t"):
+            by_locus[row["locus"]] = row
+            for vid in row["all_variant_ids"].split(","):
+                by_variant[vid] = row
+    return {"by_variant": by_variant, "by_locus": by_locus}
+
+
+def _str_vcf_keys(str_vcf_path: str) -> list:
+    """[(VARID, 'chrom:POS-END')] of every record in an ExpansionHunter VCF (EH writes POS=region start, END=region end)."""
+    out = []
+    if not str_vcf_path or str_vcf_path in ("NO_FILE", "NO_STR", "null"):
+        return out
+    opener = gzip.open if str_vcf_path.endswith(".gz") else open
+    with opener(str_vcf_path, "rt") as fh:
+        for line in fh:
+            if line.startswith("#") or not line.strip():
+                continue
+            f = line.rstrip("\n").split("\t")
+            info = dict((k.split("=", 1) if "=" in k else (k, "")) for k in f[7].split(";"))
+            out.append((info.get("VARID") or info.get("REPID") or f[2], f"{f[0]}:{f[1]}-{info.get('END', '')}"))
+    return out
+
+
+def choose_str_catalogue(str_vcf_path: str, graded: dict) -> str:
+    """VERSION GATE.  'new' when EVERY graded-variant record of the STR VCF sits on the region assets/eh_graded_variants.tsv
+    lists for it (the STRchive-based catalogue), 'legacy' when none does (VCF from the pre-2026-11-15 catalogue; no old
+    graded region equals a new one).  A mix is a corrupted/mixed input and aborts: grading counts against limits defined for
+    other regions or units is the error this gate exists to prevent.  OmniGen's equivalent: str_summary.tsv has a
+    `variant_id` column -> new, no such column -> legacy."""
+    graded_ids = {r["variant_id"]: r["region"] for r in graded["by_locus"].values()}
+    seen = [(vid, reg) for vid, reg in _str_vcf_keys(str_vcf_path) if vid in graded_ids]
+    if not seen:
+        return "legacy"
+    hits = sum(1 for vid, reg in seen if graded_ids[vid] == reg)
+    if hits == len(seen):
+        return "new"
+    if hits == 0:
+        return "legacy"
+    raise SystemExit(f"ERROR: STR VCF {str_vcf_path} mixes catalogues ({hits}/{len(seen)} graded records on the new regions); "
+                     "refusing to grade it")
+
+
+def _load_str_ranges(path=None) -> dict:
     """Load curated STR disease/repeat-range metadata keyed by locus_id."""
     ranges = {}
     try:
-        with open(STR_RANGES_PATH) as fh:
+        with open(path or STR_RANGES_PATH) as fh:
             for row in csv.DictReader(fh, delimiter="\t"):
                 lid = row.get("locus_id", "").strip()
                 if lid:
@@ -778,7 +828,7 @@ def export_xls(all_sv_rows: list, cnv_bed_path: str, str_loci: list,
     ws_str = wb.create_sheet("STR")
     _hdr(ws_str, ["Locus", "Disease", "Chr", "Pos", "Repeat Unit", "CN (EH)",
                   "Status", "Normal Max", "Pathogenic Min",
-                  "Spanning Reads", "Flanking Reads", "INREPEAT"])
+                  "Spanning Reads", "Flanking Reads", "INREPEAT", "Other blocks (not graded)"])
     for locus in str_loci:
         ws_str.append([
             locus.get("locus", ""), locus.get("disease", ""),
@@ -787,6 +837,7 @@ def export_xls(all_sv_rows: list, cnv_bed_path: str, str_loci: list,
             locus.get("status", ""), locus.get("normal_max", ""),
             locus.get("path_min", ""), locus.get("spanning", ""),
             locus.get("flanking", ""), "Yes" if locus.get("inrepeat") else "",
+            locus.get("other_blocks", ""),
         ])
 
     # SMN sheet
@@ -1183,13 +1234,16 @@ def _compute_qc_status(qc: dict) -> None:
 # STR parsing
 # ---------------------------------------------------------------------------
 
-def parse_str_loci(str_vcf_path: str, str_ranges: dict = None) -> list:
-    """Parse ExpansionHunter VCF; join with clinical range metadata."""
+def parse_str_loci(str_vcf_path: str, str_ranges: dict = None, graded: dict = None) -> list:
+    """Parse ExpansionHunter VCF; join with clinical range metadata.  With `graded` (new catalogue) a record's VARID is mapped
+    to its locus and only the graded block of a multi-block locus becomes a row; the other blocks are listed in that row's
+    `other_blocks` (informational, never graded).  Without it (legacy catalogue) VARID is the locus id."""
     if not str_vcf_path or str_vcf_path in ("NO_FILE", "NO_STR", "null"):
         return []
     if str_ranges is None:
         str_ranges = {}
     loci = []
+    others: dict = {}
     try:
         header_fields: list = []
         opener = gzip.open if str_vcf_path.endswith(".gz") else open
@@ -1219,6 +1273,12 @@ def parse_str_loci(str_vcf_path: str, str_ranges: dict = None) -> list:
                 ref_cn   = info_d.get("REF", ".")
                 fmt_d = dict(zip(fmt.split(":"), sample_val.split(":")))
                 repcn     = fmt_d.get("REPCN", ".")
+                if graded is not None and locus_id in graded["by_variant"]:
+                    grow = graded["by_variant"][locus_id]
+                    if locus_id != grow["variant_id"]:           # a non-disease block of a compound locus
+                        others.setdefault(grow["locus"], []).append(f"{locus_id} {repcn}")
+                        continue
+                    locus_id = grow["locus"]
                 repci     = fmt_d.get("REPCI", ".")
                 adsp      = fmt_d.get("ADSP", ".")  # spanning reads
                 adfl      = fmt_d.get("ADFL", ".")  # flanking reads
@@ -1247,6 +1307,8 @@ def parse_str_loci(str_vcf_path: str, str_ranges: dict = None) -> list:
                 })
     except FileNotFoundError:
         pass
+    for locus in loci:
+        locus["other_blocks"] = "; ".join(others.get(locus["locus"], []))
     return loci
 
 
@@ -1266,9 +1328,11 @@ def _str_status(repcn: str, meta: dict) -> str:
         path_min_i = int(path_min) if str(path_min).isdigit() else None
         normal_max_i = int(normal_max) if str(normal_max).isdigit() else None
         premut_max_i = int(premut_max) if str(premut_max).isdigit() else None
+        premut_min = meta.get("premut_min", "")            # new table only; blank/absent = just above normal_max
+        premut_min_i = int(premut_min) if str(premut_min).isdigit() else (normal_max_i + 1 if normal_max_i is not None else None)
         if path_min_i and max_cn >= path_min_i:
             return "EXPANDED"
-        if premut_max_i and normal_max_i and normal_max_i < max_cn <= premut_max_i:
+        if premut_max_i and premut_min_i and premut_min_i <= max_cn <= premut_max_i:
             return "PREMUTATION"
         if normal_max_i and max_cn <= normal_max_i:
             return "NORMAL"
@@ -1471,7 +1535,10 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   amy1_path: str = None,
                   gst_null_path: str = None,
                   lpa_kiv2_path: str = None,
-                  traits_note: str = None) -> None:
+                  traits_note: str = None,
+                  str_ranges_path: str = None,
+                  str_ranges_legacy_path: str = None,
+                  str_graded_path: str = None) -> None:
     # Fail-loud guards: a present-but-empty required input is a crashed upstream stage,
     # not a negative result. Absent (NO_* sentinel) inputs remain a legitimate skip.
     # (cnv-bed is optional and arrives as a NO_FILE sentinel when a sample has no CNV data.)
@@ -1484,7 +1551,11 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
     template = env.get_template("report_template.html")
 
-    str_ranges = _load_str_ranges()
+    # STR thresholds: the table must belong to the catalogue that made the VCF (see choose_str_catalogue).
+    str_graded = _load_str_graded(str_graded_path)
+    str_catalogue = choose_str_catalogue(str_vcf_path or "", str_graded)
+    str_ranges = _load_str_ranges(str_ranges_path if str_catalogue == "new" else (str_ranges_legacy_path or STR_RANGES_LEGACY_PATH))
+    print(f"STR catalogue: {str_catalogue}", file=sys.stderr)
 
     bootstrap_css     = _inline_bootstrap_css()
     smn_html          = Path(smn_html_path).read_text()
@@ -1532,7 +1603,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     benchmark_bins_v5q = parse_benchmark_sizebin(sizebin_v5q_json) if sizebin_v5q_json    else None
     qc                = parse_qc(coverage_path or "", metrics_path or "",
                                  flagstat_path or "", insert_size_path or "")
-    str_loci          = parse_str_loci(str_vcf_path or "", str_ranges)
+    str_loci          = parse_str_loci(str_vcf_path or "", str_ranges, str_graded if str_catalogue == "new" else None)
     strling_loci      = parse_strling(strling_tsv_path or "")
     str_consensus, strling_novel_count = build_str_consensus(str_loci, strling_loci)
     known_diseases    = build_known_diseases(str_loci, smn_tsv_path or "", cnv_bed_path or "",
@@ -1600,6 +1671,9 @@ def main():
     parser.add_argument("--flagstat",         default=None)
     parser.add_argument("--insert-size",      default=None, dest="insert_size")
     parser.add_argument("--str-vcf",          default=None)
+    parser.add_argument("--str-ranges",        default=None, dest="str_ranges")
+    parser.add_argument("--str-ranges-legacy", default=None, dest="str_ranges_legacy")
+    parser.add_argument("--str-graded",        default=None, dest="str_graded")
     parser.add_argument("--strling-tsv",      default=None, dest="strling_tsv")
     parser.add_argument("--smn-tsv",          default=None, dest="smn_tsv")
     parser.add_argument("--sv-vcf",           default=None, dest="sv_vcf",
@@ -1643,6 +1717,7 @@ def main():
         gst_null_path=args.gst_null,
         lpa_kiv2_path=args.lpa_kiv2,
         traits_note=args.traits_note,
+        str_ranges_path=args.str_ranges, str_ranges_legacy_path=args.str_ranges_legacy, str_graded_path=args.str_graded,
     )
 
 

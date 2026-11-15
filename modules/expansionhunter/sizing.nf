@@ -8,12 +8,13 @@ process EH_SIZING {
 
     input:
     tuple val(meta), path(json), path(sex_json)
+    path graded      // assets/eh_graded_variants.tsv: which variant of each locus is the disease repeat
 
     output:
     tuple val(meta), path("${meta.id}.str_summary.tsv"), emit: tsv
 
     script:
     """
-    eh_sizing.py ${json} ${meta.id}.str_summary.tsv --sex-json ${sex_json}
+    eh_sizing.py ${json} ${meta.id}.str_summary.tsv --sex-json ${sex_json} --graded ${graded}
     """
 }

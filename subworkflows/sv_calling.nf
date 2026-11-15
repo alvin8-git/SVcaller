@@ -48,7 +48,8 @@ workflow SV_CALLING {
     // alone skipped the VALIDATE_REF_BAM pre-flight. Both now see ch_validated_bam.
     INFER_SEX(ch_validated_bam)
     EXPANSIONHUNTER(ch_validated_bam.join(INFER_SEX.out.sex), ch_fasta, ch_fai, ch_eh_catalog)
-    EH_SIZING(EXPANSIONHUNTER.out.json.join(INFER_SEX.out.sex.map { m, j, t -> [m, j] }))
+    EH_SIZING(EXPANSIONHUNTER.out.json.join(INFER_SEX.out.sex.map { m, j, t -> [m, j] }),
+             file("${projectDir}/assets/eh_graded_variants.tsv", checkIfExists: true))
 
     // P6: STRling genome-wide STR expansion detection (parallel with EH)
     if (!params.skip_strling) {

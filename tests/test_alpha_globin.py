@@ -217,8 +217,8 @@ def test_emitted_row_validates_against_the_fixture_shape(tmp_path, alleles):
     ag.write_contract(out, row)
     lines = out.read_text().splitlines()
     assert len(lines) == 2
-    assert lines[0].split("\t") == ag.CONTRACT_COLUMNS
-    assert len(lines[1].split("\t")) == len(ag.CONTRACT_COLUMNS)
+    assert lines[0].split("\t") == ag.OUTPUT_COLUMNS
+    assert len(lines[1].split("\t")) == len(ag.OUTPUT_COLUMNS)
 
 
 def test_interpretation_complete_is_structurally_false(tmp_path, alleles):
@@ -526,20 +526,45 @@ HG001_ROWS = _rows({
 })
 
 
-def test_a_genotype_resting_on_one_marginal_segment_is_not_named(alleles):
+def test_hbz_het_loss_beside_intact_genes_names_no_carrier(alleles):
+    """HBZ het_loss is inside the normal spread (see _hbz_usable): it is treated
+    as not measured, so the genes decide. HG001 is a normal, not a carrier."""
     row, note = ag.build_row("S", HG001_ROWS, None, None, alleles, PANEL)
-    assert row["deletion_alleles"] == "NA"
-    assert row["alpha_genes_called"] == "NA"
-    assert row["alpha_genes_confidence"] == "low"
-    assert "HBZ" in note and "marginal" in note
+    assert row["deletion_alleles"] == "none"
+    assert row["alpha_genes_called"] == "4"
     assert "--FIL" not in row["genotype"] and "anti-3.7" not in row["genotype"]
 
 
-def test_marginal_dip_is_not_reported_as_normal_either(alleles):
-    called, genes, _ = ag.name_alleles(
-        ag.observed_copies(HG001_ROWS), alleles, None,
-        ag.marginal_alternatives(HG001_ROWS))
-    assert (called, genes) == ("NA", "NA")      # not "none"/4
+def test_hbz_het_loss_and_marginal_hbz_are_dropped_from_the_observation():
+    obs = ag.observed_copies(HG001_ROWS)
+    assert "HBZ" not in obs and obs["HBA2"] == 2
+    marg_intact = _rows({"HBZ": ("intact", 0.67, True)})
+    assert "HBZ" not in ag.observed_copies(marg_intact)
+
+
+def test_hbz_clear_intact_hom_loss_and_gain_still_count():
+    for call, sc, copies in (("intact", 1.0, 2), ("hom_loss", 0.05, 0),
+                             ("gain", 1.8, 3)):
+        r = _rows({"HBZ": (call, sc, False)})
+        assert ag.observed_copies(r) == {"HBZ": copies}
+
+
+def test_whole_region_gain_is_not_named_anti_3_7(alleles):
+    """Every segment gained (HBZ included) is an amplification, not the anti-3.7
+    triplication, which spares HBZ. A gained HBZ must still veto it."""
+    rows = _rows({s: ("gain", 4.0, False) for s in ("HBZ", "HBA2", "INTER_A2_A1", "HBA1")})
+    called, genes, _ = ag.name_alleles(ag.observed_copies(rows), alleles)
+    assert (called, genes) == ("NA", "NA")
+
+
+def test_hbz_het_loss_cannot_split_a_two_gene_deletion_group(alleles):
+    """A --SEA carrier whose HBZ happens to read low must not be narrowed to
+    --FIL|--THAI: the group stays wide."""
+    rows = _rows({"HBZ": ("het_loss", 0.55, False), "HBA2": ("het_loss", 0.5, False),
+                  "INTER_A2_A1": ("het_loss", 0.5, False),
+                  "HBA1": ("het_loss", 0.5, False)})
+    called, _, _ = ag.name_alleles(ag.observed_copies(rows), alleles)
+    assert set(called.split("/")[0].split("|")) == {"--SEA", "--MED", "--FIL", "--THAI"}
 
 
 def test_deletion_plus_triplication_is_never_named_from_depth(alleles):
@@ -634,7 +659,10 @@ def test_junction_never_makes_a_call_NA_or_low(alleles):
 
 
 def test_junction_on_na_row_says_junction_and_stays_na(alleles):
-    row, note = ag.build_row("S", HG001_ROWS, [_jr(165396, 184701)], None,
+    na_rows = _rows({"HBZ": ("intact", 1.0, False), "HBA2": ("intact", 1.0, False),
+                     "INTER_A2_A1": ("intact", 1.0, False),
+                     "HBA1": ("het_loss", 0.5, False)})     # lone HBA1 loss: no allele
+    row, note = ag.build_row("S", na_rows, [_jr(165396, 184701)], None,
                              alleles, PANEL)
     assert row["alpha_genes_called"] == "NA"
     assert row["deletion_evidence"] == "junction"
@@ -659,7 +687,7 @@ def test_only_high_junctions_count(conf, alleles):
 
 
 def test_any_NA_genotype_is_low_confidence(alleles):
-    obs = {"HBZ": 1, "HBA2": 2, "INTER_A2_A1": 2, "HBA1": 2}   # compound, rule 2
+    obs = {"HBZ": 2, "HBA2": 2, "INTER_A2_A1": 2, "HBA1": 1}   # lone HBA1 loss
     for j in (None, [], [{"left_bp": "1", "right_bp": "2", "confidence": "high"}]):
         row, _ = ag.build_row("S", _depth_rows(obs), j, None, alleles, PANEL)
         assert row["alpha_genes_called"] == "NA"
@@ -705,8 +733,8 @@ def test_count_ambiguous_alternative_caps_at_medium_with_note(alleles, monkeypat
                   "HBA1": ("intact", 0.667, True)})
     monkeypatch.setattr(ag, "_name_core", fake)
     row, note = ag.build_row("S", rows, None, None, alleles, PANEL)
-    assert row["deletion_alleles"] == "-a3.7/aa"
-    assert row["alpha_genes_confidence"] == "medium"
+    assert row["suspected_allele"] == "-a3.7/aa" and row["deletion_alleles"] == "NA"
+    assert row["alpha_genes_confidence"] == "low"
     assert "HBA1" in note
 
 
@@ -758,9 +786,9 @@ def test_unsupported_junction_leaves_a_depth_call_at_medium(alleles):
                   "HBA1": ("intact", 0.749, False)})
     junction = [{"left_bp": "182819", "right_bp": "236906", "confidence": "low"}]
     row, _ = ag.build_row("S", rows, junction, None, alleles, PANEL)
-    assert row["deletion_alleles"] == "-a4.2/aa"
-    assert row["deletion_evidence"] == "depth"
-    assert row["alpha_genes_confidence"] == "medium"
+    assert row["suspected_allele"] == "-a4.2/aa" and row["deletion_alleles"] == "NA"
+    assert row["deletion_evidence"] == "suspected_depth"
+    assert row["alpha_genes_confidence"] == "low"
 
 
 def test_called_normal_with_a_valid_deletion_reading_is_NA(alleles):
@@ -797,8 +825,8 @@ def test_real_confirmed_het_a42(alleles):
     row, _ = _row_of({"HBZ": (0.725, True), "HBA2": (0.486, False),
                       "INTER_A2_A1": (0.468, False), "HBA1": (0.749, False)},
                      alleles)
-    assert (row["deletion_alleles"], row["alpha_genes_called"]) == ("-a4.2/aa", "3")
-    assert row["alpha_genes_confidence"] == "medium"
+    assert (row["suspected_allele"], row["deletion_alleles"], row["alpha_genes_called"]) == ("-a4.2/aa", "NA", "NA")
+    assert row["alpha_genes_confidence"] == "low"
 
 
 def test_real_confirmed_hom_a42_like(alleles):
@@ -818,10 +846,9 @@ def test_real_confirmed_sea_med(alleles):
     assert (row["deletion_alleles"], row["alpha_genes_called"]) == ("--SEA|--MED/aa", "2")
 
 
-def test_real_false_positive_is_NA(alleles):
+def test_real_false_positive_is_now_a_normal(alleles):
     row, note = ag.build_row("S", HG001_ROWS, None, None, alleles, PANEL)
-    assert (row["deletion_alleles"], row["alpha_genes_called"]) == ("NA", "NA")
-    assert row["alpha_genes_confidence"] == "low"
+    assert (row["deletion_alleles"], row["alpha_genes_called"]) == ("none", "4")
 
 
 @pytest.mark.parametrize("hba2", [0.64, 0.66])      # het_loss and intact, both marginal
@@ -869,9 +896,9 @@ def test_unmatched_toward_normal_reading_caps_medium_not_NA(alleles):
     row, note = _row_of({"HBZ": (0.5, False), "HBA2": (0.5, False),
                          "INTER_A2_A1": (0.5, False), "HBA1": (0.62, True)},
                         alleles)
-    assert row["deletion_alleles"] == "--FIL|--THAI/aa"
+    assert row["deletion_alleles"] == "--SEA|--MED|--FIL|--THAI/aa"   # HBZ het_loss dropped
     assert row["alpha_genes_confidence"] == "medium"
-    assert "HBA1" in note and "match no genotype" in note
+    assert "HBA1" in note and "marginal" in note
 
 
 def test_marginal_alternatives_reject_bad_scores():
@@ -918,7 +945,7 @@ def test_a42_guard_needs_marginal_toward_loss(alleles):
 def test_a42_guard_accepts_inter_marginal_toward_loss(alleles):
     row, _ = _row_of({"HBZ": (1.0, False), "HBA2": (0.5, False),
                       "INTER_A2_A1": (0.67, True), "HBA1": (1.0, False)}, alleles)
-    assert row["deletion_alleles"] == "-a4.2/aa"
+    assert row["suspected_allele"] == "-a4.2/aa" and row["deletion_alleles"] == "NA"
 
 
 @pytest.mark.parametrize("missing", [("HBA2",), ("INTER_A2_A1",), ("HBA1",),
@@ -1009,8 +1036,8 @@ def test_a42_with_a_marginal_het_loss_inter_stays_named_at_medium(alleles):
     row, note = _row_of({"HBZ": (1.0, False), "HBA2": (0.5, False),
                          "INTER_A2_A1": (0.62, True), "HBA1": (1.0, False)},
                         alleles)
-    assert row["deletion_alleles"] == "-a4.2/aa"
-    assert row["alpha_genes_confidence"] == "medium"
+    assert row["suspected_allele"] == "-a4.2/aa" and row["deletion_alleles"] == "NA"
+    assert row["alpha_genes_confidence"] == "low"
     assert ag.NOTE_INTER_BORDERLINE in note
 
 
@@ -1029,3 +1056,30 @@ def test_a42_guard_fires_only_when_hba2_is_called_a_loss(alleles):
                         alleles)
     assert row["alpha_genes_called"] == "NA"
     assert "two-event" in note and "HBA2 depth loss" not in note
+
+
+def test_single_copy_a42_with_a_supporting_junction_stays_a_call(alleles):
+    rows = _rows({"HBZ": ("intact", 1.0, False), "HBA2": ("het_loss", 0.486, False),
+                  "INTER_A2_A1": ("het_loss", 0.468, False),
+                  "HBA1": ("intact", 0.749, False)})
+    jx = [{"left_bp": "172000", "right_bp": "175000", "confidence": "high"}]
+    row, _ = ag.build_row("S", rows, jx, None, alleles, PANEL)
+    assert row["deletion_alleles"] == "-a4.2/aa" and row["suspected_allele"] == ""
+
+
+def test_depth_only_single_copy_is_suspected_not_a_carrier(alleles):
+    rows = _rows({"HBZ": ("intact", 1.0, False), "HBA2": ("het_loss", 0.486, False),
+                  "INTER_A2_A1": ("het_loss", 0.468, False),
+                  "HBA1": ("intact", 0.749, False)})
+    row, note = ag.build_row("S", rows, None, None, alleles, PANEL)
+    assert (row["alpha_genes_called"], row["alpha_genes_confidence"],
+            row["deletion_alleles"], row["deletion_evidence"],
+            row["suspected_allele"]) == ("NA", "low", "NA", "suspected_depth", "-a4.2/aa")
+    assert "confirm by gap-PCR or MLPA" in note and "no breakpoint junction" in note
+    assert "score: HBA2 0.486, INTER_A2_A1 0.468, HBA1 0.749" in note
+
+
+def test_two_copy_and_large_deletions_are_not_suspected(alleles):
+    for obs in (THAL1, {"HBZ": 2, "HBA2": 0, "INTER_A2_A1": 0, "HBA1": 2}):
+        row, _ = ag.build_row("S", _depth_rows(obs), None, None, alleles, PANEL)
+        assert row["suspected_allele"] == "" and row["deletion_alleles"] != "NA"
