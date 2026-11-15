@@ -179,3 +179,20 @@ def test_cli(tmp_path):
         capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     assert "--SEA|--MED/aa" in out.read_text()
+
+
+def test_depth_only_suspected_alpha_loss_is_not_a_carrier_or_a_deletion(tmp_path):
+    """Owner decision 2026-11-15: -a4.2/aa from depth alone is 'suspected, not confirmed'; the card must not say 'biallelic deletion'."""
+    import hba_report as hr
+    assert "Not determined" in hr._describe_deletion("NA")
+    note = hr._genotype_note({"deletion_alleles": "NA", "suspected_allele": "-a4.2/aa"})
+    assert "suspected -a4.2" in note and "not confirmed" in note and "gap-PCR or MLPA" in note and "carrier result" in note
+    assert "both chromosomes" not in hr._genotype_note({"deletion_alleles": "NA"})
+    assert "suspected" in hr._EVIDENCE["suspected_depth"]
+
+
+def test_deletion_row_of_a_depth_only_suspected_loss_says_suspected():
+    import hba_report as hr
+    row = hr._describe_deletion("NA", "-a4.2/aa")
+    assert "Suspected" in row and "not confirmed" in row and "could not be made" not in row
+    assert "Not determined" in hr._describe_deletion("NA", "")

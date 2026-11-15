@@ -3,8 +3,8 @@
 # Run from the SVcaller project root.
 set -euo pipefail
 
-REF_DIR="/data/alvin/ref/GRCh38"
-GIAB_DIR="/data/alvin/ref/GIAB"
+REF_DIR="${REF_ROOT:-/path/to/ref}/GRCh38"
+GIAB_DIR="${REF_ROOT:-/path/to/ref}/GIAB"
 mkdir -p "${REF_DIR}" "${GIAB_DIR}"
 
 echo "=== Downloading GRCh38 reference ==="
@@ -31,13 +31,13 @@ else
 fi
 
 echo "=== Downloading GRCh38 cytobands ==="
-if [ ! -f "/data/alvin/SVcaller/assets/GRCh38_cytobands.txt" ] || \
-   [ "$(wc -l < /data/alvin/SVcaller/assets/GRCh38_cytobands.txt)" -lt 100 ]; then
-    wget -q -O /data/alvin/tmp/cytobands.txt.gz \
+if [ ! -f "${SVCALLER_HOME:-.}/assets/GRCh38_cytobands.txt" ] || \
+   [ "$(wc -l < ${SVCALLER_HOME:-.}/assets/GRCh38_cytobands.txt)" -lt 100 ]; then
+    wget -q -O ${TMPDIR:-/tmp}/cytobands.txt.gz \
         "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cytoBand.txt.gz"
-    bgzip -d -c /data/alvin/tmp/cytobands.txt.gz \
-        > /data/alvin/SVcaller/assets/GRCh38_cytobands.txt
-    echo "Cytobands downloaded ($(wc -l < /data/alvin/SVcaller/assets/GRCh38_cytobands.txt) bands)."
+    bgzip -d -c ${TMPDIR:-/tmp}/cytobands.txt.gz \
+        > ${SVCALLER_HOME:-.}/assets/GRCh38_cytobands.txt
+    echo "Cytobands downloaded ($(wc -l < ${SVCALLER_HOME:-.}/assets/GRCh38_cytobands.txt) bands)."
 else
     echo "Cytobands already present."
 fi
@@ -76,9 +76,9 @@ fi
 
 echo "=== Downloading ExpansionHunter catalog ==="
 EH_URL="https://github.com/Illumina/RepeatCatalogs/raw/main/hg38/variant_catalog.json"
-if [ ! -s "/data/alvin/SVcaller/assets/eh_catalog.json" ] || \
-   grep -q '"note": "Stub catalog"' /data/alvin/SVcaller/assets/eh_catalog.json 2>/dev/null; then
-    wget -q -O /data/alvin/SVcaller/assets/eh_catalog.json "${EH_URL}"
+if [ ! -s "${SVCALLER_HOME:-.}/assets/eh_catalog.json" ] || \
+   grep -q '"note": "Stub catalog"' ${SVCALLER_HOME:-.}/assets/eh_catalog.json 2>/dev/null; then
+    wget -q -O ${SVCALLER_HOME:-.}/assets/eh_catalog.json "${EH_URL}"
     echo "EH catalog downloaded."
 else
     echo "EH catalog already present."
@@ -88,4 +88,4 @@ echo ""
 echo "=== All reference data ready ==="
 echo "  Reference: ${REF_DIR}/GRCh38.fasta"
 echo "  GIAB truth: ${GIAB_DIR}/HG002_SV_v0.6.vcf.gz"
-echo "  EH catalog: /data/alvin/SVcaller/assets/eh_catalog.json"
+echo "  EH catalog: ${SVCALLER_HOME:-.}/assets/eh_catalog.json"

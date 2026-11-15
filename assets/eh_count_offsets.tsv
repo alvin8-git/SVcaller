@@ -1,0 +1,5 @@
+# Per-locus correction subtracted from ExpansionHunter's repeat count before it is graded (bin/eh_sizing.py).
+# Owner decision 2026-11-15. Evidence per row. Every locus not listed here is used as EH reports it (offset 0).
+# locus	variant_id	offset	evidence
+locus	variant_id	offset	evidence
+PABPN1	PABPN1	-1	STRchive OPMD_PABPN1 interval chr14:23321472-23321503 (31 bp, motif GCN). GRCh38 reads ATG then (GCG)6(GCA)3(GCG)1 = 10 codons, then GGG GCT GCG. The degenerate GCN motif lets EH absorb the following GGG (one mismatch) as an 11th unit, so the common 10-codon allele is reported as 11 (HG002: all 21 spanning reads carry exactly 10 codons between ATG and GGGGCTGCG, EH calls 11/11; 50 of 64 cohort samples are 11/11). STRchive ranges (normal max 10, intermediate 11, pathogenic min 12) count codons between ATG and GGG.

@@ -5,14 +5,18 @@ from datetime import date
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
+import eh_sizing
+import str_grading_scope as sgs
+
 
 TEMPLATE_DIR = Path(__file__).parent.parent / "assets"
 STR_RANGES_PATH = TEMPLATE_DIR / "str_disease_ranges.tsv"                 # STRchive v2.28.0 catalogue (new)
 STR_RANGES_LEGACY_PATH = TEMPLATE_DIR / "str_disease_ranges.legacy.tsv"   # the catalogue before 2026-11-15
 STR_GRADED_PATH = TEMPLATE_DIR / "eh_graded_variants.tsv"                 # per locus: graded variant, its region, all variants
-# The pipeline stages all three as process inputs (subworkflows/report.nf) so -resume re-renders when one changes; the
+# The pipeline stages these as process inputs (subworkflows/report.nf) so -resume re-renders when one changes; the
 # script-relative paths are only the default for standalone use and tests.
 CNV_SYNDROMES_PATH = TEMPLATE_DIR / "cnv_syndromes.tsv"
+STR_OFFSETS_PATH = TEMPLATE_DIR / "eh_count_offsets.tsv"                  # cited per-locus count correction (bin/eh_sizing.py)
 
 # Canonical autosomes + sex chrs for per-chr QC table
 _CANONICAL = [f"chr{c}" for c in list(range(1, 23)) + ["X", "Y"]]
@@ -250,6 +254,18 @@ def _load_str_graded(path=None) -> dict:
             for vid in row["all_variant_ids"].split(","):
                 by_variant[vid] = row
     return {"by_variant": by_variant, "by_locus": by_locus}
+
+
+def _load_str_summary(path):
+    """<id>.str_summary.tsv (bin/eh_sizing.py) -> ({locus: row}, has_variant_id); (None, False) when absent (NO_* sentinel).
+    A present file that is empty or lacks the sizing columns raises: the stage ran and failed."""
+    if not path or Path(str(path)).name in ("NO_FILE", "NO_STR_SUMMARY", "null", "") or not Path(str(path)).exists():
+        return None, False
+    lines = [l.rstrip("\n") for l in open(path) if l.strip() and not l.startswith("#")]
+    if len(lines) < 2 or not {"locus", "genotype_display", "allele1_sizing", "allele2_sizing"} <= set(lines[0].split("\t")):
+        raise SystemExit(f"ERROR: STR summary {path} has no data rows or lacks the sizing columns")
+    hdr = lines[0].split("\t")
+    return {r["locus"]: r for r in (dict(zip(hdr, l.split("\t"))) for l in lines[1:])}, "variant_id" in hdr
 
 
 def _str_vcf_keys(str_vcf_path: str) -> list:
@@ -713,6 +729,18 @@ def build_known_diseases(str_loci: list, smn_tsv_path: str = "",
                         smn2 = int(row.get("SMN2_CN", row.get("smn2", "-1")) or -1)
                     except (ValueError, TypeError):
                         continue
+                    if smn1 < 0:          # empty cell = no copy number: never a carrier, never normal (ERROR is never NEGATIVE)
+                        findings.append({
+                            "source":   "SMN",
+                            "disease":  "Spinal Muscular Atrophy (SMA)",
+                            "gene":     "SMN1/SMN2",
+                            "detail":   "SMN1 copy number not determined" + (f" ({row['Info']})" if row.get("Info") else ""),
+                            "status":   "NOT TYPED",
+                            "severity": "not_typed",
+                        })
+                        continue
+                    if smn2 < 0:
+                        continue
                     if smn1 <= 1:
                         findings.append({
                             "source":   "SMN",
@@ -757,7 +785,7 @@ def build_known_diseases(str_loci: list, smn_tsv_path: str = "",
                         "source":   "CNV",
                         "disease":  syn["syndrome"],
                         "gene":     f"{chrom}:{start}-{end}",
-                        "detail":   f"{svtype} {size_str}, {confidence} confidence{note}",
+                        "detail":   f"{svtype} {size_str}, {confidence} confidence{note}. Caller output, not graded: see the OmniGen report for findings",
                         "status":   confidence,
                         "severity": "affected" if confidence in ("BOTH", "HIGH") else "carrier",
                     })
@@ -828,7 +856,7 @@ def export_xls(all_sv_rows: list, cnv_bed_path: str, str_loci: list,
     ws_str = wb.create_sheet("STR")
     _hdr(ws_str, ["Locus", "Disease", "Chr", "Pos", "Repeat Unit", "CN (EH)",
                   "Status", "Normal Max", "Pathogenic Min",
-                  "Spanning Reads", "Flanking Reads", "INREPEAT", "Other blocks (not graded)"])
+                  "Spanning Reads", "Flanking Reads", "INREPEAT", "Other blocks (not graded)", "Not graded because"])
     for locus in str_loci:
         ws_str.append([
             locus.get("locus", ""), locus.get("disease", ""),
@@ -837,7 +865,7 @@ def export_xls(all_sv_rows: list, cnv_bed_path: str, str_loci: list,
             locus.get("status", ""), locus.get("normal_max", ""),
             locus.get("path_min", ""), locus.get("spanning", ""),
             locus.get("flanking", ""), "Yes" if locus.get("inrepeat") else "",
-            locus.get("other_blocks", ""),
+            locus.get("other_blocks", ""), locus.get("status_note", ""),
         ])
 
     # SMN sheet
@@ -874,6 +902,23 @@ def export_xls(all_sv_rows: list, cnv_bed_path: str, str_loci: list,
 # ---------------------------------------------------------------------------
 # CNV parsing
 # ---------------------------------------------------------------------------
+
+_SVTYPE_WORD = {"INV": "inversions", "DEL": "deletions", "DUP": "duplications", "INS": "insertions", "BND": "translocations"}
+
+
+def load_sv_not_assessed(path):
+    """<id>.sv_not_assessed.tsv -> (rows, state).  state: 'rows' (a caller did not finish), 'complete' (header only: every capped
+    caller finished), 'unrecorded' (no file: a run from before the record existed, or the stage did not publish it).  Never read as
+    'no inversions'.  A present file with no header raises: the stage ran and failed."""
+    if not path or Path(str(path)).name in ("NO_FILE", "NO_NOT_ASSESSED", "null", "") or not Path(str(path)).exists():
+        return [], "unrecorded"
+    lines = [l.rstrip("\n") for l in open(path) if l.strip()]
+    if not lines or not {"caller", "svtype", "reason", "limit"} <= set(lines[0].split("\t")):
+        raise SystemExit(f"ERROR: {path} is empty or lacks caller/svtype/reason/limit columns")
+    hdr = lines[0].split("\t")
+    rows = [dict(zip(hdr, l.split("\t"))) for l in lines[1:]]
+    return rows, ("rows" if rows else "complete")
+
 
 def parse_cnv_summary(cnv_bed_path: str) -> dict:
     """Count CNV calls by confidence tier from cnv_consensus.bed."""
@@ -1086,6 +1131,7 @@ def parse_qc(coverage_path: str, metrics_path: str, flagstat_path: str = "",
     _parse_flagstat(flagstat_path, qc)
     _parse_insert_size(insert_size_path, qc)
     _compute_qc_status(qc)
+    _low_depth_note(qc)
     return qc
 
 
@@ -1204,6 +1250,21 @@ def _parse_flagstat(flagstat_path: str, qc: dict) -> None:
         pass
 
 
+# Owner decision 2026-11-15: the run aborts below min_depth (20x); between that and the recommended depth the report says so.
+RECOMMENDED_DEPTH = 30.0
+LOW_DEPTH_NOTE = ("mean depth below the recommended 30x: structural-variant sensitivity is reduced "
+                  "(about 2-4 points fewer deletions found at 20x than at 30x in GIAB HG002)")
+
+
+def _low_depth_note(qc: dict) -> None:
+    try:
+        d = float(qc.get("mean_depth"))
+    except (TypeError, ValueError):
+        return
+    if d < RECOMMENDED_DEPTH:
+        qc["low_depth_note"] = LOW_DEPTH_NOTE
+
+
 def _compute_qc_status(qc: dict) -> None:
     warnings = []
     try:
@@ -1234,18 +1295,12 @@ def _compute_qc_status(qc: dict) -> None:
 # STR parsing
 # ---------------------------------------------------------------------------
 
-def parse_str_loci(str_vcf_path: str, str_ranges: dict = None, graded: dict = None) -> list:
-    """Parse ExpansionHunter VCF; join with clinical range metadata.  With `graded` (new catalogue) a record's VARID is mapped
-    to its locus and only the graded block of a multi-block locus becomes a row; the other blocks are listed in that row's
-    `other_blocks` (informational, never graded).  Without it (legacy catalogue) VARID is the locus id."""
+def _str_vcf_records(str_vcf_path: str) -> list:
+    """ExpansionHunter VCF -> [dict(locus_id, chrom, pos, repunit, ref_cn, repcn, repci, adsp, adfl, gt, so)]."""
     if not str_vcf_path or str_vcf_path in ("NO_FILE", "NO_STR", "null"):
         return []
-    if str_ranges is None:
-        str_ranges = {}
-    loci = []
-    others: dict = {}
+    recs, header_fields = [], []
     try:
-        header_fields: list = []
         opener = gzip.open if str_vcf_path.endswith(".gz") else open
         with opener(str_vcf_path, "rt") as fh:
             for line in fh:
@@ -1258,55 +1313,133 @@ def parse_str_loci(str_vcf_path: str, str_ranges: dict = None, graded: dict = No
                 if not parts or len(parts) < 8:
                     continue
                 d = dict(zip(header_fields, parts))
-                chrom = d.get("CHROM", "")
-                pos   = d.get("POS", "")
-                info  = d.get("INFO", "")
-                fmt   = d.get("FORMAT", "")
-                sample_val = parts[9] if len(parts) > 9 else ""
-                info_d = dict(
-                    (f.split("=", 1) if "=" in f else (f, ""))
-                    for f in info.split(";")
-                )
-                # VARID holds the locus name in EH output (e.g. VARID=FMR1)
-                locus_id = info_d.get("VARID") or info_d.get("REPID") or d.get("ID", ".")
-                repunit  = info_d.get("RU") or info_d.get("REPUNIT") or "."
-                ref_cn   = info_d.get("REF", ".")
-                fmt_d = dict(zip(fmt.split(":"), sample_val.split(":")))
-                repcn     = fmt_d.get("REPCN", ".")
-                if graded is not None and locus_id in graded["by_variant"]:
-                    grow = graded["by_variant"][locus_id]
-                    if locus_id != grow["variant_id"]:           # a non-disease block of a compound locus
-                        others.setdefault(grow["locus"], []).append(f"{locus_id} {repcn}")
-                        continue
-                    locus_id = grow["locus"]
-                repci     = fmt_d.get("REPCI", ".")
-                adsp      = fmt_d.get("ADSP", ".")  # spanning reads
-                adfl      = fmt_d.get("ADFL", ".")  # flanking reads
-                gt        = fmt_d.get("GT", ".")
-                so        = fmt_d.get("SO", "")     # source: SPANNING/INREPEAT etc.
-                # Join with clinical ranges
-                meta = str_ranges.get(locus_id, {})
-                status = _str_status(repcn, meta)
-                loci.append({
-                    "locus": locus_id,
-                    "chrom": chrom, "pos": pos,
-                    "repunit": repunit,
-                    "ref_cn": ref_cn,
-                    "repcn": repcn,
-                    "repci": repci,
-                    "spanning": adsp,
-                    "flanking": adfl,
-                    "gt": gt,
-                    "inrepeat": "INREPEAT" in so,
-                    "disease":  meta.get("disease", ""),
-                    "inheritance": meta.get("inheritance", ""),
-                    "normal_max":  meta.get("normal_max", ""),
-                    "path_min":    meta.get("path_min", ""),
-                    "notes":       meta.get("notes", ""),
-                    "status": status,
-                })
+                info_d = dict((f.split("=", 1) if "=" in f else (f, "")) for f in d.get("INFO", "").split(";"))
+                fmt_d = dict(zip(d.get("FORMAT", "").split(":"), (parts[9] if len(parts) > 9 else "").split(":")))
+                recs.append({
+                    # VARID holds the locus name in EH output (e.g. VARID=FMR1)
+                    "locus_id": info_d.get("VARID") or info_d.get("REPID") or d.get("ID", "."),
+                    "chrom": d.get("CHROM", ""), "pos": d.get("POS", ""),
+                    "repunit": info_d.get("RU") or info_d.get("REPUNIT") or ".",
+                    "ref_cn": info_d.get("REF", "."),
+                    "repcn": fmt_d.get("REPCN", "."), "repci": fmt_d.get("REPCI", "."),
+                    "adsp": fmt_d.get("ADSP", "."), "adfl": fmt_d.get("ADFL", "."),   # spanning / flanking reads
+                    "gt": fmt_d.get("GT", "."), "so": fmt_d.get("SO", "")})            # SO: SPANNING/INREPEAT etc.
     except FileNotFoundError:
         pass
+    return recs
+
+
+def _str_summary_records(summary: dict, graded: dict = None) -> list:
+    """Records for a sample with a str_summary.tsv but no ExpansionHunter VCF: position from the graded region (new catalogue).
+    A legacy-catalogue summary (graded None) has no region table: the locus id is the key and the position stays '.'; the STR
+    section must still show the loci (an empty section reads as 'no expansions')."""
+    recs = []
+    for locus, row in summary.items():
+        if graded is None:
+            recs.append({"locus_id": locus, "chrom": ".", "pos": ".", "repunit": row.get("repeat_unit", "."),
+                         "ref_cn": ".", "repcn": row.get("genotype", "."), "repci": row.get("ci", "."),
+                         "adsp": row.get("spanning_reads", "."), "adfl": row.get("flanking_reads", "."), "gt": ".",
+                         "so": "INREPEAT" if (row.get("inrepeat_reads") or "()") != "()" else ""})
+            continue
+        grow = graded["by_locus"].get(locus)
+        if not grow:
+            continue
+        chrom, _, rng = grow["region"].partition(":")
+        recs.append({"locus_id": grow["variant_id"], "chrom": chrom, "pos": rng.split("-")[0], "repunit": grow.get("disease_motif", "."),
+                     "ref_cn": ".", "repcn": row.get("genotype", "."), "repci": row.get("ci", "."),
+                     "adsp": row.get("spanning_reads", "."), "adfl": row.get("flanking_reads", "."), "gt": ".",
+                     "so": "INREPEAT" if (row.get("inrepeat_reads") or "()") != "()" else ""})
+    return recs
+
+
+def _offset_repci(repci: str, offset: int) -> str:
+    """Apply the same cited offset to a VCF REPCI ('lo-hi/lo-hi'); anything that is not a digit pair stays as written."""
+    out = []
+    for a in repci.split("/"):
+        m = re.fullmatch(r"(\d+)-(\d+)", a.strip())
+        out.append(f"{int(m.group(1)) + offset}-{int(m.group(2)) + offset}" if m else a)
+    return "/".join(out)
+
+
+def _offset_repcn(repcn: str, offset: int) -> str:
+    """Apply a cited count offset to a VCF REPCN ('a/b'); only used when no str_summary is supplied. A '.' (hemizygous) stays."""
+    out = []
+    for a in repcn.split("/"):
+        out.append(str(int(a) + offset) if a.isdigit() else a)
+    return "/".join(out)
+
+
+def parse_str_loci(str_vcf_path: str, str_ranges: dict = None, graded: dict = None, summary: dict = None,
+                   offsets: dict = None, scope: dict = None) -> list:
+    """Parse ExpansionHunter VCF; join with clinical range metadata.  With `graded` (new catalogue) a record's VARID is mapped
+    to its locus and only the graded block of a multi-block locus becomes a row; the other blocks are listed in that row's
+    `other_blocks` (informational, never graded).  Without it (legacy catalogue) VARID is the locus id.
+
+    Counts come from `summary` (str_summary.tsv: offset-corrected, unresolved alleles shown '>=N') when given; without it the VCF
+    count is used with the cited `offsets` ({(locus, variant_id): int}) applied, and no allele can be known to be unresolved.
+    A locus the curation tables set aside (sgs.not_graded_reason) is listed with NOT GRADED and its reason, never graded; an
+    allele known only as '>=N' is UNRESOLVED (never intermediate or pathogenic), and '>=0' reads 'not measurable'."""
+    if str_ranges is None:
+        str_ranges = {}
+    new_catalogue = graded is not None
+    recs = _str_vcf_records(str_vcf_path)
+    if not recs and summary:
+        recs = _str_summary_records(summary, graded if new_catalogue else None)
+    if scope is None:
+        scope = sgs.load_scope(str_ranges, new_catalogue)
+    loci = []
+    others: dict = {}
+    for rec in recs:
+        locus_id, repcn = rec["locus_id"], rec["repcn"]
+        variant_id = locus_id
+        if graded is not None and locus_id in graded["by_variant"]:
+            grow = graded["by_variant"][locus_id]
+            if locus_id != grow["variant_id"]:           # a non-disease block of a compound locus
+                others.setdefault(grow["locus"], []).append(f"{locus_id} {repcn}")
+                continue
+            locus_id = grow["locus"]
+        srow = (summary or {}).get(locus_id)
+        sizing = ""
+        repci = rec["repci"]
+        if srow:                                         # corrected, sized counts (eh_sizing.py) replace EH's raw REPCN
+            repcn = srow["genotype_display"]
+            repci = srow.get("ci") or repci              # the CI is corrected by the same offset as the count
+            sizing = ",".join(x for x in (srow.get("allele1_sizing"), srow.get("allele2_sizing")) if x and x != ".")
+        elif offsets and (locus_id, variant_id) in offsets:
+            repcn = _offset_repcn(repcn, offsets[(locus_id, variant_id)])
+            repci = _offset_repci(repci, offsets[(locus_id, variant_id)])
+        meta = str_ranges.get(locus_id, {})
+        why = sgs.not_graded_reason(locus_id, scope)
+        tokens = repcn.split("/")
+        bounds = [sgs.unresolved_bound(t) for t in tokens]
+        measured = "/".join(t for t, b in zip(tokens, bounds) if b is None and t.strip().isdigit())
+        status = "NOT GRADED" if why else _str_status(measured or ".", meta)
+        if not why and any(b is not None for b in bounds) and status != "EXPANDED":
+            status = "UNRESOLVED"                        # an allele known only as a lower bound is never graded either way
+            if all(b is not None and not b for b in bounds):
+                status = "NOT MEASURABLE"                # '>=0': no read gave any size
+        shown = "/".join((sgs.NOT_MEASURABLE if not b else f">={b} (unresolved)") if b is not None else t
+                         for t, b in zip(tokens, bounds))
+        loci.append({
+            "locus": locus_id,
+            "chrom": rec["chrom"], "pos": rec["pos"],
+            "repunit": rec["repunit"],
+            "ref_cn": rec["ref_cn"],
+            "repcn": shown,
+            "repci": repci,
+            "spanning": rec["adsp"],
+            "flanking": rec["adfl"],
+            "gt": rec["gt"],
+            "inrepeat": "INREPEAT" in rec["so"],
+            "disease":  meta.get("disease", ""),
+            "inheritance": meta.get("inheritance", ""),
+            "normal_max":  "" if why else meta.get("normal_max", ""),
+            "path_min":    "" if why else meta.get("path_min", ""),
+            "notes":       meta.get("notes", ""),
+            "status": status,
+            "status_note": why or "",
+            "sizing": sizing,
+        })
     for locus in loci:
         locus["other_blocks"] = "; ".join(others.get(locus["locus"], []))
     return loci
@@ -1538,7 +1671,11 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
                   traits_note: str = None,
                   str_ranges_path: str = None,
                   str_ranges_legacy_path: str = None,
-                  str_graded_path: str = None) -> None:
+                  str_graded_path: str = None,
+                  str_offsets_path: str = None, str_retired_path: str = None,
+                  str_convention_path: str = None, str_not_tested_path: str = None,
+                  str_summary_path: str = None,
+                  sv_not_assessed_path: str = None) -> None:
     # Fail-loud guards: a present-but-empty required input is a crashed upstream stage,
     # not a negative result. Absent (NO_* sentinel) inputs remain a legitimate skip.
     # (cnv-bed is optional and arrives as a NO_FILE sentinel when a sample has no CNV data.)
@@ -1554,6 +1691,12 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     # STR thresholds: the table must belong to the catalogue that made the VCF (see choose_str_catalogue).
     str_graded = _load_str_graded(str_graded_path)
     str_catalogue = choose_str_catalogue(str_vcf_path or "", str_graded)
+    str_summary, summary_has_variant_id = _load_str_summary(str_summary_path)
+    if str_summary is not None and not _str_vcf_keys(str_vcf_path or ""):
+        str_catalogue = "new" if summary_has_variant_id else "legacy"     # no VCF to tell the catalogues apart: the summary's columns do
+    elif str_summary is not None and (str_catalogue == "new") != summary_has_variant_id:
+        raise SystemExit(f"ERROR: STR VCF is from the {str_catalogue} catalogue but the STR summary "
+                         f"{'has' if summary_has_variant_id else 'lacks'} the variant_id column; refusing to grade a mixed pair")
     str_ranges = _load_str_ranges(str_ranges_path if str_catalogue == "new" else (str_ranges_legacy_path or STR_RANGES_LEGACY_PATH))
     print(f"STR catalogue: {str_catalogue}", file=sys.stderr)
 
@@ -1591,6 +1734,8 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     _TIER_HTML_MAX = 10
     sv_tier2_total = len(sv_tier2); sv_tier2 = sv_tier2[:_TIER_HTML_MAX]
     sv_tier3_total = len(sv_tier3); sv_tier3 = sv_tier3[:_TIER_HTML_MAX]
+    sv_not_assessed, sv_not_assessed_state = load_sv_not_assessed(sv_not_assessed_path)
+    sv_not_assessed_text = " and ".join(sorted({f"{r['caller']} {_SVTYPE_WORD.get(r['svtype'].upper(), r['svtype'].lower() + ' calls')}" for r in sv_not_assessed}))
     cnv_summary       = parse_cnv_summary(cnv_bed_path)
     cnv_syndromes      = load_cnv_syndromes()
     cnv_top, cnv_total = top_cnvs_by_size(cnv_bed_path, n=10, cnv_syndromes=cnv_syndromes)
@@ -1603,7 +1748,10 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
     benchmark_bins_v5q = parse_benchmark_sizebin(sizebin_v5q_json) if sizebin_v5q_json    else None
     qc                = parse_qc(coverage_path or "", metrics_path or "",
                                  flagstat_path or "", insert_size_path or "")
-    str_loci          = parse_str_loci(str_vcf_path or "", str_ranges, str_graded if str_catalogue == "new" else None)
+    str_offsets       = eh_sizing.load_offsets(str_offsets_path or str(STR_OFFSETS_PATH)) if str_catalogue == "new" else {}
+    str_scope         = sgs.load_scope(str_ranges, str_catalogue == "new", str_retired_path, str_convention_path, str_not_tested_path)
+    str_loci          = parse_str_loci(str_vcf_path or "", str_ranges, str_graded if str_catalogue == "new" else None,
+                                       str_summary, str_offsets, str_scope)
     strling_loci      = parse_strling(strling_tsv_path or "")
     str_consensus, strling_novel_count = build_str_consensus(str_loci, strling_loci)
     known_diseases    = build_known_diseases(str_loci, smn_tsv_path or "", cnv_bed_path or "",
@@ -1639,6 +1787,7 @@ def render_report(sample_id: str, smn_html_path: str, cnv_bed_path: str,
         cnv_traits_html=cnv_traits_html,
         smn_html=smn_html,
         alpha_html=alpha_html,
+        sv_not_assessed=sv_not_assessed, sv_not_assessed_state=sv_not_assessed_state, sv_not_assessed_text=sv_not_assessed_text,
         circos_svg_inline=circos_svg_inline,
         benchmark=benchmark,
         benchmark_bins=benchmark_bins,
@@ -1674,6 +1823,14 @@ def main():
     parser.add_argument("--str-ranges",        default=None, dest="str_ranges")
     parser.add_argument("--str-ranges-legacy", default=None, dest="str_ranges_legacy")
     parser.add_argument("--str-graded",        default=None, dest="str_graded")
+    for _flag, _what in (("str-offsets", "eh_count_offsets.tsv"), ("str-retired", "str_retired_loci.tsv"),
+                         ("str-convention", "str_count_convention.tsv"), ("str-not-tested", "str_not_tested_legacy.tsv")):
+        parser.add_argument("--" + _flag, default=None, dest=_flag.replace("-", "_"),
+                            help=f"{_what}; the pipeline stages it so -resume re-renders when it changes (default: the repo copy).")
+    parser.add_argument("--str-summary",      default=None, dest="str_summary",
+                        help="<id>.str_summary.tsv from eh_sizing.py: offset-corrected counts, unresolved alleles as '>=N'.")
+    parser.add_argument("--sv-not-assessed",  default=None, dest="sv_not_assessed",
+                        help="<id>.sv_not_assessed.tsv: callers or SV types the pipeline did not finish (header only = completed).")
     parser.add_argument("--strling-tsv",      default=None, dest="strling_tsv")
     parser.add_argument("--smn-tsv",          default=None, dest="smn_tsv")
     parser.add_argument("--sv-vcf",           default=None, dest="sv_vcf",
@@ -1718,6 +1875,9 @@ def main():
         lpa_kiv2_path=args.lpa_kiv2,
         traits_note=args.traits_note,
         str_ranges_path=args.str_ranges, str_ranges_legacy_path=args.str_ranges_legacy, str_graded_path=args.str_graded,
+        str_offsets_path=args.str_offsets, str_retired_path=args.str_retired,
+        str_convention_path=args.str_convention, str_not_tested_path=args.str_not_tested,
+        str_summary_path=args.str_summary, sv_not_assessed_path=args.sv_not_assessed,
     )
 
 

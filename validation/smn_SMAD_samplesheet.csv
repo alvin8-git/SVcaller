@@ -1,2 +1,2 @@
 sample,fastq_1,fastq_2,bam
-SMAD,,,/data/alvin/ref/SMA/SMAD.bwa.sortdup.bqsr.bam
+SMAD,,,/path/to/ref/SMA/SMAD.bwa.sortdup.bqsr.bam

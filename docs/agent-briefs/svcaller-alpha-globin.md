@@ -1,6 +1,6 @@
 # Agent brief — SVcaller α-globin module
 
-**Repo:** `/data/alvin/SVcaller` · **Branch from:** `main` (currently `586f3a9`)
+**Repo:** `/path/to/SVcaller` · **Branch from:** `main` (currently `586f3a9`)
 **Companion track:** OmniGen (see `omnigen-thalassemia.md`). You share a frozen
 interface with it. **You may not change that interface unilaterally.**
 

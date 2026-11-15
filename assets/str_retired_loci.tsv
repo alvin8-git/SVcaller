@@ -1,0 +1,11 @@
+# Repeat loci with no curated gene-condition link (ClinGen, GenCC, PanelApp): the HTML report lists them, never grades them.
+# Copied from OmniGen panel_sources/repeat_audit.tsv (verdict RETIRE), owner decision 2026-11-15; the audit's evidence lives there.
+# tests/test_str_curation_scope.py compares this table with that file when $OMNIGEN_PANEL_SOURCES points at it. Do not edit by hand.
+gene	hgnc_id	verdict
+ATXN8OS	HGNC:10561	RETIRE
+NIPA1	HGNC:17043	RETIRE
+NOTCH2NLC	HGNC:53924	RETIRE
+MARCHF6	HGNC:30550	RETIRE
+RILPL1	HGNC:26814	RETIRE
+STARD7	HGNC:18063	RETIRE
+FGF14	HGNC:3671	RETIRE

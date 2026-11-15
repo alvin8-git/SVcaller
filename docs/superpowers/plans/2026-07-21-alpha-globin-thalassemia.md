@@ -383,7 +383,7 @@ was caught by inspecting the BAMs directly, before any code was written. Earlier
 revisions of this plan had the truth set backwards; a correct caller validated
 against those labels would have scored 0/2.
 
-Evidence, from `/data/alvin/ref/THAL/*_30X.bwa.sortdup.bqsr.bam`
+Evidence, from `/path/to/ref/THAL/*_30X.bwa.sortdup.bqsr.bam`
 (~76 GB each, `samtools quickcheck` OK, full hg38, DNBSEQ/MGI reads —
 `@RG PL:COMPLETE`, aligned with BGI MegaBOLT bwa):
 
@@ -714,7 +714,7 @@ SVcaller's. OmniGen already claims Beta Chain-Related Hemoglobinopathy → HBB i
 
 ### The VCFs exist and are on disk
 
-Confirmed 2026-07-22 in `/data/alvin/ref/THAL/`:
+Confirmed 2026-07-22 in `/path/to/ref/THAL/`:
 
 ```
 THAL1_30X.bwa.sortdup.bqsr.hc4.vcf.gz   287 MB  + .tbi
@@ -722,7 +722,7 @@ THAL2_30X.bwa.sortdup.bqsr.hc4.vcf.gz   288 MB  + .tbi
 ```
 
 `hc4` = GATK HaplotypeCaller 4.x, same MegaBOLT delivery as the BAMs. Equivalent
-`.hc.vcf.gz` files already exist for HG001–HG007 in `/data/alvin/ref/GIAB/`, so
+`.hc.vcf.gz` files already exist for HG001–HG007 in `/path/to/ref/GIAB/`, so
 the GIAB set doubles as a negative control cohort for the β panel at no cost.
 
 **HBB is well covered.** `tabix chr11:5225000-5232000` returns 17 records for
@@ -734,7 +734,7 @@ balanced AD. Callability at the locus is not in question.
 Not a caller — an **annotated β-thal allele list**, and the means to apply it:
 
 - **No ClinVar VCF on disk.**
-- **VEP is installed** (`/data/alvin/ensembl-vep`) but **has no cache**, so it
+- **VEP is installed** (`/path/to/ensembl-vep`) but **has no cache**, so it
   cannot annotate offline as-is.
 
 Until one of those is fixed, the 17/10 HBB records above are uninterpreted. They
@@ -1055,17 +1055,17 @@ THAL2's Hb Quong Sze het and THAL1's absence at the same site from the real BAMs
   § Verification above actually asks for.
 
   > **Launched 2026-07-23.** Full end-to-end THAL1 + THAL2 run started, detached
-  > (`setsid nohup`, wrapper `/data/alvin/tmp/thal_run/run_thal.sh`, PPID=1),
+  > (`setsid nohup`, wrapper `/path/to/tmp/thal_run/run_thal.sh`, PPID=1),
   > running the two samples **sequentially** (back-to-back, not concurrent).
   > STEP-0 de-risk passed: THAL1's primary 25 contigs are byte-identical to
   > `hg38.canonical.fa` (chr16 @ GRCh38 90338345); the BAM is a 3366-contig full-hg38
   > superset restricted at runtime by `wgs_autosomal.bed`, and the pipeline's own
   > `VALIDATE_REF_BAM` step passed for THAL1.
   > - Sessions: `THAL1_thal`, `THAL2_thal` (explicit `-name` each).
-  > - Work dirs: `/data/alvin/SVcaller/work_THAL1`, `/data/alvin/SVcaller/work_THAL2`.
-  > - Per-sample cwd + `sheet.csv`: `/data/alvin/tmp/thal_run/THAL1`, `.../THAL2`.
-  > - Log: `/data/alvin/tmp/thal_run/run.log`.
-  > - `--outdir /data/alvin/SVcaller/results` (subworkflow appends `/${meta.id}/alpha_globin`).
+  > - Work dirs: `/path/to/SVcaller/work_THAL1`, `/path/to/SVcaller/work_THAL2`.
+  > - Per-sample cwd + `sheet.csv`: `/path/to/tmp/thal_run/THAL1`, `.../THAL2`.
+  > - Log: `/path/to/tmp/thal_run/run.log`.
+  > - `--outdir /path/to/SVcaller/results` (subworkflow appends `/${meta.id}/alpha_globin`).
   > - Flags: `-profile docker --skip_gridss true --skip_melt true --skip_svaba true`;
   >   `--skip_alpha_globin` **not** passed (M8 must run).
   > - Expected contracts: `results/THAL1/alpha_globin/THAL1.alpha_globin.tsv` and
@@ -1209,7 +1209,7 @@ Still open:
    the tube IDs, not the filenames.
 7. Does OmniGen's `not_covered` model, keyed on entry point (VCF vs BAM), need
    extending to express a tier that is **never** coverable by any input?
-8. **What is `MITO_30X`?** A third 78 GB BAM in `/data/alvin/ref/THAL/` whose
+8. **What is `MITO_30X`?** A third 78 GB BAM in `/path/to/ref/THAL/` whose
    identity and purpose are unverified. Given the THAL1/THAL2 swap, do not
    assume its label is right either.
 9. **Source a β-thal positive control.** β sensitivity is currently n=0. Same

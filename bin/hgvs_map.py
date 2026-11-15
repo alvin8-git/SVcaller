@@ -18,7 +18,7 @@ import argparse
 import re
 import sys
 
-DEFAULT_BED = "/data/alvin/ref/annotsv/Annotations_Human/Genes/GRCh38/genes.RefSeq.sorted.bed"
+DEFAULT_BED = __import__("os").environ.get("REF_ROOT", "/path/to/ref") + "/annotsv/Annotations_Human/Genes/GRCh38/genes.RefSeq.sorted.bed"
 
 # (gene, c.pos, expected 1-based genomic) — every one of these was established
 # independently of this code, so agreement is real evidence the mapper is right:

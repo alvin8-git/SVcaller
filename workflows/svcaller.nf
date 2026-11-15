@@ -142,6 +142,8 @@ workflow SVCALLER {
         CNV_TRAITS.out.gst,
         CNV_TRAITS.out.lpa,
         ch_alpha_globin,
+        SV_CALLING.out.str_summary,
+        SV_CALLING.out.sv_not_assessed,
     )
 
     emit:

@@ -7,7 +7,7 @@ Result: `.git` 884 GB → 2.7 MB, `/data` free space 1.3 TB → 2.1 TB, SMA BAMs
 relocated to the central store. All 174 commits, both rescue branches, and
 `origin/main` parity intact; `git fsck` clean; 79/79 tests pass. Pre-change
 backup bundle (all refs, 2.5 MB) at
-`/data/alvin/tmp/SVcaller-prehousekeep-2026-07-21.bundle`.
+`/path/to/tmp/SVcaller-prehousekeep-2026-07-21.bundle`.
 
 ---
 
@@ -63,7 +63,7 @@ before pruning; do not drop them silently.
 **Action (safe to run now — no dangling commits remain):**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 rm -f .git/objects/pack/tmp_pack_*          # 487 GB, git-declared garbage
 git gc --prune=now                          # drops the 3-object orphan pack
 ```
@@ -77,24 +77,24 @@ Nextflow run is active (verified idle 2026-07-21).
 
 ---
 
-## 2. Move the SMA BAMs to the central `/data/alvin/ref` — 397 GB out of the repo
+## 2. Move the SMA BAMs to the central `/path/to/ref` — 397 GB out of the repo
 
 The repo is inconsistent about where input BAMs live. HG002 already reads from
 the central store, but the three SMA BAMs sit *inside the working tree*:
 
 ```
-validation/validation_samplesheet.csv  →  /data/alvin/ref/GIAB/HG002…bam        ✅
-validation/smn_*_samplesheet.csv       →  /data/alvin/SVcaller/ValidationBAM/…  ❌ 397 GB
+validation/validation_samplesheet.csv  →  /path/to/ref/GIAB/HG002…bam        ✅
+validation/smn_*_samplesheet.csv       →  /path/to/SVcaller/ValidationBAM/…  ❌ 397 GB
 ```
 
 `ValidationBAM/SMA_BAM/` is 3 × ~140 GB BAM + `.bai`, owned by `root`.
-`/data/alvin/ref` and `/data/alvin/SVcaller` are the same filesystem (`/dev/sdb`),
+`/path/to/ref` and `/path/to/SVcaller` are the same filesystem (`/dev/sdb`),
 so the move is a rename — instant, no copy, no extra space needed.
 
 ```bash
-sudo mkdir -p /data/alvin/ref/SMA
-sudo mv /data/alvin/SVcaller/ValidationBAM/SMA_BAM/* /data/alvin/ref/SMA/
-rmdir /data/alvin/SVcaller/ValidationBAM/SMA_BAM /data/alvin/SVcaller/ValidationBAM
+sudo mkdir -p /path/to/ref/SMA
+sudo mv /path/to/SVcaller/ValidationBAM/SMA_BAM/* /path/to/ref/SMA/
+rmdir /path/to/SVcaller/ValidationBAM/SMA_BAM /path/to/SVcaller/ValidationBAM
 ```
 
 Then update the four samplesheets that reference the old path
@@ -112,7 +112,7 @@ Five stale scratch dirs, ~20 GB total. All five samples have published reports i
 project's own convention requires before deletion.
 
 ```bash
-cd /data/alvin/SVcaller && rm -rf work_HG001 work_HG004 work_HG005 work_HG006 work_HG007
+cd /path/to/SVcaller && rm -rf work_HG001 work_HG004 work_HG005 work_HG006 work_HG007
 ```
 
 **Do not** consolidate them into `work/`. Per-sample work directories are a
@@ -145,8 +145,8 @@ Six `.md` files at root: `README.md`, `CLAUDE.md`, `Documentation.md`,
 at root and moves the rest under `docs/` (`VERSION.md` → `CHANGELOG.md`).
 `ORGANIZATION.md` largely duplicates what this file covers and could be folded in.
 
-Also: `pytest-of-alvin/` is untracked scratch at root — delete it and add
-`pytest-of-alvin/` to `.gitignore`.
+Also: `pytest-of-*/` is untracked scratch at root — delete it and add
+`pytest-of-*/` to `.gitignore`.
 
 ---
 

@@ -64,6 +64,13 @@
       </a>
     </div>
     <div class="card-body">
+      <div class="alert alert-secondary py-2" role="alert" style="font-size:0.82rem;" data-role="sv-not-graded">
+        <strong>SV and CNV rows are caller output, not graded findings.</strong> SVcaller measures and annotates; it does not decide what
+        is a finding. The OmniGen report applies one Finding gate to every call (at least two callers, read-depth support, at most 1 Mb,
+        not common in the population, not recurrent across the cohort, ClinGen dosage evidence for a deletion or duplication of 100 kb or
+        more, and a duplication over a recessive gene is never a carrier result) and sets a call aside with its reason.
+        A call listed here may be set aside there: see the OmniGen report for findings.
+      </div>
 
       <!-- Tier 1a: Named disease diagnoses (STR EXPANDED + SMA) -->
       {% if known_diseases %}
@@ -168,6 +175,7 @@
             <tr><th>Properly paired</th><td>{{ qc.properly_paired_pct }}%</td></tr>
             <tr><th>Supplementary reads</th><td>{{ qc.supplementary_pct }}%</td></tr>
             <tr><th>Mean coverage</th><td>{{ qc.mean_depth }}x</td></tr>
+            {% if qc.low_depth_note %}<tr><th></th><td class="text-warning" style="font-size:0.82rem;" data-role="low-depth">{{ qc.low_depth_note }}</td></tr>{% endif %}
             <tr><th>Duplicate rate</th><td>{{ qc.dup_rate }}%</td></tr>
             <tr><th>Median insert size</th><td>{{ qc.median_insert_size }} bp</td></tr>
             <tr><th>Mean insert size (SD)</th><td>{{ qc.mean_insert_size }} bp (&plusmn;{{ qc.insert_size_std }})</td></tr>
@@ -207,6 +215,15 @@
         SVs below are shown unannotated from the merged callset &mdash; gene, OMIM, and
         ACMG columns are blank by configuration, not because no variants were found.
       </div>
+      {% endif %}
+      {% if sv_not_assessed %}
+      <div class="alert alert-warning py-2" role="alert" style="font-size:0.85rem;" data-role="sv-not-assessed">
+        <strong>Partly screened: {{ sv_not_assessed_text }} not assessed.</strong>
+        {% for r in sv_not_assessed %}{{ r.caller }} {{ r.svtype }} calling hit its time cap ({{ r.limit }}) and the run continued without it;{% endfor %}
+        the inversion count below covers the other callers only. It means &ldquo;not assessed&rdquo;, not &ldquo;no inversions&rdquo;.
+      </div>
+      {% elif sv_not_assessed_state == "unrecorded" %}
+      <p class="text-muted" style="font-size:0.78rem;" data-role="sv-not-assessed">Whether delly inversion calling finished is not recorded for this run.</p>
       {% endif %}
       <table class="table table-sm sv-table" style="max-width:600px;">
         <thead>
@@ -341,6 +358,9 @@
               {% elif row.status == "CANDIDATE" %}<span class="badge bg-warning text-dark" style="padding:2px 5px;border-radius:4px;font-size:0.78rem;">CANDIDATE</span>
               {% elif row.status == "INTERMEDIATE" %}<span class="badge-intermediate">INTERMEDIATE</span>
               {% elif row.status == "NORMAL" %}<span class="badge-normal">NORMAL</span>
+              {% elif row.status == "NOT GRADED" %}<span class="badge-unknown" title="{{ row.status_note }}">NOT GRADED</span>
+              {% elif row.status == "UNRESOLVED" %}<span class="badge-unknown" title="at least this many repeats; the allele is longer than short reads can size">UNRESOLVED</span>
+              {% elif row.status == "NOT MEASURABLE" %}<span class="badge-unknown" title="no read gave a size for this locus">NOT MEASURABLE</span>
               {% else %}<span class="badge-unknown">UNKNOWN</span>{% endif %}
             </td>
             <td>
@@ -361,6 +381,7 @@
             <td>{{ row.normal_max or "—" }}</td>
             <td>{{ row.path_min or "—" }}</td>
             <td style="font-size:0.78rem;">
+              {% if row.status_note %}<small class="d-block text-muted">Not graded: {{ row.status_note }}</small>{% endif %}
               {% if row.source in ("EH","Both") %}Span: {{ row.spanning }} / Flank: {{ row.flanking }}
                 {% if row.repci %}<small class="d-block text-muted">CI: {{ row.repci }}</small>{% endif %}
               {% endif %}
@@ -372,6 +393,9 @@
       </table>
       <p class="text-muted mb-0" style="font-size:0.78rem;">
         Disease thresholds sourced from STRchive / OMIM. EXPANDED = observed CN &ge; pathogenic threshold. CI = 95% confidence interval (ExpansionHunter).
+        NOT GRADED = listed only: no curated gene-condition link, a counting convention not confirmed by a cited source, or catalog coordinates that hold no repeat in GRCh38.
+        UNRESOLVED = longer than short reads can size, so only a lower bound ("at least N repeats") is known and the locus is neither normal nor expanded; NOT MEASURABLE = no read gave any size.
+        Counts are ExpansionHunter's, after the cited per-locus correction in assets/eh_count_offsets.tsv (str_summary.tsv).
       </p>
     </div>
   </div>

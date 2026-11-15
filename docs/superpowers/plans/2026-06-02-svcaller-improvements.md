@@ -1,4 +1,4 @@
-<!-- /autoplan restore point: /home/alvin/.gstack/projects/alvin8-git-SVcaller/master-autoplan-restore-20260602-113311.md -->
+<!-- /autoplan restore point: <local autoplan store>/master-autoplan-restore-20260602-113311.md -->
 # SVcaller Next-Steps Improvement Plan
 
 **Date:** 2026-06-02

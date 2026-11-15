@@ -93,16 +93,23 @@ def _dosage(d):
     return "not resolved to a single count" if n in ("", "NA") else f"{_e(n)} of 4 genes"
 
 
-_EVIDENCE = {"both": "read-depth + junction read", "depth": "read-depth",
+# Owner decision 2026-11-15 (same as OmniGen): a single-copy -a3.7 / -a4.2 that rests on depth alone is "suspected, not confirmed",
+# never a carrier. bin/alpha_globin.py writes deletion_alleles NA and the suspected allele in its own column.
+_UNDETERMINED = ("NA", "")
+_EVIDENCE = {"suspected_depth": "read-depth only (suspected, not confirmed)", "both": "read-depth + junction read", "depth": "read-depth",
              "junction": "junction read", "none": "&mdash;", "": "&mdash;"}
 
 _ALPHA_AA = ("aa", "αα")
 
 
-def _describe_deletion(alleles):
+def _describe_deletion(alleles, suspected=""):
     """Plain description of the deletion genotype, keeping the FULL group string.
     Never collapses a '|' group to one allele — that would invent precision."""
     alleles = (alleles or "").strip()
+    if alleles in _UNDETERMINED:
+        if suspected:
+            return f"Suspected (read depth only), not confirmed: <code>{_e(suspected)}</code>."
+        return "Not determined (a copy-number call could not be made from the evidence)."
     haps = alleles.split("/")
     dels = [h for h in haps if h and h != "none" and h not in _ALPHA_AA]
     if not dels or alleles in ("", "none"):
@@ -141,6 +148,12 @@ def _describe_sites(genotypes, by_site, ordered):
 def _genotype_note(d):
     """One measurement-level clause after the genotype — never a clinical call."""
     alleles = (d.get("deletion_alleles") or "").strip()
+    sus = (d.get("suspected_allele") or "").strip()
+    if sus:
+        return (f" &mdash; suspected {_e(sus.split('/')[0])} from the depth pattern alone, not confirmed "
+                f"(no breakpoint junction); confirm by gap-PCR or MLPA. Not a carrier result")
+    if alleles in _UNDETERMINED:
+        return " &mdash; not determined"
     haps = alleles.split("/")
     dels = [h for h in haps if h and h != "none" and h not in _ALPHA_AA]
     if not dels or alleles in ("", "none"):
@@ -179,7 +192,7 @@ def render_html_section(sample_id, contract_path):
        <span class="badge bg-secondary align-middle">confidence: {conf}</span></p>
     <p class="mb-3">Genotype: <strong>{_e(d.get('genotype') or 'NA')}</strong><span class="text-muted">{_genotype_note(d)}</span></p>
     <table class="table table-sm mb-3">
-      <tr><th style="width:34%">Deletion</th><td>{_describe_deletion(d.get('deletion_alleles'))}</td></tr>
+      <tr><th style="width:34%">Deletion</th><td>{_describe_deletion(d.get('deletion_alleles'), (d.get('suspected_allele') or '').strip())}</td></tr>
       <tr><th>Supporting evidence</th><td>{_EVIDENCE.get((d.get('deletion_evidence') or '').strip(), _e(d.get('deletion_evidence')))}</td></tr>
       <tr><th>Point-mutation scan</th><td>{_describe_sites(d.get('site_genotypes'), by_site, ordered)}</td></tr>
     </table>

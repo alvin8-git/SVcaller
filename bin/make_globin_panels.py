@@ -108,7 +108,7 @@ def write(path, rows, title, extra):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ref", default="/data/alvin/ref/GRCh38/hg38.fa")
+    ap.add_argument("--ref", default=os.environ.get("REF_ROOT", "/path/to/ref") + "/GRCh38/hg38.fa")
     ap.add_argument("--bed", default=DEFAULT_BED)
     ap.add_argument("--outdir", default="assets")
     a = ap.parse_args()

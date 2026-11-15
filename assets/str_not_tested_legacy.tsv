@@ -1,0 +1,16 @@
+# Verbatim copy of OmniGen panel_sources/str_not_tested.tsv; applies to str.vcf from the OLD catalogue only (ADR 0006 there); tests/test_str_curation_scope.py compares them.
+# Repeat-catalog loci whose coordinates hold no repeat in GRCh38: the card shows them 'not tested', never 'normal'.
+# Evidence: str_catalog_audit_2026-11-15_hg19_check.txt (the SVcaller EH catalog's coordinates intersected with STRchive hg38 and hg19 loci,
+# gap audit 2026-11-15). coordinate_build = hg19 when only the hg19 STRchive locus overlaps, neither when none does.
+# Applies to str_summary files WITHOUT the variant_id column (old catalogue); results from the rebuilt catalogue ignore this table (ADR 0006).
+# tests/run_tests.py compares this table with the evidence file in both directions. 
+locus	coordinate_build	evidence
+ATXN1	hg19	str_catalog_audit_2026-11-15_hg19_check.txt
+ATXN8OS	hg19	str_catalog_audit_2026-11-15_hg19_check.txt
+CACNA1A	neither	str_catalog_audit_2026-11-15_hg19_check.txt
+NIPA1	neither	str_catalog_audit_2026-11-15_hg19_check.txt
+PPP2R2B	hg19	str_catalog_audit_2026-11-15_hg19_check.txt
+EIF4A3	neither	str_catalog_audit_2026-11-15_hg19_check.txt
+SAMD12	hg19	str_catalog_audit_2026-11-15_hg19_check.txt
+RILPL1	neither	str_catalog_audit_2026-11-15_hg19_check.txt
+STARD7	neither	str_catalog_audit_2026-11-15_hg19_check.txt

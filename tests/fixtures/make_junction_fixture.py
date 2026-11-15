@@ -64,7 +64,7 @@ def rc(s):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ref", default="/data/alvin/ref/GRCh38/hg38.fa")
+    ap.add_argument("--ref", default=os.environ.get("REF_ROOT", "/path/to/ref") + "/GRCh38/hg38.fa")
     ap.add_argument("--out", default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                   "alpha_junction.bam"))
     a = ap.parse_args()

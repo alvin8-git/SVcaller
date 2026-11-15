@@ -18,7 +18,7 @@ If someone does wire a scatter later, these assertions catch a broken gather
 before it silently empties a clinical CNV sheet.
 """
 import sys
-sys.path.insert(0, "/data/alvin/SVcaller/bin")
+sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "..", "bin"))
 import cnv_consensus as c
 
 

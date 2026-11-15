@@ -9,8 +9,8 @@ include { GATK_CREATE_PON           } from '../modules/gatk/gcnv_pon'
  * Usage:
  *   nextflow run workflows/pon_build.nf \
  *     --input giab_bam_samplesheet.csv \
- *     --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
- *     --outdir /data/alvin/SVcaller/pon \
+ *     --ref_fasta /path/to/ref/GRCh38/GRCh38.fasta \
+ *     --outdir /path/to/SVcaller/pon \
  *     -profile docker
  */
 

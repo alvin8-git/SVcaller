@@ -1,0 +1,7 @@
+# Verbatim copy of OmniGen panel_sources/str_count_convention.tsv (owner decision 2026-11-15); tests/test_str_curation_scope.py compares them.
+# Counting convention of narrow-gap repeat loci (owner decision 2026-11-15). A locus whose STRchive benign_max and pathogenic_min differ by NARROW_GAP_MAX units or fewer
+# is graded only with a row here: a cited source showing the unit count in STRchive's ranges is what ExpansionHunter reports (after SVcaller's assets/eh_count_offsets.tsv).
+# Without a row the locus is listed, not graded. Add a row only with a citation that says how the units are counted.
+locus	convention	citation	verified_date
+PABPN1	(GCN) codons between ATG and GGG; normal 10 = the GRCh38 reference; SVcaller subtracts 1 from the EH count (assets/eh_count_offsets.tsv)	PMID 28011929: "the wild-type PABPN1 gene contains 10 (GCN) repeats"	2026-11-15
+DAB1	ATTTC units only (inserted in an ATTTT tract); GAAAT/TGAAA in the catalogue is the ATTTC reverse complement; SVcaller grades variant SCA37_DAB1 (motif TGAAA, eh_graded_variants.tsv), the AAAAT block is the benign flank; GRCh38 reference has 0 GAAAT units; benign_max 30 is STRchive path_min-1, not separately sourced	PMID 28686858 (Seixas 2017, PMC5501871): "non-pathogenic and pathogenic alleles have the configurations [(ATTTT) 7-400] and [(ATTTT) 60-79 (ATTTC) 31-75 (ATTTT) 58-90]"	2026-11-15

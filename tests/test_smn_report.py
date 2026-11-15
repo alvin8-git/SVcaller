@@ -212,7 +212,7 @@ def test_floor_missing_depth_fails_loud(tmp_path):
 def test_floor_param_and_wiring_separate_from_min_depth():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     cfg = open(os.path.join(root, "nextflow.config")).read()
-    assert re.search(r"^\s*smn_min_depth\s*=\s*18\b", cfg, re.M) and re.search(r"^\s*min_depth\s*=\s*25\b", cfg, re.M)
+    assert re.search(r"^\s*smn_min_depth\s*=\s*18\b", cfg, re.M) and re.search(r"^\s*min_depth\s*=\s*20\b", cfg, re.M)
     assert "params.smn_min_depth" in open(os.path.join(root, "subworkflows/smn_calling.nf")).read()
 
 

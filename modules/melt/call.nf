@@ -76,7 +76,7 @@ process MELT_CALL {
         -t       "\$zip_file" \\
         \${n_arg} \\
         -w       melt_tmp/${metype} \\
-        -c       ${params.min_depth} \\
+        -c       ${params.melt_coverage} \\
         -sr      ${params.melt_min_reads} \\
         2>&1; then
         echo "ERROR: MELT Single failed for ME type ${metype}." >&2

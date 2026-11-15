@@ -190,7 +190,8 @@ HG003,,,/path/HG003.bam
 | `--annotsv_db` | none | `Annotations_Human` folder |
 | `--eh_catalog` | `assets/eh_catalog.json` | ExpansionHunter catalog (32 loci) |
 | `--giab_truth`, `--giab_truth_v5q` | none | Enables Truvari benchmarking |
-| `--min_depth` | `25` | Mean depth gate; the run stops below it |
+| `--min_depth` | `20` | Mean depth gate; the run stops below it |
+| `--melt_coverage` | `25` | MELT `-c` coverage argument (independent of `--min_depth`) |
 | `--smn_min_depth` | `18` | Below this, SMN is `NoCall:BelowValidatedDepth` |
 | `--delly_inv_max_time` | `2h` | Wall-clock cap on `delly call -t INV` only. A duration (`2h`, `90m`, `7200s`) or bare seconds (`7200`); `0`/`false` disables; under 1 s is an error. At the cap the sample continues without delly inversion calls and `<sample>.sv_not_assessed.tsv` has a row |
 | `--run_gridss`, `--run_scramble`, `--run_melt` | `false` | Opt-in callers (legacy `--skip_*` flags still work) |
@@ -295,7 +296,7 @@ benchmark of the current Manta + Delly default has been recorded. Recall is abou
 reads miss most insertions in the assembly-based truth sets.
 
 Known limits: SMN calls need at least 18x mean depth, and that floor comes from one sample. The run
-stops below `--min_depth` (25x). AMY1 and LPA KIV-2 copy numbers are proportional and not calibrated.
+stops below `--min_depth` (20x; 30x is recommended). AMY1 and LPA KIV-2 copy numbers are proportional and not calibrated.
 `INTER_Z_A` in the alpha-globin locus is never scored. On HG001, read depth refutes 96% of large
 DEL/DUP calls (`docs/CHANGES.md`, 2026-11-07).
 

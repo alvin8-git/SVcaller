@@ -49,6 +49,7 @@ workflow SV_CALLING {
     INFER_SEX(ch_validated_bam)
     EXPANSIONHUNTER(ch_validated_bam.join(INFER_SEX.out.sex), ch_fasta, ch_fai, ch_eh_catalog)
     EH_SIZING(EXPANSIONHUNTER.out.json.join(INFER_SEX.out.sex.map { m, j, t -> [m, j] }),
+             file("${projectDir}/assets/eh_count_offsets.tsv", checkIfExists: true),
              file("${projectDir}/assets/eh_graded_variants.tsv", checkIfExists: true))
 
     // P6: STRling genome-wide STR expansion detection (parallel with EH)
@@ -152,5 +153,6 @@ workflow SV_CALLING {
     sv_tbi      = TRA_CONSENSUS.out.tbi
     str_vcf     = EXPANSIONHUNTER.out.vcf
     str_summary = EH_SIZING.out.tsv
+    sv_not_assessed = DELLY_CALL_SVTYPE.out.not_assessed   // INV task only: header only = delly INV finished, a row = it hit the cap
     strling_tsv = ch_strling_tsv
 }

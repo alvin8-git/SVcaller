@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(0, "/data/alvin/SVcaller/bin")
+sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "..", "bin"))
 from cnv_consensus import CNVSegment, merge, load_cnvpytor, load_gatk
 import tempfile, textwrap
 from pathlib import Path

@@ -26,7 +26,7 @@ NAME="${1:?usage: nf-run-headless.sh <run-name> <nextflow args...>}"
 shift
 [ $# -gt 0 ] || { echo "no nextflow arguments given" >&2; exit 2; }
 
-TMP="${TMPDIR:-/data/alvin/tmp}"
+TMP="${TMPDIR:-$PWD/.nf-headless}"   # never /tmp (small root partition); set TMPDIR to put logs elsewhere
 mkdir -p "$TMP"
 LOG="$TMP/${NAME}.log"
 PIDFILE="$TMP/${NAME}.pid"

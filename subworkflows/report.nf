@@ -18,11 +18,15 @@ process BUILD_HTML_REPORT {
                      path(benchmark_json_v5q), path(sizebin_json_v5q),
                      path(strling_tsv), path(sv_vcf),
                      path(rh_status_tsv), path(amy1_tsv), path(gst_null_tsv), path(lpa_kiv2_tsv),
-                     path(alpha_tsv)
+                     path(alpha_tsv), path(str_summary_tsv), path(sv_not_assessed_tsv)
     // STR threshold tables + graded-variant table, staged (not read from projectDir) so -resume re-renders when they change
     path str_ranges
     path str_ranges_legacy
     path str_graded
+    path str_offsets
+    path str_retired
+    path str_convention
+    path str_not_tested
 
     output:
     tuple val(meta), path("${meta.id}.report.html"),    emit: html
@@ -43,6 +47,9 @@ process BUILD_HTML_REPORT {
     def amy1_arg        = amy1_tsv.name            != "NO_FILE"       ? "--amy1          ${amy1_tsv}"            : ""
     def gst_arg         = gst_null_tsv.name        != "NO_FILE"       ? "--gst-null      ${gst_null_tsv}"        : ""
     def lpa_arg         = lpa_kiv2_tsv.name        != "NO_FILE"       ? "--lpa-kiv2      ${lpa_kiv2_tsv}"        : ""
+    // offset-corrected, sized STR counts (eh_sizing.py) and the record of callers that did not finish (delly INV cap)
+    def str_sum_arg     = str_summary_tsv.name     != "NO_FILE"       ? "--str-summary   ${str_summary_tsv}"     : ""
+    def not_assessed_arg = sv_not_assessed_tsv.name != "NO_FILE"      ? "--sv-not-assessed ${sv_not_assessed_tsv}" : ""
     """
     export PATH=${projectDir}/bin:\$PATH
     smn_report.py \\
@@ -72,6 +79,10 @@ process BUILD_HTML_REPORT {
         --str-ranges        ${str_ranges} \\
         --str-ranges-legacy ${str_ranges_legacy} \\
         --str-graded        ${str_graded} \\
+        --str-offsets       ${str_offsets} \\
+        --str-retired       ${str_retired} \\
+        --str-convention    ${str_convention} \\
+        --str-not-tested    ${str_not_tested} \\
         ${bench_arg} \\
         ${sizebin_arg} \\
         ${bench_v5q_arg} \\
@@ -85,7 +96,9 @@ process BUILD_HTML_REPORT {
         ${rh_arg} \\
         ${amy1_arg} \\
         ${gst_arg} \\
-        ${lpa_arg}
+        ${lpa_arg} \\
+        ${str_sum_arg} \\
+        ${not_assessed_arg}
     """
 }
 
@@ -114,6 +127,8 @@ workflow REPORT {
     ch_gst_null      // [ meta, gst_null.tsv ]      GSTM1/GSTT1 null
     ch_lpa_kiv2      // [ meta, lpa_kiv2.tsv ]       LPA KIV-2 copy number
     ch_alpha_globin  // [ meta, alpha_globin.tsv ]   M8 alpha-globin contract (optional)
+    ch_str_summary   // [ meta, str_summary.tsv ]     EH counts after the cited offsets, sized (optional)
+    ch_sv_not_assessed // [ meta, sv_not_assessed.tsv ] callers that hit their time cap (optional)
 
     main:
     // HARDEN the meta-join. Every per-sample channel below is joined by its FULL
@@ -147,6 +162,8 @@ workflow REPORT {
     ch_gst_null     = byId(ch_gst_null)
     ch_lpa_kiv2     = byId(ch_lpa_kiv2)
     ch_alpha_globin = byId(ch_alpha_globin)
+    ch_str_summary  = byId(ch_str_summary)
+    ch_sv_not_assessed = byId(ch_sv_not_assessed)
 
     ch_circos_in = ch_sv_vcf
         .join(ch_cnv_bed, remainder: true)
@@ -272,15 +289,23 @@ workflow REPORT {
         // "module did not run" card from a NO_FILE sentinel, so this never drops a report.
         .join(ch_alpha_globin, remainder: true).filter { it[1] != null }
         .map { row -> row[0..-2] + [row[-1] ?: file("NO_FILE")] }
+        .join(ch_str_summary, remainder: true).filter { it[1] != null }
+        .map { row -> row[0..-2] + [row[-1] ?: file("NO_FILE")] }
+        .join(ch_sv_not_assessed, remainder: true).filter { it[1] != null }
+        .map { row -> row[0..-2] + [row[-1] ?: file("NO_FILE")] }
         // final: [meta, sv_tsv, cnv_bed, smn_tsv, circos_svg, benchmark_json, sizebin_json,
         //         coverage_summary, picard_metrics, str_vcf, flagstat_txt, insert_size_metrics,
         //         benchmark_json_v5q, sizebin_json_v5q, strling_tsv, sv_vcf,
-        //         rh_status, amy1, gst_null, lpa_kiv2, alpha_globin]
+        //         rh_status, amy1, gst_null, lpa_kiv2, alpha_globin, str_summary, sv_not_assessed]
 
     BUILD_HTML_REPORT(ch_report_in,
                       file("${projectDir}/assets/str_disease_ranges.tsv", checkIfExists: true),
                       file("${projectDir}/assets/str_disease_ranges.legacy.tsv", checkIfExists: true),
-                      file("${projectDir}/assets/eh_graded_variants.tsv", checkIfExists: true))
+                      file("${projectDir}/assets/eh_graded_variants.tsv", checkIfExists: true),
+                      file("${projectDir}/assets/eh_count_offsets.tsv", checkIfExists: true),
+                      file("${projectDir}/assets/str_retired_loci.tsv", checkIfExists: true),
+                      file("${projectDir}/assets/str_count_convention.tsv", checkIfExists: true),
+                      file("${projectDir}/assets/str_not_tested_legacy.tsv", checkIfExists: true))
 
     // Fail-fast guard: every sample entering REPORT (one sv_tsv each) must produce an
     // HTML report. A meta-mismatch or missing-channel join used to drop samples silently

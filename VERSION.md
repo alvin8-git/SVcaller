@@ -25,10 +25,10 @@
 ### Reference Data
 | File | Path |
 |------|------|
-| GRCh38 FASTA | `/data/alvin/ref/GRCh38/GRCh38.fasta` |
-| WGS intervals BED | `/data/alvin/ref/GRCh38/wgs_autosomal.bed` |
-| GIAB BAMs HG001–HG007 | `/data/alvin/ref/GIAB/` |
-| GIAB SV truth (HG002) | `/data/alvin/ref/GIAB/HG002_SV_v0.6.vcf.gz` |
+| GRCh38 FASTA | `/path/to/ref/GRCh38/GRCh38.fasta` |
+| WGS intervals BED | `/path/to/ref/GRCh38/wgs_autosomal.bed` |
+| GIAB BAMs HG001–HG007 | `/path/to/ref/GIAB/` |
+| GIAB SV truth (HG002) | `/path/to/ref/GIAB/HG002_SV_v0.6.vcf.gz` |
 
 ### Additional Fixes (2026-05-12 session 2)
 - M3: PreprocessIntervals added to case CNV workflow (`subworkflows/cnv_calling.nf`)

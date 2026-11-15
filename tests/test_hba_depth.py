@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path("/data/alvin/SVcaller")
+REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "bin"))
 
 import cnv_traits_common as c  # noqa: E402
@@ -24,7 +24,7 @@ GIAB_BASELINE = REPO / "validation" / "giab_alpha_baseline.tsv"
 SCORED_SEGMENTS = ("HBZ", "HBA2", "INTER_A2_A1", "HBA1")
 
 #: Raw depth ratios (segment / chr2:100000000-100020000 control), reproduced
-#: 2026-07-22 from /data/alvin/ref/THAL/*_30X.bwa.sortdup.bqsr.bam with
+#: 2026-07-22 from $REF_ROOT/THAL/*_30X.bwa.sortdup.bqsr.bam with
 #: `samtools depth -a -r <region>`:
 #:   THAL1 ctrl 30.245 · HBZ 26.054 · HBA2 11.086 · INTER 15.273 · HBA1 11.987
 #:   THAL2 ctrl 31.363 · HBZ 22.274 · HBA2 25.275 · INTER 31.100 · HBA1 28.224

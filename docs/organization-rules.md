@@ -8,7 +8,7 @@ the git cleanup and SMA BAM relocation.
 
 ## Part 1 — What is actually in here
 
-Every directory in `/data/alvin/SVcaller`, grouped by lifecycle. Lifecycle is the
+Every directory in `/path/to/SVcaller`, grouped by lifecycle. Lifecycle is the
 useful axis for a Nextflow project, because it determines the three things you
 need to know about any path: is it versioned, is it safe to delete, and who
 regenerates it.
@@ -60,13 +60,13 @@ The pipeline itself. Nothing here is machine-generated.
 
 | Path | Size | Status |
 |---|---|---|
-| ~~`benchmarks_data/`~~ | 260 GB | **Moved 2026-07-21** → `/data/alvin/ref/benchmarks/<sample>/fastq/` |
+| ~~`benchmarks_data/`~~ | 260 GB | **Moved 2026-07-21** → `/path/to/ref/benchmarks/<sample>/fastq/` |
 | `Benchmarks/` | 168 MB | Still here — GIAB truth BEDs/VCFs (HG002 v5.0q, HG003/HG004 v4.2.1) |
 
 Downloaded external artifacts, not products of this pipeline. The COLO829 and
 HCC1395 reads now sit beside the truth sets they are benchmarked against, under
-one `/data/alvin/ref/benchmarks/` tree. `Benchmarks/` is the same category and
-should follow, into `/data/alvin/ref/GIAB/truth/` — its near-identical name to
+one `/path/to/ref/benchmarks/` tree. `Benchmarks/` is the same category and
+should follow, into `/path/to/ref/GIAB/truth/` — its near-identical name to
 the old `benchmarks_data/` was its own hazard. See Rule 2.
 
 ### G. Built panels — regenerable, expensive
@@ -97,7 +97,7 @@ Actual per-sample outputs total under 1 GB. The 356 GB is dominated by
 | `work/` | 1.1 GB | Nextflow task dirs — current shared scratch |
 | ~~`work_HG001`, `work_HG004…HG007`~~ | 20 GB | **Deleted 2026-07-21** once each report was published |
 | `.nextflow/`, `.nextflow.log{,.1–.9}` | ~600 KB | Session state + 10 rotated logs |
-| `pytest-of-alvin/` | 2.6 MB | pytest `tmp_path` factory output — see Rule 4 |
+| `pytest-of-*/` | 2.6 MB | pytest `tmp_path` factory output — see Rule 4 |
 
 ---
 
@@ -112,27 +112,27 @@ If you cannot say which one a new directory is, it does not have a home yet.
 Never let one directory hold two lifecycles — that is precisely why `results/`
 is 356 GB: it mixes outputs, an 11 GB regenerable cache, and a duplicate panel.
 
-### Rule 2 — Input data lives in `/data/alvin/ref`, never in the pipeline repo
+### Rule 2 — Input data lives in `/path/to/ref`, never in the pipeline repo
 
 The repo holds *code that reads data*, not the data. Reference genomes, truth
 sets, PON source BAMs, and benchmark reads all belong to the shared store, where
 they are reused by other pipelines and backed up once:
 
 ```
-/data/alvin/ref/GRCh38/      reference FASTA + indices
-/data/alvin/ref/GIAB/        GIAB BAMs + truth sets
-/data/alvin/ref/SMA/         SMA trio BAMs        (moved 2026-07-21)
-/data/alvin/ref/benchmarks/  COLO829, HCC1395 — truth sets AND reads
-/data/alvin/ref/annotsv/     AnnotSV annotation DB
+/path/to/ref/GRCh38/      reference FASTA + indices
+/path/to/ref/GIAB/        GIAB BAMs + truth sets
+/path/to/ref/SMA/         SMA trio BAMs        (moved 2026-07-21)
+/path/to/ref/benchmarks/  COLO829, HCC1395 — truth sets AND reads
+/path/to/ref/annotsv/     AnnotSV annotation DB
 ```
 
 **Outstanding:** `benchmarks_data/` (260 GB) and `Benchmarks/` (168 MB) still
 violate this. Both are same-filesystem renames, so the move is instant:
 
 ```bash
-mv benchmarks_data/COLO829/* /data/alvin/ref/benchmarks/COLO829/
-mv benchmarks_data/HCC1395/* /data/alvin/ref/benchmarks/HCC1395/
-mkdir -p /data/alvin/ref/GIAB/truth && mv Benchmarks/* /data/alvin/ref/GIAB/truth/
+mv benchmarks_data/COLO829/* /path/to/ref/benchmarks/COLO829/
+mv benchmarks_data/HCC1395/* /path/to/ref/benchmarks/HCC1395/
+mkdir -p /path/to/ref/GIAB/truth && mv Benchmarks/* /path/to/ref/GIAB/truth/
 ```
 
 Test for this rule: *if I deleted this directory, would I re-download it or
@@ -159,23 +159,23 @@ takes the `?: '/tmp'` fallback and bind-mounts `/tmp` — which lives on
 `/dev/mapper/vgubuntu-root`, the 915 GB **OS partition**, not on `/data`. That
 contradicts this machine's standing convention:
 
-> Always use `/data/alvin/tmp` instead of `/tmp` … `/tmp` is on a small root partition.
+> Always use `/path/to/tmp` instead of `/tmp` … `/tmp` is on a small root partition.
 
-Commit `f4a5ac0` did the right thing by removing the hardcoded `/data/alvin/tmp`
+Commit `f4a5ac0` did the right thing by removing the hardcoded `/path/to/tmp`
 from `conf/docker.config` — the path is host-specific and does not belong in a
 portable pipeline. It moved the responsibility to the environment. The
 environment then never took it up. **Fix the environment, not the config:**
 
 ```bash
-echo 'export TMPDIR=/data/alvin/tmp' >> ~/.bashrc     # persistent
-nextflow run … --tmp_dir /data/alvin/tmp              # per-run override
+echo 'export TMPDIR=/path/to/tmp' >> ~/.bashrc     # persistent
+nextflow run … --tmp_dir /path/to/tmp              # per-run override
 ```
 
 Two guards worth adding: refuse to start if `params.tmp_dir` resolves inside
 `projectDir` (a container would then bind-mount the repo over `/tmp`), and warn
 if it resolves onto the root filesystem.
 
-*Caveat on `pytest-of-alvin/`:* it is real and is now gitignored, but it was
+*Caveat on `pytest-of-*/`:* it is real and is now gitignored, but it was
 produced by an agent sandbox that exports `TMPDIR=$PWD`, not by normal use. It is
 evidence that an unset `TMPDIR` lets **whatever the caller happens to set**
 decide where scratch lands — which is the argument for pinning it explicitly.
@@ -245,24 +245,24 @@ tree.
 
 | # | Rule | Action | Reclaims |
 |---|---|---|---|
-| 1 | 4 | `export TMPDIR=/data/alvin/tmp` in `~/.bashrc` — currently unset, so runs bind-mount the OS partition's `/tmp` | correctness |
-| 2 | 2 | `Benchmarks/` → `/data/alvin/ref/GIAB/truth/` | 168 MB |
+| 1 | 4 | `export TMPDIR=/path/to/tmp` in `~/.bashrc` — currently unset, so runs bind-mount the OS partition's `/tmp` | correctness |
+| 2 | 2 | `Benchmarks/` → `/path/to/ref/GIAB/truth/` | 168 MB |
 | 3 | 6 | Move `storeDir` cache + `results/pon` out of `results/` | clarity (11 GB) |
 | 4 | 10 | Add `LICENSE` | correctness |
 | 5 | 9 | Move 4 root `.md` files into `docs/` | tidiness |
 
 ## Completed 2026-07-21
 
-- **Rule 2** — SMA trio BAMs (397 GB) → `/data/alvin/ref/SMA/`; 4 samplesheets +
+- **Rule 2** — SMA trio BAMs (397 GB) → `/path/to/ref/SMA/`; 4 samplesheets +
   `Documentation.md` repointed.
-- **Rule 2** — `benchmarks_data/` (260 GB) → `/data/alvin/ref/benchmarks/<sample>/fastq/`,
+- **Rule 2** — `benchmarks_data/` (260 GB) → `/path/to/ref/benchmarks/<sample>/fastq/`,
   reuniting the COLO829/HCC1395 reads with the truth sets already stored there.
   `urls.txt` → `download_urls.txt` beside the data, its 8 `dir=` lines repointed;
   `validation/colo829_samplesheet.csv` updated.
 - **Rule 5** — `work_HG001`, `work_HG004…HG007` (20 GB) deleted after confirming
   each sample had a published `report.html` and no session lock was held.
 - **Rule 8** — 884 GB of abandoned git pack debris removed (see
-  `reorg-plan-2026-07-21.md`); `pytest-of-alvin/` gitignored.
+  `reorg-plan-2026-07-21.md`); `pytest-of-*/` gitignored.
 
 Repo went from 637 GB to ~357 GB, of which 356 GB is `results/`. The tracked
 source tree is about 6 MB.

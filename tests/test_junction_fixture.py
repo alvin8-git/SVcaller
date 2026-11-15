@@ -81,7 +81,7 @@ def test_clipped_sequence_matches_the_far_side(reads):
     became random sequence the fixture would still look right but would silently
     stop testing realignment."""
     import re
-    ref = "/data/alvin/ref/GRCh38/hg38.fa"
+    ref = os.environ.get("REF_ROOT", "/path/to/ref") + "/GRCh38/hg38.fa"
     if not os.path.exists(ref):
         pytest.skip("reference not present; clip-content check needs it")
 

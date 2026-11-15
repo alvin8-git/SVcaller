@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path("/data/alvin/SVcaller")
+REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "bin"))
 
 import cnv_traits_common as c  # noqa: E402

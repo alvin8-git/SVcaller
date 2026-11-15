@@ -1,6 +1,6 @@
 import sys, tempfile
 from pathlib import Path
-sys.path.insert(0, "/data/alvin/SVcaller/bin")
+sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "..", "bin"))
 import pytest
 
 def test_sv_colour_mapping():

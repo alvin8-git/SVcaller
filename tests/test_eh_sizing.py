@@ -174,3 +174,71 @@ def test_stale_profile_missing_the_graded_variant_is_refused():
         assert "different catalog" in str(ex)
     else:
         raise AssertionError("old-catalog profile with the new graded table must fail loudly")
+
+
+# ---- PABPN1 count offset (owner decision 2026-11-15) -----------------------------------------------------------
+OFFSETS = os.path.join(REPO, "assets", "eh_count_offsets.tsv")
+FASTA = os.environ.get("REF_ROOT", "/path/to/ref") + "/GRCh38/hg38.canonical.fa"
+
+
+def test_offsets_file_lists_pabpn1_only_with_minus_one_and_evidence():
+    off = es.load_offsets(OFFSETS)
+    assert off == {("PABPN1", "PABPN1"): -1}
+
+
+def _fetch(chrom, start0, end):
+    fai = {l.split("\t")[0]: l.split("\t")[1:5] for l in open(FASTA + ".fai")}
+    ln, off, bases, width = map(int, fai[chrom])
+    def pos(i):
+        return off + (i // bases) * width + i % bases
+    with open(FASTA, "rb") as fh:
+        fh.seek(pos(start0))
+        raw = fh.read(pos(end - 1) - pos(start0) + 1)
+    return raw.replace(b"\n", b"").decode().upper()
+
+
+def test_grch38_reference_pabpn1_ten_codons():
+    if not os.path.exists(FASTA):
+        import pytest
+        pytest.skip("GRCh38 fasta absent")
+    import json as _j
+    cat = _j.load(open(os.path.join(REPO, "assets", "sources", "STRchive-loci.json")))
+    rec = [r for r in cat if r.get("id") == "OPMD_PABPN1"][0]
+    assert rec["chrom"] == "chr14" and (rec["start_hg38"], rec["stop_hg38"]) == (23321472, 23321503)
+    st = rec["start_hg38"]                    # 0-based; the 31 bp interval = 10 codons + the first base of the next GGG
+    seq = _fetch("chr14", st - 3, st + 30 + 9)    # ATG + 10 codons + GGG GCT GCG
+    assert seq[:3] == "ATG" and seq.endswith("GGGGCTGCG"), seq
+    tract = seq[3:-9]
+    assert len(tract) % 3 == 0 and all(tract[i:i + 3].startswith("GC") for i in range(0, len(tract), 3))
+    assert len(tract) // 3 == 10
+
+
+def test_pabpn1_eleven_eleven_becomes_ten_ten_normal_and_thirteen_stays_pathogenic_range():
+    off = {("PABPN1", "PABPN1"): -1}
+    graded = {"PABPN1": {"variant_id": "PABPN1", "disease_motif": "GCN"}}
+    def run(gt, ci, span):
+        p = profile(PABPN1=variant(gt, ci, span=span, ru="GCN"))
+        return next(es.summarise(p, graded, off))
+    r = run("11/11", "11-11/11-11", "(10, 1), (11, 22)")
+    assert r["genotype"] == "10/10" and r["genotype_display"] == "10/10" and r["ci"] == "10-10/10-10"
+    assert r["eh_raw_genotype"] == "11/11" and r["count_offset"] == -1 and r["allele1_est"] == 10
+    r = run("11/13", "11-11/13-13", "(11, 5), (13, 4)")
+    assert r["genotype"] == "10/12" and r["allele2_sizing"] == "spanned"          # 12 = STRchive pathogenic minimum
+    ranges = {l.split("\t")[0]: l.split("\t") for l in open(os.path.join(REPO, "assets", "str_disease_ranges.tsv"))
+              if l.strip() and not l.startswith("locus_id")}
+    assert ranges["PABPN1"][5] == "10" and ranges["PABPN1"][7] == "12"
+    assert int(r["allele2_est"]) >= int(ranges["PABPN1"][7])
+
+
+def test_no_offset_changes_other_loci_and_raw_is_kept():
+    graded = {"NIPA1": {"variant_id": "NIPA1", "disease_motif": "GCG"}}
+    r = next(es.summarise(profile(NIPA1=variant("9/9", "9-9/9-9", span="(9, 7)", ru="GCG")), graded,
+                          {("PABPN1", "PABPN1"): -1}))
+    assert r["genotype"] == "9/9" and r["eh_raw_genotype"] == "9/9" and r["count_offset"] == 0
+
+
+def test_offset_without_an_eh_ci_keeps_the_empty_ci_text_not_none_none():
+    graded = {"PABPN1": {"variant_id": "PABPN1", "disease_motif": "GCN"}}
+    p = profile(PABPN1=variant("11/11", "", span="(10, 1), (11, 22)", ru="GCN"))
+    r = next(es.summarise(p, graded, {("PABPN1", "PABPN1"): -1}))
+    assert r["genotype"] == "10/10" and "None" not in r["ci"]

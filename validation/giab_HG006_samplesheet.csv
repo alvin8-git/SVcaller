@@ -1,2 +1,2 @@
 sample,fastq_1,fastq_2,bam
-HG006,,,/data/alvin/ref/GIAB/HG006.bwa.sortdup.bqsr.bam
+HG006,,,/path/to/ref/GIAB/HG006.bwa.sortdup.bqsr.bam

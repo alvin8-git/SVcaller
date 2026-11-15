@@ -82,9 +82,9 @@ def test_min_reads_maps_to_the_split_read_filter():
         "and belongs on -sr")
 
 
-@pytest.mark.parametrize("param,flag", [("min_depth", "-c")])
+@pytest.mark.parametrize("param,flag", [("melt_coverage", "-c")])
 def test_other_params_land_on_the_flags_the_docs_claim(param, flag):
-    """CLAUDE.md states min_depth doubles as MELT's -c coverage argument."""
+    """MELT's -c comes from its own melt_coverage param (not min_depth, owner decision 2026-11-15)."""
     src = open(MELT_NF).read()
     m = re.search(rf"^\s*(-[A-Za-z]\w*)\s+\$\{{params\.{param}\}}", src, re.M)
     assert m, f"params.{param} is not passed to MELT"

@@ -1,4 +1,4 @@
 sample,fastq_1,fastq_2,bam
-SMAPB,,,/data/alvin/ref/SMA/SMAPB.bwa.sortdup.bqsr.bam
-SMAM,,,/data/alvin/ref/SMA/SMAM.bwa.sortdup.bqsr.bam
-SMAD,,,/data/alvin/ref/SMA/SMAD.bwa.sortdup.bqsr.bam
+SMAPB,,,/path/to/ref/SMA/SMAPB.bwa.sortdup.bqsr.bam
+SMAM,,,/path/to/ref/SMA/SMAM.bwa.sortdup.bqsr.bam
+SMAD,,,/path/to/ref/SMA/SMAD.bwa.sortdup.bqsr.bam

@@ -7,16 +7,16 @@
 
 ```bash
 # 1. Find most recent Scramble work dir
-ls -lt /data/alvin/SVcaller/work/*/HG002.vcf 2>/dev/null | head -5
+ls -lt /path/to/SVcaller/work/*/HG002.vcf 2>/dev/null | head -5
 
 # 2. Check for MEINFO field in Scramble VCF output
-bcftools view /data/alvin/SVcaller/work/<scramble-hash>/HG002.vcf \
+bcftools view /path/to/SVcaller/work/<scramble-hash>/HG002.vcf \
   | grep "^[^#]" | cut -f8 | grep -c "MEINFO="
 # If count > 0: MEINFO present → implement fix
 # If count = 0: MEINFO absent → use fallback (remove override entirely)
 
 # 3. Sample MEINFO values for L1 entries
-bcftools view /data/alvin/SVcaller/work/<scramble-hash>/HG002.vcf \
+bcftools view /path/to/SVcaller/work/<scramble-hash>/HG002.vcf \
   | grep "MEINFO=" | grep "L1" | cut -f8 | head -10
 # Expected format: MEINFO=L1HS,start,end,strand
 # Observed SVLEN = end - start (field 3 minus field 2 of MEINFO value)
@@ -29,7 +29,7 @@ Before any code change, record current INS metrics:
 ```bash
 python3 -c "
 import json
-with open('/data/alvin/SVcaller/results/HG002/truvari/summary.json') as f:
+with open('/path/to/SVcaller/results/HG002/truvari/summary.json') as f:
     d = json.load(f)
 print('TP:', d.get('TP-base', '?'), 'FP:', d.get('FP', '?'),
       'FN:', d.get('FN', '?'), 'F1:', d.get('f1', '?'))
@@ -52,20 +52,20 @@ grep -n "large_sv\|tier\|1000\|svlen" modules/jasmine/merge.nf | head -20
 # Re-run pipeline with -resume (only JASMINE_MERGE and downstream re-run)
 nextflow run main.nf -profile docker \
   --input validation/validation_samplesheet.csv \
-  --ref_fasta /data/alvin/ref/GRCh38/hg38.canonical.fa \
-  --intervals /data/alvin/ref/GRCh38/wgs_autosomal.bed \
-  --pon /data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
-  --giab_truth /data/alvin/ref/GIAB/GRCh38_HG002-T2TQ100-V1.0_stvar.vcf.gz \
+  --ref_fasta /path/to/ref/GRCh38/hg38.canonical.fa \
+  --intervals /path/to/ref/GRCh38/wgs_autosomal.bed \
+  --pon /path/to/SVcaller/pon/pon/giab_cnv_pon.hdf5 \
+  --giab_truth /path/to/ref/GIAB/GRCh38_HG002-T2TQ100-V1.0_stvar.vcf.gz \
   --eh_catalog assets/eh_catalog.json \
-  --annotsv_db /data/alvin/ref/annotsv/Annotations_Human \
-  --outdir /data/alvin/SVcaller/results \
-  -work-dir /data/alvin/SVcaller/work \
-  -resume > /data/alvin/tmp/svlen_fix_run.log 2>&1 &
+  --annotsv_db /path/to/ref/annotsv/Annotations_Human \
+  --outdir /path/to/SVcaller/results \
+  -work-dir /path/to/SVcaller/work \
+  -resume > /path/to/tmp/svlen_fix_run.log 2>&1 &
 
 # Compare Truvari before/after
 python3 -c "
 import json
-after = json.load(open('/data/alvin/SVcaller/results/HG002/truvari/summary.json'))
+after = json.load(open('/path/to/SVcaller/results/HG002/truvari/summary.json'))
 print('After — TP:', after.get('TP-base'), 'FP:', after.get('FP'),
       'F1:', after.get('f1'))
 "

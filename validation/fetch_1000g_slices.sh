@@ -24,7 +24,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUTDIR="${TMPDIR:-/data/alvin/tmp}/1000g_globin_slices"
+OUTDIR="${TMPDIR:-/tmp}/1000g_globin_slices"
 JOBS=4
 DRYRUN=0
 

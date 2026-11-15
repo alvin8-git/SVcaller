@@ -14,7 +14,7 @@ import pytest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = os.path.join(REPO, "bin")
-ANNOTSV_BED = "/data/alvin/ref/annotsv/Annotations_Human/Genes/GRCh38/genes.RefSeq.sorted.bed"
+ANNOTSV_BED = os.environ.get("REF_ROOT", "/path/to/ref") + "/annotsv/Annotations_Human/Genes/GRCh38/genes.RefSeq.sorted.bed"
 CONTRACT = os.path.join(REPO, "docs/contracts/alpha_globin_contract.md")
 FIXTURE = os.path.join(REPO, "validation/examples/SAMPLE.alpha_globin.tsv")
 
@@ -67,7 +67,7 @@ CODON = {
  'TGT':'C','TGC':'C','TGA':'*','TGG':'W','CGT':'R','CGC':'R','CGA':'R','CGG':'R',
  'AGT':'S','AGC':'S','AGA':'R','AGG':'R','GGT':'G','GGC':'G','GGA':'G','GGG':'G'}
 COMP = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}
-REF_FASTA = "/data/alvin/ref/GRCh38/hg38.fa"
+REF_FASTA = os.environ.get("REF_ROOT", "/path/to/ref") + "/GRCh38/hg38.fa"
 
 needs_ref = pytest.mark.skipif(
     not os.path.exists(REF_FASTA), reason="GRCh38 FASTA not present")

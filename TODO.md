@@ -79,8 +79,8 @@ Tracks implementation status against the design spec (`docs/superpowers/specs/20
 - [x] **Circos CNV-trait ring + clean HG002/HG001 re-render — 2026-07-12.** Added an optional labelled trait ring (r=59-64) to `bin/circos_plot.py` (`--rh-status/--amy1/--gst-null/--lpa-kiv2`), plotting the 5 loci with the call read from the contract TSVs (present/normal=grey, deletion/null=blue, high-CN=red); ring is skipped when no trait TSVs are supplied (verified: COLO829 renders with the ring omitted). Wired the four trait channels into `modules/pycirclize/plot.nf` + `subworkflows/report.nf`. Re-rendered HG002 and HG001 circos cleanly (fresh 2026-07-12 provenance in SVG metadata + on-plot footer) and regenerated both demo reports (`docs/demo/{HG002,HG001}_report.html`) so they inline the new SVG. NOTE (superseded 2026-07-13 — see next item): the HG002 Truvari-benchmark and STR report sections were absent from this rebuild because their `benchmark.json`/STR inputs lived in `work_HG002` (reclaimed during the results/ consolidation); coverage + flagstat QC were reconstructed from the BAM (`samtools bedcov`/`flagstat`) so the QC section stayed intact. Tests: `test_circos_plot.py`, `test_cnv_display.py`, `test_html_report.py`, `test_cnv_traits.py` — 32 passed.
 - [x] **HG002 demo report: Truvari + STR sections restored — 2026-07-13.** Re-ran the two stages whose inputs were lost with `work_HG002`, using the exact module commands against the existing `results/HG002/HG002.sv_merged.vcf.gz` (Manta+DELLY, `--skip_gridss`) and the 30X GRCh38 HG002 BAM, then regenerated the report with the real generator (`bin/smn_report.py` + `bin/html_report.py` in `svcaller/utils:1.2`). No pipeline logic changed.
   - **Truvari v4.3.1** (`quay.io/biocontainers/truvari:4.3.1`, module flags: `--passonly --pick multi --pctseq 0 --typeignore --sizemin 50`), both truth sets:
-    - **T2TQ100-V1.0** (`/data/alvin/ref/GIAB/GRCh38_HG002-T2TQ100-V1.0_stvar.vcf.gz`): TP-base 7,571 / TP-comp 7,135 · FP 2,605 · FN 22,120 · **precision 0.733 · recall 0.255 · F1 0.378** (base 29,691 / comp 9,740).
-    - **v5.0q** (`/data/alvin/ref/GIAB/HG002_GRCh38_v5.0q_stvar.vcf.gz`): TP-base 7,286 / TP-comp 6,884 · FP 2,450 · FN 20,837 · **precision 0.738 · recall 0.259 · F1 0.383** (base 28,123 / comp 9,334). Recall is short-read/`--skip_gridss` limited (truth is assembly-based and INS-heavy) — these are the real numbers for this call set, not a regression.
+    - **T2TQ100-V1.0** (`/path/to/ref/GIAB/GRCh38_HG002-T2TQ100-V1.0_stvar.vcf.gz`): TP-base 7,571 / TP-comp 7,135 · FP 2,605 · FN 22,120 · **precision 0.733 · recall 0.255 · F1 0.378** (base 29,691 / comp 9,740).
+    - **v5.0q** (`/path/to/ref/GIAB/HG002_GRCh38_v5.0q_stvar.vcf.gz`): TP-base 7,286 / TP-comp 6,884 · FP 2,450 · FN 20,837 · **precision 0.738 · recall 0.259 · F1 0.383** (base 28,123 / comp 9,334). Recall is short-read/`--skip_gridss` limited (truth is assembly-based and INS-heavy) — these are the real numbers for this call set, not a regression.
   - **ExpansionHunter 5.0.0** on the 32-locus `assets/eh_catalog.json`: 32 loci genotyped. Report calls 2 EXPANDED (ATXN2 22/62 ⚠INREPEAT; NIPA1 4/18) and 2 INTERMEDIATE (CNBP 13/51 ⚠INREPEAT; RFC1 12/33 ⚠INREPEAT) — all short-read INREPEAT estimates, long-read confirmation flagged in the report.
   - Artifacts now in `results/HG002/`: `HG002.str.vcf.gz{,.tbi}`, `HG002.str_profile.json`, `benchmark/HG002.{T2T,v5q}.truvari_{summary,sizebin}.json`. `docs/demo/HG002_report.html` regenerated — a strict superset of the 2026-07-12 report: adds the STR card + both Validation Benchmark cards while keeping the fresh circos with the 5-locus CNV-trait ring, the blood-group/CNV-trait card, and coverage/flagstat QC. Picard insert-size/duplicate metrics remain N/A (not re-run). Tests: 32 passed.
 - [ ] Calibrate AMY1 and LPA KIV-2 absolute scaling against a truth sample (proportional-only today)
@@ -97,16 +97,16 @@ Tracks implementation status against the design spec (`docs/superpowers/specs/20
 - [x] GIAB samplesheet (`validation/giab_samplesheet.csv`)
 - [x] SV validation samplesheet — HG002 only (`validation/validation_samplesheet.csv`); Truvari runs against GIAB truth
 - [x] SMN validation samplesheet — SMA trio only (`validation/smn_validation_samplesheet.csv`); run with `--skip_gridss true`, no `--giab_truth`
-- [x] WGS intervals BED (`/data/alvin/ref/GRCh38/wgs_autosomal.bed`)
+- [x] WGS intervals BED (`/path/to/ref/GRCh38/wgs_autosomal.bed`)
 - [x] `svcaller/utils:1.2` Docker image — built (openpyxl 3.1.5 + report template)
 - [x] `svcaller/melt:2.2.2` Docker image — built locally from MELTv2.2.2.tar.gz
 - [x] `svcaller/smncopynum:1.1` Docker image — built
 - [x] GIAB PON sample report samplesheet (`validation/giab_reports_samplesheet.csv`) — HG001, HG003-HG007
-- [x] TMPDIR fix — containers bind-mount `/data/alvin/tmp` as `/tmp` to avoid root fs overflow
+- [x] TMPDIR fix — containers bind-mount `/path/to/tmp` as `/tmp` to avoid root fs overflow
 
 ## Known Bugs / Blockers
 
-- [ ] **AnnotSV DB** — requires `--annotsv_db /data/alvin/ref/annotsv/Annotations_Human`; annotation step emits empty stub TSV without it.
+- [ ] **AnnotSV DB** — requires `--annotsv_db /path/to/ref/annotsv/Annotations_Human`; annotation step emits empty stub TSV without it.
 - [ ] **samtools flagstat not in MultiQC** — flagstat file mixed into `ch_multiqc_files` but MultiQC may need explicit module config to parse it.
 
 ## Recently Fixed

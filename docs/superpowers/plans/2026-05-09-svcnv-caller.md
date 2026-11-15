@@ -8,7 +8,7 @@
 
 **Tech Stack:** Nextflow DSL2 v25.10.4, Docker, BWA-MEM2 2.2.1, Manta 1.6, DELLY 1.2.6, GRIDSS 2.13.2, ExpansionHunter 5.0, JASMINE 1.1.5, CNVpytor 1.3.1, GATK 4.5, SMNCopyNumberCaller 1.1, AnnotSV 3.4.2, pycirclize 1.7, truvari 4.x, Python 3.13, Jinja2.
 
-**Working directory for all tasks:** `/data/alvin/SVcaller`
+**Working directory for all tasks:** `/path/to/SVcaller`
 
 ---
 
@@ -25,15 +25,15 @@
 - [ ] **Step 1: Initialize git repo**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git init
 ```
-Expected: `Initialized empty Git repository in /data/alvin/SVcaller/.git/`
+Expected: `Initialized empty Git repository in /path/to/SVcaller/.git/`
 
 - [ ] **Step 2: Create .gitignore**
 
 ```bash
-cat > /data/alvin/SVcaller/.gitignore << 'EOF'
+cat > /path/to/SVcaller/.gitignore << 'EOF'
 results/
 work/
 .nextflow/
@@ -48,10 +48,10 @@ EOF
 - [ ] **Step 3: Create conf/base.config**
 
 ```bash
-mkdir -p /data/alvin/SVcaller/conf
+mkdir -p /path/to/SVcaller/conf
 ```
 
-Write `/data/alvin/SVcaller/conf/base.config`:
+Write `/path/to/SVcaller/conf/base.config`:
 
 ```groovy
 process {
@@ -89,7 +89,7 @@ process {
 
 - [ ] **Step 4: Create conf/docker.config**
 
-Write `/data/alvin/SVcaller/conf/docker.config`:
+Write `/path/to/SVcaller/conf/docker.config`:
 
 ```groovy
 docker.enabled         = true
@@ -119,7 +119,7 @@ process {
 
 - [ ] **Step 5: Create nextflow.config**
 
-Write `/data/alvin/SVcaller/nextflow.config`:
+Write `/path/to/SVcaller/nextflow.config`:
 
 ```groovy
 manifest {
@@ -172,13 +172,13 @@ def check_max(obj, type) {
 - [ ] **Step 6: Create directory skeleton**
 
 ```bash
-mkdir -p /data/alvin/SVcaller/{workflows,subworkflows,modules/{bwamem2,samtools,picard,mosdepth,fastqc,multiqc,manta,delly,gridss,expansionhunter,jasmine,cnvpytor,gatk,smn_caller,annotsv,truvari},bin,assets,validation,tests}
+mkdir -p /path/to/SVcaller/{workflows,subworkflows,modules/{bwamem2,samtools,picard,mosdepth,fastqc,multiqc,manta,delly,gridss,expansionhunter,jasmine,cnvpytor,gatk,smn_caller,annotsv,truvari},bin,assets,validation,tests}
 ```
 
 - [ ] **Step 7: Commit scaffold**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add .gitignore nextflow.config conf/
 git commit -m "feat: initialize Nextflow project scaffold"
 ```
@@ -194,7 +194,7 @@ git commit -m "feat: initialize Nextflow project scaffold"
 
 - [ ] **Step 1: Create samplesheet schema**
 
-Write `/data/alvin/SVcaller/assets/schema_input.json`:
+Write `/path/to/SVcaller/assets/schema_input.json`:
 
 ```json
 {
@@ -217,22 +217,22 @@ Write `/data/alvin/SVcaller/assets/schema_input.json`:
 
 - [ ] **Step 2: Create test samplesheet**
 
-Write `/data/alvin/SVcaller/tests/test_samplesheet.csv`:
+Write `/path/to/SVcaller/tests/test_samplesheet.csv`:
 
 ```
 sample,fastq_1,fastq_2,bam
-HG002_test,/data/alvin/SVcaller/tests/data/HG002_R1.fastq.gz,/data/alvin/SVcaller/tests/data/HG002_R2.fastq.gz,
+HG002_test,/path/to/SVcaller/tests/data/HG002_R1.fastq.gz,/path/to/SVcaller/tests/data/HG002_R2.fastq.gz,
 ```
 
 - [ ] **Step 3: Create test config**
 
-Write `/data/alvin/SVcaller/conf/test.config`:
+Write `/path/to/SVcaller/conf/test.config`:
 
 ```groovy
 params {
     input      = "${projectDir}/tests/test_samplesheet.csv"
-    ref_fasta  = '/data/alvin/ref/GRCh38/GRCh38.fasta'
-    outdir     = '/data/alvin/tmp/svcaller_test_out'
+    ref_fasta  = '/path/to/ref/GRCh38/GRCh38.fasta'
+    outdir     = '/path/to/tmp/svcaller_test_out'
     min_depth  = 5
     max_cpus   = 8
     max_memory = '32.GB'
@@ -241,7 +241,7 @@ params {
 
 - [ ] **Step 4: Create bin/parse_samplesheet.py**
 
-Write `/data/alvin/SVcaller/bin/parse_samplesheet.py`:
+Write `/path/to/SVcaller/bin/parse_samplesheet.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -292,12 +292,12 @@ if __name__ == "__main__":
 ```
 
 ```bash
-chmod +x /data/alvin/SVcaller/bin/parse_samplesheet.py
+chmod +x /path/to/SVcaller/bin/parse_samplesheet.py
 ```
 
 - [ ] **Step 5: Write test for parse_samplesheet.py**
 
-Write `/data/alvin/SVcaller/tests/test_parse_samplesheet.py`:
+Write `/path/to/SVcaller/tests/test_parse_samplesheet.py`:
 
 ```python
 import json, subprocess, textwrap
@@ -340,7 +340,7 @@ def test_accepts_bam_row(tmp_path):
 - [ ] **Step 6: Run tests**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 python3 -m pytest tests/test_parse_samplesheet.py -v
 ```
 
@@ -349,7 +349,7 @@ Expected: 4 tests pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add assets/ conf/test.config tests/ bin/parse_samplesheet.py
 git commit -m "feat: add samplesheet schema, validation, and tests"
 ```
@@ -367,7 +367,7 @@ git commit -m "feat: add samplesheet schema, validation, and tests"
 
 - [ ] **Step 1: Create BWA-MEM2 align module**
 
-Write `/data/alvin/SVcaller/modules/bwamem2/align.nf`:
+Write `/path/to/SVcaller/modules/bwamem2/align.nf`:
 
 ```groovy
 process BWAMEM2_ALIGN {
@@ -409,7 +409,7 @@ process BWAMEM2_ALIGN {
 
 - [ ] **Step 2: Create Picard MarkDuplicates module**
 
-Write `/data/alvin/SVcaller/modules/picard/markduplicates.nf`:
+Write `/path/to/SVcaller/modules/picard/markduplicates.nf`:
 
 ```groovy
 process PICARD_MARKDUP {
@@ -450,7 +450,7 @@ process PICARD_MARKDUP {
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add modules/bwamem2/ modules/samtools/ modules/picard/
 git commit -m "feat: add BWA-MEM2 align and Picard MarkDuplicates modules"
 ```
@@ -465,7 +465,7 @@ git commit -m "feat: add BWA-MEM2 align and Picard MarkDuplicates modules"
 
 - [ ] **Step 1: Create mosdepth module**
 
-Write `/data/alvin/SVcaller/modules/mosdepth/coverage.nf`:
+Write `/path/to/SVcaller/modules/mosdepth/coverage.nf`:
 
 ```groovy
 process MOSDEPTH {
@@ -509,7 +509,7 @@ process MOSDEPTH {
 
 - [ ] **Step 2: Create preprocess subworkflow**
 
-Write `/data/alvin/SVcaller/subworkflows/preprocess.nf`:
+Write `/path/to/SVcaller/subworkflows/preprocess.nf`:
 
 ```groovy
 include { BWAMEM2_ALIGN    } from '../modules/bwamem2/align'
@@ -555,18 +555,18 @@ workflow PREPROCESS {
 
 - [ ] **Step 3: Write test for preprocess depth-fail behaviour**
 
-Write `/data/alvin/SVcaller/tests/test_mosdepth_depth_check.sh`:
+Write `/path/to/SVcaller/tests/test_mosdepth_depth_check.sh`:
 
 ```bash
 #!/usr/bin/env bash
 # Quick smoke test: mosdepth module must exit 1 when depth < min_depth
 set -e
 # Create a near-empty BAM to simulate low coverage
-docker run --rm -v /data/alvin/SVcaller/tests:/data \
+docker run --rm -v /path/to/SVcaller/tests:/data \
   quay.io/biocontainers/samtools:1.20--h50ea8bc_0 \
   bash -c "samtools view -bS /dev/null > /data/empty.bam && samtools index /data/empty.bam"
 
-docker run --rm -v /data/alvin/SVcaller/tests:/data \
+docker run --rm -v /path/to/SVcaller/tests:/data \
   quay.io/biocontainers/mosdepth:0.3.8--hd299d5a_0 \
   bash -c '
     mosdepth --no-abbrev test_low /data/empty.bam 2>/dev/null || true
@@ -579,13 +579,13 @@ echo "Test passed"
 ```
 
 ```bash
-chmod +x /data/alvin/SVcaller/tests/test_mosdepth_depth_check.sh
+chmod +x /path/to/SVcaller/tests/test_mosdepth_depth_check.sh
 ```
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add modules/mosdepth/ subworkflows/preprocess.nf tests/test_mosdepth_depth_check.sh
 git commit -m "feat: add mosdepth coverage QC and preprocess subworkflow"
 ```
@@ -601,7 +601,7 @@ git commit -m "feat: add mosdepth coverage QC and preprocess subworkflow"
 
 - [ ] **Step 1: Create Manta module**
 
-Write `/data/alvin/SVcaller/modules/manta/call.nf`:
+Write `/path/to/SVcaller/modules/manta/call.nf`:
 
 ```groovy
 process MANTA_CALL {
@@ -643,7 +643,7 @@ process MANTA_CALL {
 - [ ] **Step 2: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add modules/manta/
 git commit -m "feat: add Manta SV calling module"
 ```
@@ -657,7 +657,7 @@ git commit -m "feat: add Manta SV calling module"
 
 - [ ] **Step 1: Create DELLY module**
 
-Write `/data/alvin/SVcaller/modules/delly/call.nf`:
+Write `/path/to/SVcaller/modules/delly/call.nf`:
 
 ```groovy
 process DELLY_CALL {
@@ -702,7 +702,7 @@ process DELLY_CALL {
 - [ ] **Step 2: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add modules/delly/
 git commit -m "feat: add DELLY SV calling module"
 ```
@@ -716,7 +716,7 @@ git commit -m "feat: add DELLY SV calling module"
 
 - [ ] **Step 1: Create GRIDSS module**
 
-Write `/data/alvin/SVcaller/modules/gridss/call.nf`:
+Write `/path/to/SVcaller/modules/gridss/call.nf`:
 
 ```groovy
 process GRIDSS_CALL {
@@ -755,7 +755,7 @@ process GRIDSS_CALL {
 - [ ] **Step 2: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add modules/gridss/
 git commit -m "feat: add GRIDSS SV calling module"
 ```
@@ -770,7 +770,7 @@ git commit -m "feat: add GRIDSS SV calling module"
 
 - [ ] **Step 1: Create ExpansionHunter module**
 
-Write `/data/alvin/SVcaller/modules/expansionhunter/call.nf`:
+Write `/path/to/SVcaller/modules/expansionhunter/call.nf`:
 
 ```groovy
 process EXPANSIONHUNTER {
@@ -815,7 +815,7 @@ process EXPANSIONHUNTER {
 
 - [ ] **Step 2: Create stub EH catalog**
 
-Write `/data/alvin/SVcaller/assets/eh_catalog.json` (minimal stub; full catalog added in Task 20):
+Write `/path/to/SVcaller/assets/eh_catalog.json` (minimal stub; full catalog added in Task 20):
 
 ```json
 {
@@ -830,7 +830,7 @@ Write `/data/alvin/SVcaller/assets/eh_catalog.json` (minimal stub; full catalog 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add modules/expansionhunter/ assets/eh_catalog.json
 git commit -m "feat: add ExpansionHunter STR module and stub catalog"
 ```
@@ -845,7 +845,7 @@ git commit -m "feat: add ExpansionHunter STR module and stub catalog"
 
 - [ ] **Step 1: Create JASMINE merge module**
 
-Write `/data/alvin/SVcaller/modules/jasmine/merge.nf`:
+Write `/path/to/SVcaller/modules/jasmine/merge.nf`:
 
 ```groovy
 process JASMINE_MERGE {
@@ -895,7 +895,7 @@ process JASMINE_MERGE {
 
 - [ ] **Step 2: Create sv_calling subworkflow**
 
-Write `/data/alvin/SVcaller/subworkflows/sv_calling.nf`:
+Write `/path/to/SVcaller/subworkflows/sv_calling.nf`:
 
 ```groovy
 include { MANTA_CALL       } from '../modules/manta/call'
@@ -937,7 +937,7 @@ workflow SV_CALLING {
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add modules/jasmine/ subworkflows/sv_calling.nf
 git commit -m "feat: add JASMINE merge and sv_calling subworkflow"
 ```
@@ -954,7 +954,7 @@ git commit -m "feat: add JASMINE merge and sv_calling subworkflow"
 
 - [ ] **Step 1: Create CNVpytor module**
 
-Write `/data/alvin/SVcaller/modules/cnvpytor/call.nf`:
+Write `/path/to/SVcaller/modules/cnvpytor/call.nf`:
 
 ```groovy
 process CNVPYTOR_CALL {
@@ -993,12 +993,12 @@ process CNVPYTOR_CALL {
 
 - [ ] **Step 2: Write test for cnv_consensus.py merge logic**
 
-Write `/data/alvin/SVcaller/tests/test_cnv_consensus.py`:
+Write `/path/to/SVcaller/tests/test_cnv_consensus.py`:
 
 ```python
 """Tests for CNV consensus merging logic."""
 import sys
-sys.path.insert(0, "/data/alvin/SVcaller/bin")
+sys.path.insert(0, "/path/to/SVcaller/bin")
 
 import textwrap, tempfile
 from pathlib import Path
@@ -1035,7 +1035,7 @@ def test_contained():
 - [ ] **Step 3: Run tests**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 python3 -m pytest tests/test_cnv_consensus.py -v
 ```
 
@@ -1043,7 +1043,7 @@ Expected: 4 tests pass.
 
 - [ ] **Step 4: Write bin/cnv_consensus.py**
 
-Write `/data/alvin/SVcaller/bin/cnv_consensus.py`:
+Write `/path/to/SVcaller/bin/cnv_consensus.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -1186,16 +1186,16 @@ if __name__ == "__main__":
 ```
 
 ```bash
-chmod +x /data/alvin/SVcaller/bin/cnv_consensus.py
+chmod +x /path/to/SVcaller/bin/cnv_consensus.py
 ```
 
 - [ ] **Step 5: Run extended consensus tests**
 
-Write `/data/alvin/SVcaller/tests/test_cnv_consensus_full.py`:
+Write `/path/to/SVcaller/tests/test_cnv_consensus_full.py`:
 
 ```python
 import sys
-sys.path.insert(0, "/data/alvin/SVcaller/bin")
+sys.path.insert(0, "/path/to/SVcaller/bin")
 from cnv_consensus import CNVSegment, merge, load_cnvpytor, load_gatk
 import tempfile, textwrap
 from pathlib import Path
@@ -1248,7 +1248,7 @@ Expected: 5 tests pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add modules/cnvpytor/ bin/cnv_consensus.py tests/test_cnv_consensus.py tests/test_cnv_consensus_full.py
 git commit -m "feat: add CNVpytor module and CNV consensus merge logic with tests"
 ```
@@ -1263,7 +1263,7 @@ git commit -m "feat: add CNVpytor module and CNV consensus merge logic with test
 
 - [ ] **Step 1: Create GATK gCNV call module**
 
-Write `/data/alvin/SVcaller/modules/gatk/gcnv_call.nf`:
+Write `/path/to/SVcaller/modules/gatk/gcnv_call.nf`:
 
 ```groovy
 process GATK_GCNV_CALL {
@@ -1333,7 +1333,7 @@ process GATK_GCNV_CALL {
 
 - [ ] **Step 2: Create cnv_calling subworkflow**
 
-Write `/data/alvin/SVcaller/subworkflows/cnv_calling.nf`:
+Write `/path/to/SVcaller/subworkflows/cnv_calling.nf`:
 
 ```groovy
 include { CNVPYTOR_CALL  } from '../modules/cnvpytor/call'
@@ -1386,7 +1386,7 @@ workflow CNV_CALLING {
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add modules/gatk/gcnv_call.nf subworkflows/cnv_calling.nf
 git commit -m "feat: add GATK gCNV call module and cnv_calling subworkflow"
 ```
@@ -1401,7 +1401,7 @@ git commit -m "feat: add GATK gCNV call module and cnv_calling subworkflow"
 
 - [ ] **Step 1: Create GATK gCNV PoN module**
 
-Write `/data/alvin/SVcaller/modules/gatk/gcnv_pon.nf`:
+Write `/path/to/SVcaller/modules/gatk/gcnv_pon.nf`:
 
 ```groovy
 process GATK_COLLECT_COUNTS {
@@ -1467,7 +1467,7 @@ process GATK_CREATE_PON {
 
 - [ ] **Step 2: Create pon_build workflow**
 
-Write `/data/alvin/SVcaller/workflows/pon_build.nf`:
+Write `/path/to/SVcaller/workflows/pon_build.nf`:
 
 ```groovy
 include { GATK_COLLECT_COUNTS } from '../modules/gatk/gcnv_pon'
@@ -1480,8 +1480,8 @@ include { GATK_CREATE_PON     } from '../modules/gatk/gcnv_pon'
  * Usage:
  *   nextflow run workflows/pon_build.nf \
  *     --input giab_bam_samplesheet.csv \
- *     --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
- *     --outdir /data/alvin/SVcaller/pon \
+ *     --ref_fasta /path/to/ref/GRCh38/GRCh38.fasta \
+ *     --outdir /path/to/SVcaller/pon \
  *     -profile docker
  */
 workflow PON_BUILD {
@@ -1521,7 +1521,7 @@ workflow PON_BUILD {
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add modules/gatk/gcnv_pon.nf workflows/pon_build.nf
 git commit -m "feat: add GATK gCNV PoN build modules and workflow"
 ```
@@ -1538,7 +1538,7 @@ git commit -m "feat: add GATK gCNV PoN build modules and workflow"
 
 - [ ] **Step 1: Create SMNCopyNumberCaller Dockerfile**
 
-Write `/data/alvin/SVcaller/modules/smn_caller/Dockerfile`:
+Write `/path/to/SVcaller/modules/smn_caller/Dockerfile`:
 
 ```dockerfile
 FROM python:3.11-slim
@@ -1566,7 +1566,7 @@ LABEL maintainer="svcaller" \
 - [ ] **Step 2: Build and tag Docker image**
 
 ```bash
-cd /data/alvin/SVcaller/modules/smn_caller
+cd /path/to/SVcaller/modules/smn_caller
 docker build -t svcaller/smncopynum:1.1 .
 ```
 
@@ -1574,7 +1574,7 @@ Expected: Successfully tagged svcaller/smncopynum:1.1
 
 - [ ] **Step 3: Create SMN call module**
 
-Write `/data/alvin/SVcaller/modules/smn_caller/call.nf`:
+Write `/path/to/SVcaller/modules/smn_caller/call.nf`:
 
 ```groovy
 process SMN_CALLER {
@@ -1616,7 +1616,7 @@ process SMN_CALLER {
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add modules/smn_caller/
 git commit -m "feat: add SMNCopyNumberCaller Dockerfile and Nextflow module"
 ```
@@ -1633,11 +1633,11 @@ git commit -m "feat: add SMNCopyNumberCaller Dockerfile and Nextflow module"
 
 - [ ] **Step 1: Write failing tests for smn_report.py**
 
-Write `/data/alvin/SVcaller/tests/test_smn_report.py`:
+Write `/path/to/SVcaller/tests/test_smn_report.py`:
 
 ```python
 import sys
-sys.path.insert(0, "/data/alvin/SVcaller/bin")
+sys.path.insert(0, "/path/to/SVcaller/bin")
 import pytest
 
 # These tests define the expected behaviour of smn_report.py functions
@@ -1672,7 +1672,7 @@ def test_two_plus_zero_not_flagged_when_balanced():
 - [ ] **Step 2: Run to confirm tests fail**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 python3 -m pytest tests/test_smn_report.py -v 2>&1 | head -20
 ```
 
@@ -1680,7 +1680,7 @@ Expected: ModuleNotFoundError or ImportError (smn_report not yet implemented).
 
 - [ ] **Step 3: Write bin/smn_report.py**
 
-Write `/data/alvin/SVcaller/bin/smn_report.py`:
+Write `/path/to/SVcaller/bin/smn_report.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -1793,7 +1793,7 @@ if __name__ == "__main__":
 ```
 
 ```bash
-chmod +x /data/alvin/SVcaller/bin/smn_report.py
+chmod +x /path/to/SVcaller/bin/smn_report.py
 ```
 
 - [ ] **Step 4: Run tests — should pass now**
@@ -1806,7 +1806,7 @@ Expected: 5 tests pass.
 
 - [ ] **Step 5: Create validation truth table**
 
-Write `/data/alvin/SVcaller/validation/smn_truth_table.tsv`:
+Write `/path/to/SVcaller/validation/smn_truth_table.tsv`:
 
 ```tsv
 sample	smn1_cn	smn2_cn	source	notes
@@ -1820,7 +1820,7 @@ HG007	2	2	published	GIAB Chinese mother
 
 - [ ] **Step 6: Create smn_calling subworkflow**
 
-Write `/data/alvin/SVcaller/subworkflows/smn_calling.nf`:
+Write `/path/to/SVcaller/subworkflows/smn_calling.nf`:
 
 ```groovy
 include { SMN_CALLER } from '../modules/smn_caller/call'
@@ -1843,7 +1843,7 @@ workflow SMN_CALLING {
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add bin/smn_report.py subworkflows/smn_calling.nf \
     tests/test_smn_report.py validation/smn_truth_table.tsv
 git commit -m "feat: add SMN report generator, smn_calling subworkflow, and truth table"
@@ -1861,7 +1861,7 @@ git commit -m "feat: add SMN report generator, smn_calling subworkflow, and trut
 
 - [ ] **Step 1: Create AnnotSV module**
 
-Write `/data/alvin/SVcaller/modules/annotsv/annotate.nf`:
+Write `/path/to/SVcaller/modules/annotsv/annotate.nf`:
 
 ```groovy
 process ANNOTSV {
@@ -1935,7 +1935,7 @@ for row in reader:
 
 - [ ] **Step 2: Create annotate subworkflow**
 
-Write `/data/alvin/SVcaller/subworkflows/annotate.nf`:
+Write `/path/to/SVcaller/subworkflows/annotate.nf`:
 
 ```groovy
 include { ANNOTSV           } from '../modules/annotsv/annotate'
@@ -1958,7 +1958,7 @@ workflow ANNOTATE {
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add modules/annotsv/ subworkflows/annotate.nf
 git commit -m "feat: add AnnotSV annotation module and gnomAD-SV frequency filter"
 ```
@@ -1977,12 +1977,12 @@ git commit -m "feat: add AnnotSV annotation module and gnomAD-SV frequency filte
 
 - [ ] **Step 1: Write failing tests**
 
-Write `/data/alvin/SVcaller/tests/test_circos_plot.py`:
+Write `/path/to/SVcaller/tests/test_circos_plot.py`:
 
 ```python
 import sys, tempfile
 from pathlib import Path
-sys.path.insert(0, "/data/alvin/SVcaller/bin")
+sys.path.insert(0, "/path/to/SVcaller/bin")
 import pytest
 
 def test_sv_colour_mapping():
@@ -2025,7 +2025,7 @@ def test_parse_sv_vcf_extracts_links(tmp_path):
 - [ ] **Step 2: Run to confirm failure**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 python3 -m pytest tests/test_circos_plot.py -v 2>&1 | head -15
 ```
 
@@ -2033,7 +2033,7 @@ Expected: ImportError (circos_plot not yet implemented).
 
 - [ ] **Step 3: Write bin/circos_plot.py**
 
-Write `/data/alvin/SVcaller/bin/circos_plot.py`:
+Write `/path/to/SVcaller/bin/circos_plot.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -2222,7 +2222,7 @@ if __name__ == "__main__":
 ```
 
 ```bash
-chmod +x /data/alvin/SVcaller/bin/circos_plot.py
+chmod +x /path/to/SVcaller/bin/circos_plot.py
 ```
 
 - [ ] **Step 4: Install pycirclize and run tests**
@@ -2236,7 +2236,7 @@ Expected: 4 tests pass.
 
 - [ ] **Step 5: Create pycirclize Nextflow module**
 
-Write `/data/alvin/SVcaller/modules/pycirclize/plot.nf`:
+Write `/path/to/SVcaller/modules/pycirclize/plot.nf`:
 
 ```groovy
 process CIRCOS_PLOT {
@@ -2266,7 +2266,7 @@ process CIRCOS_PLOT {
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add bin/circos_plot.py modules/pycirclize/ tests/test_circos_plot.py
 git commit -m "feat: add pycirclize Circos plot generator with tests"
 ```
@@ -2286,12 +2286,12 @@ git commit -m "feat: add pycirclize Circos plot generator with tests"
 
 - [ ] **Step 1: Write failing test**
 
-Write `/data/alvin/SVcaller/tests/test_html_report.py`:
+Write `/path/to/SVcaller/tests/test_html_report.py`:
 
 ```python
 import sys, json, tempfile
 from pathlib import Path
-sys.path.insert(0, "/data/alvin/SVcaller/bin")
+sys.path.insert(0, "/path/to/SVcaller/bin")
 import pytest
 
 def test_report_contains_sample_id(tmp_path):
@@ -2331,7 +2331,7 @@ Expected: ImportError.
 
 - [ ] **Step 3: Create HTML report template**
 
-Write `/data/alvin/SVcaller/assets/report_template.html`:
+Write `/path/to/SVcaller/assets/report_template.html`:
 
 ```html
 <!DOCTYPE html>
@@ -2452,7 +2452,7 @@ Write `/data/alvin/SVcaller/assets/report_template.html`:
 
 - [ ] **Step 4: Write bin/html_report.py**
 
-Write `/data/alvin/SVcaller/bin/html_report.py`:
+Write `/path/to/SVcaller/bin/html_report.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -2606,13 +2606,13 @@ if __name__ == "__main__":
 ```
 
 ```bash
-chmod +x /data/alvin/SVcaller/bin/html_report.py
+chmod +x /path/to/SVcaller/bin/html_report.py
 pip3 install jinja2
 ```
 
 - [ ] **Step 5: Create truvari bench module**
 
-Write `/data/alvin/SVcaller/modules/truvari/bench.nf`:
+Write `/path/to/SVcaller/modules/truvari/bench.nf`:
 
 ```groovy
 process TRUVARI_BENCH {
@@ -2645,7 +2645,7 @@ process TRUVARI_BENCH {
 
 - [ ] **Step 6: Create report subworkflow**
 
-Write `/data/alvin/SVcaller/subworkflows/report.nf`:
+Write `/path/to/SVcaller/subworkflows/report.nf`:
 
 ```groovy
 include { CIRCOS_PLOT   } from '../modules/pycirclize/plot'
@@ -2723,7 +2723,7 @@ workflow REPORT {
 - [ ] **Step 7: Run tests and commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 python3 -m pytest tests/test_html_report.py -v
 ```
 
@@ -2746,7 +2746,7 @@ git commit -m "feat: add Jinja2 HTML report, truvari bench module, and report su
 
 - [ ] **Step 1: Create top-level workflow**
 
-Write `/data/alvin/SVcaller/workflows/svcaller.nf`:
+Write `/path/to/SVcaller/workflows/svcaller.nf`:
 
 ```groovy
 include { PREPROCESS   } from '../subworkflows/preprocess'
@@ -2810,7 +2810,7 @@ workflow SVCALLER {
 - [ ] **Step 2: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add workflows/svcaller.nf
 git commit -m "feat: add top-level SVCALLER workflow"
 ```
@@ -2824,7 +2824,7 @@ git commit -m "feat: add top-level SVCALLER workflow"
 
 - [ ] **Step 1: Write main.nf**
 
-Write `/data/alvin/SVcaller/main.nf`:
+Write `/path/to/SVcaller/main.nf`:
 
 ```groovy
 #!/usr/bin/env nextflow
@@ -2883,8 +2883,8 @@ workflow {
 - [ ] **Step 2: Validate Nextflow syntax**
 
 ```bash
-cd /data/alvin/SVcaller
-/home/alvin/bin/nextflow run main.nf --help 2>&1 | head -20
+cd /path/to/SVcaller
+nextflow run main.nf --help 2>&1 | head -20
 ```
 
 Expected: No DSL syntax errors; help text or parameter listing shown.
@@ -2892,12 +2892,12 @@ Expected: No DSL syntax errors; help text or parameter listing shown.
 - [ ] **Step 3: Run pipeline in stub mode (no real data)**
 
 ```bash
-cd /data/alvin/SVcaller
-/home/alvin/bin/nextflow run main.nf \
+cd /path/to/SVcaller
+nextflow run main.nf \
     -profile docker \
     --input tests/test_samplesheet.csv \
-    --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
-    --outdir /data/alvin/tmp/svcaller_stub \
+    --ref_fasta /path/to/ref/GRCh38/GRCh38.fasta \
+    --outdir /path/to/tmp/svcaller_stub \
     -stub-run 2>&1 | tail -20
 ```
 
@@ -2906,7 +2906,7 @@ Expected: All processes listed as STUB; no container pull errors in the DAG.
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add main.nf
 git commit -m "feat: add main.nf pipeline entry point"
 ```
@@ -2923,15 +2923,15 @@ git commit -m "feat: add main.nf pipeline entry point"
 
 - [ ] **Step 1: Create reference download script**
 
-Write `/data/alvin/SVcaller/validation/download_refs.sh`:
+Write `/path/to/SVcaller/validation/download_refs.sh`:
 
 ```bash
 #!/usr/bin/env bash
 # Download GRCh38 reference, GIAB truth sets, AnnotSV db, EH catalog, cytobands.
 set -euo pipefail
 
-REF_DIR="/data/alvin/ref/GRCh38"
-GIAB_DIR="/data/alvin/ref/GIAB"
+REF_DIR="/path/to/ref/GRCh38"
+GIAB_DIR="/path/to/ref/GIAB"
 mkdir -p "${REF_DIR}" "${GIAB_DIR}"
 
 echo "=== Downloading GRCh38 reference ==="
@@ -2946,10 +2946,10 @@ if [ ! -f "${REF_DIR}/GRCh38.fasta" ]; then
 fi
 
 echo "=== Downloading GRCh38 cytobands ==="
-wget -q -O /data/alvin/SVcaller/assets/GRCh38_cytobands.txt \
+wget -q -O /path/to/SVcaller/assets/GRCh38_cytobands.txt \
     "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cytoBand.txt.gz" \
-    && bgzip -d /data/alvin/SVcaller/assets/GRCh38_cytobands.txt.gz || \
-    wget -q -O /data/alvin/SVcaller/assets/GRCh38_cytobands.txt \
+    && bgzip -d /path/to/SVcaller/assets/GRCh38_cytobands.txt.gz || \
+    wget -q -O /path/to/SVcaller/assets/GRCh38_cytobands.txt \
     "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cytoBand.txt.gz"
 
 echo "=== Downloading GIAB SV truth set (HG002 v0.6) ==="
@@ -2960,7 +2960,7 @@ wget -q -O "${GIAB_DIR}/HG002_SV_v0.6_HC.bed"       "${GIAB_BASE}/HG002_SVs_Tier
 
 echo "=== Downloading ExpansionHunter catalog ==="
 EH_URL="https://github.com/Illumina/RepeatCatalogs/raw/main/hg38/variant_catalog.json"
-wget -q -O /data/alvin/SVcaller/assets/eh_catalog.json "${EH_URL}"
+wget -q -O /path/to/SVcaller/assets/eh_catalog.json "${EH_URL}"
 
 echo "=== Downloading AnnotSV annotations ==="
 # AnnotSV downloads its own database on first run if ANNOTSV_INSTALL is set
@@ -2970,13 +2970,13 @@ echo "All reference data downloaded."
 ```
 
 ```bash
-chmod +x /data/alvin/SVcaller/validation/download_refs.sh
+chmod +x /path/to/SVcaller/validation/download_refs.sh
 ```
 
 - [ ] **Step 2: Run the download script**
 
 ```bash
-bash /data/alvin/SVcaller/validation/download_refs.sh 2>&1 | tail -10
+bash /path/to/SVcaller/validation/download_refs.sh 2>&1 | tail -10
 ```
 
 Expected: "All reference data downloaded." (takes ~30–60 min for full reference).
@@ -2985,16 +2985,16 @@ Expected: "All reference data downloaded." (takes ~30–60 min for full referenc
 
 ```bash
 docker run --rm \
-  -v /data/alvin/ref/GRCh38:/ref \
+  -v /path/to/ref/GRCh38:/ref \
   quay.io/biocontainers/bwa-mem2:2.2.1--he513fc3_1 \
   bwa-mem2 index /ref/GRCh38.fasta
 ```
 
-Expected: Creates `/data/alvin/ref/GRCh38/GRCh38.fasta.0123` (and other index files).
+Expected: Creates `/path/to/ref/GRCh38/GRCh38.fasta.0123` (and other index files).
 
 - [ ] **Step 4: Create GIAB benchmarking script**
 
-Write `/data/alvin/SVcaller/validation/giab_benchmark.sh`:
+Write `/path/to/SVcaller/validation/giab_benchmark.sh`:
 
 ```bash
 #!/usr/bin/env bash
@@ -3004,8 +3004,8 @@ set -euo pipefail
 
 SAMPLE="${1:?Usage: $0 SAMPLE_ID QUERY_VCF [GIAB_TRUTH_DIR]}"
 QUERY_VCF="${2:?QUERY_VCF required}"
-TRUTH_DIR="${3:-/data/alvin/ref/GIAB}"
-OUT_DIR="/data/alvin/tmp/truvari_${SAMPLE}"
+TRUTH_DIR="${3:-/path/to/ref/GIAB}"
+OUT_DIR="/path/to/tmp/truvari_${SAMPLE}"
 
 TRUTH_VCF="${TRUTH_DIR}/${SAMPLE}_SV_v0.6.vcf.gz"
 TRUTH_BED="${TRUTH_DIR}/${SAMPLE}_SV_v0.6_HC.bed"
@@ -3041,13 +3041,13 @@ print(f'  TP base:   {d[\"TP-base\"]}  FP: {d[\"FP\"]}  FN: {d[\"FN\"]}')
 ```
 
 ```bash
-chmod +x /data/alvin/SVcaller/validation/giab_benchmark.sh
+chmod +x /path/to/SVcaller/validation/giab_benchmark.sh
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add validation/ assets/GRCh38_cytobands.txt assets/eh_catalog.json
 git commit -m "feat: add reference download and GIAB benchmarking scripts"
 ```
@@ -3060,60 +3060,60 @@ git commit -m "feat: add reference download and GIAB benchmarking scripts"
 
 ```bash
 # Create GIAB BAM samplesheet
-mkdir -p /data/alvin/ref/GIAB/bams
+mkdir -p /path/to/ref/GIAB/bams
 # Download HG002 30x PCR-free BAM from GIAB ftp
-wget -q -P /data/alvin/ref/GIAB/bams \
+wget -q -P /path/to/ref/GIAB/bams \
   "https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/HG002_NA24385_son/NIST_Stanford_Illumina_6kb_matepair/bams/HG002.hs37d5.2x250.bam"
 # Note: use GRCh38-aligned BAMs; GIAB provides multiple alignments
 ```
 
 - [ ] **Step 2: Create GIAB samplesheet for all 7 samples**
 
-Write `/data/alvin/SVcaller/validation/giab_samplesheet.csv`:
+Write `/path/to/SVcaller/validation/giab_samplesheet.csv`:
 
 ```
 sample,bam
-HG001,/data/alvin/ref/GIAB/bams/HG001.GRCh38.bam
-HG002,/data/alvin/ref/GIAB/bams/HG002.GRCh38.bam
-HG003,/data/alvin/ref/GIAB/bams/HG003.GRCh38.bam
-HG004,/data/alvin/ref/GIAB/bams/HG004.GRCh38.bam
-HG005,/data/alvin/ref/GIAB/bams/HG005.GRCh38.bam
-HG006,/data/alvin/ref/GIAB/bams/HG006.GRCh38.bam
-HG007,/data/alvin/ref/GIAB/bams/HG007.GRCh38.bam
+HG001,/path/to/ref/GIAB/bams/HG001.GRCh38.bam
+HG002,/path/to/ref/GIAB/bams/HG002.GRCh38.bam
+HG003,/path/to/ref/GIAB/bams/HG003.GRCh38.bam
+HG004,/path/to/ref/GIAB/bams/HG004.GRCh38.bam
+HG005,/path/to/ref/GIAB/bams/HG005.GRCh38.bam
+HG006,/path/to/ref/GIAB/bams/HG006.GRCh38.bam
+HG007,/path/to/ref/GIAB/bams/HG007.GRCh38.bam
 ```
 
 - [ ] **Step 3: Build GATK gCNV Panel of Normals from GIAB samples**
 
 ```bash
-cd /data/alvin/SVcaller
-/home/alvin/bin/nextflow run workflows/pon_build.nf \
+cd /path/to/SVcaller
+nextflow run workflows/pon_build.nf \
     -profile docker \
     --input validation/giab_samplesheet.csv \
-    --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
-    --outdir /data/alvin/SVcaller/pon \
+    --ref_fasta /path/to/ref/GRCh38/GRCh38.fasta \
+    --outdir /path/to/SVcaller/pon \
     --max_cpus 32 \
     --max_memory '64.GB' \
     -resume 2>&1 | tail -30
 ```
 
-Expected: `giab_cnv_pon.hdf5` written to `/data/alvin/SVcaller/pon/`.
+Expected: `giab_cnv_pon.hdf5` written to `/path/to/SVcaller/pon/`.
 
 - [ ] **Step 4: Run full pipeline on HG002**
 
 ```bash
-cat > /data/alvin/tmp/hg002_samplesheet.csv << 'EOF'
+cat > /path/to/tmp/hg002_samplesheet.csv << 'EOF'
 sample,bam
-HG002,/data/alvin/ref/GIAB/bams/HG002.GRCh38.bam
+HG002,/path/to/ref/GIAB/bams/HG002.GRCh38.bam
 EOF
 
-/home/alvin/bin/nextflow run /data/alvin/SVcaller/main.nf \
+nextflow run /path/to/SVcaller/main.nf \
     -profile docker \
-    --input  /data/alvin/tmp/hg002_samplesheet.csv \
-    --ref_fasta  /data/alvin/ref/GRCh38/GRCh38.fasta \
-    --pon        /data/alvin/SVcaller/pon/giab_cnv_pon.hdf5 \
-    --annotsv_db /data/alvin/ref/annotsv \
-    --outdir     /data/alvin/tmp/svcaller_HG002 \
-    --giab_truth /data/alvin/ref/GIAB/HG002_SV_v0.6.vcf.gz \
+    --input  /path/to/tmp/hg002_samplesheet.csv \
+    --ref_fasta  /path/to/ref/GRCh38/GRCh38.fasta \
+    --pon        /path/to/SVcaller/pon/giab_cnv_pon.hdf5 \
+    --annotsv_db /path/to/ref/annotsv \
+    --outdir     /path/to/tmp/svcaller_HG002 \
+    --giab_truth /path/to/ref/GIAB/HG002_SV_v0.6.vcf.gz \
     --max_cpus 64 --max_memory '120.GB' \
     -resume 2>&1 | tail -40
 ```
@@ -3135,7 +3135,7 @@ python3 - << 'EOF'
 import csv
 sample = "HG002"
 truth = {"smn1_cn": 2, "smn2_cn": 1}  # from validation/smn_truth_table.tsv
-with open(f"/data/alvin/tmp/svcaller_HG002/results/{sample}/{sample}.smn.tsv") as fh:
+with open(f"/path/to/tmp/svcaller_HG002/results/{sample}/{sample}.smn.tsv") as fh:
     row = list(csv.DictReader(fh, delimiter="\t"))[0]
 smn1 = int(row.get("SMN1_CN", row.get("smn1", 0)))
 smn2 = int(row.get("SMN2_CN", row.get("smn2", 0)))
@@ -3149,9 +3149,9 @@ Expected: Both lines print PASS.
 - [ ] **Step 6: Run benchmark for HG002**
 
 ```bash
-bash /data/alvin/SVcaller/validation/giab_benchmark.sh \
+bash /path/to/SVcaller/validation/giab_benchmark.sh \
     HG002 \
-    /data/alvin/tmp/svcaller_HG002/results/HG002/HG002.sv_merged.vcf.gz
+    /path/to/tmp/svcaller_HG002/results/HG002/HG002.sv_merged.vcf.gz
 ```
 
 Expected output (target thresholds for PE150 30x ensemble):
@@ -3165,16 +3165,16 @@ F1:        ≥ 0.77
 
 ```bash
 for SAMPLE in HG001 HG003 HG004 HG005 HG006 HG007; do
-  cat > /data/alvin/tmp/${SAMPLE}_sheet.csv << EOF
+  cat > /path/to/tmp/${SAMPLE}_sheet.csv << EOF
 sample,bam
-${SAMPLE},/data/alvin/ref/GIAB/bams/${SAMPLE}.GRCh38.bam
+${SAMPLE},/path/to/ref/GIAB/bams/${SAMPLE}.GRCh38.bam
 EOF
-  /home/alvin/bin/nextflow run /data/alvin/SVcaller/main.nf \
+  nextflow run /path/to/SVcaller/main.nf \
       -profile docker \
-      --input /data/alvin/tmp/${SAMPLE}_sheet.csv \
-      --ref_fasta /data/alvin/ref/GRCh38/GRCh38.fasta \
-      --pon /data/alvin/SVcaller/pon/giab_cnv_pon.hdf5 \
-      --outdir /data/alvin/tmp/svcaller_${SAMPLE} \
+      --input /path/to/tmp/${SAMPLE}_sheet.csv \
+      --ref_fasta /path/to/ref/GRCh38/GRCh38.fasta \
+      --pon /path/to/SVcaller/pon/giab_cnv_pon.hdf5 \
+      --outdir /path/to/tmp/svcaller_${SAMPLE} \
       --max_cpus 64 --max_memory '120.GB' \
       -resume
 done
@@ -3183,7 +3183,7 @@ done
 - [ ] **Step 8: Final commit**
 
 ```bash
-cd /data/alvin/SVcaller
+cd /path/to/SVcaller
 git add validation/giab_samplesheet.csv
 git commit -m "feat: add GIAB samplesheet and complete validation framework"
 git tag -a v1.0.0 -m "SVcaller v1.0.0: 7-module Nextflow pipeline with GIAB validation"

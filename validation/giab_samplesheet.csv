@@ -1,8 +1,8 @@
 sample,bam
-HG001,/data/alvin/ref/GIAB/HG001.bwa.sortdup.bqsr.bam
-HG002,/data/alvin/ref/GIAB/HG002.bwa.sortdup.bqsr.bam
-HG003,/data/alvin/ref/GIAB/HG003.bwa.sortdup.bqsr.bam
-HG004,/data/alvin/ref/GIAB/HG004.bwa.sortdup.bqsr.bam
-HG005,/data/alvin/ref/GIAB/HG005.bwa.sortdup.bqsr.bam
-HG006,/data/alvin/ref/GIAB/HG006.bwa.sortdup.bqsr.bam
-HG007,/data/alvin/ref/GIAB/HG007.bwa.sortdup.bqsr.bam
+HG001,/path/to/ref/GIAB/HG001.bwa.sortdup.bqsr.bam
+HG002,/path/to/ref/GIAB/HG002.bwa.sortdup.bqsr.bam
+HG003,/path/to/ref/GIAB/HG003.bwa.sortdup.bqsr.bam
+HG004,/path/to/ref/GIAB/HG004.bwa.sortdup.bqsr.bam
+HG005,/path/to/ref/GIAB/HG005.bwa.sortdup.bqsr.bam
+HG006,/path/to/ref/GIAB/HG006.bwa.sortdup.bqsr.bam
+HG007,/path/to/ref/GIAB/HG007.bwa.sortdup.bqsr.bam

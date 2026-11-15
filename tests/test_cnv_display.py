@@ -1,7 +1,7 @@
 """Regression tests for CNV report display (2026-06): syndrome-gated Clinical Findings,
 top-N-by-size CNV list, and the copy-neutral (CN=2) CNVpytor skip."""
 import sys
-sys.path.insert(0, "/data/alvin/SVcaller/bin")
+sys.path.insert(0, __import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "..", "bin"))
 import html_report as H
 import cnv_consensus as C
 

@@ -8,7 +8,7 @@
  * Usage:
  *   nextflow run workflows/sv_pon_build.nf -profile docker \
  *     --input validation/pon_sv_samplesheet.csv \
- *     --ref_fasta /data/alvin/ref/GRCh38/hg38.canonical.fa \
+ *     --ref_fasta /path/to/ref/GRCh38/hg38.canonical.fa \
  *     --outdir pon/sv_pon
  */
 

@@ -8,6 +8,7 @@ process EH_SIZING {
 
     input:
     tuple val(meta), path(json), path(sex_json)
+    path offsets     // assets/eh_count_offsets.tsv: cited per-locus correction of EH's repeat count (PABPN1 -1)
     path graded      // assets/eh_graded_variants.tsv: which variant of each locus is the disease repeat
 
     output:
@@ -15,6 +16,6 @@ process EH_SIZING {
 
     script:
     """
-    eh_sizing.py ${json} ${meta.id}.str_summary.tsv --sex-json ${sex_json} --graded ${graded}
+    eh_sizing.py ${json} ${meta.id}.str_summary.tsv --sex-json ${sex_json} --graded ${graded} --offsets ${offsets}
     """
 }

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Run truvari benchmarking for one GIAB sample.
 # Usage: giab_benchmark.sh <sample_id> <query_vcf> [giab_truth_dir]
-# Example: giab_benchmark.sh HG002 /data/alvin/tmp/svcaller_HG002/results/HG002/HG002.sv_merged.vcf.gz
+# Example: giab_benchmark.sh HG002 ${TMPDIR:-/tmp}/svcaller_HG002/results/HG002/HG002.sv_merged.vcf.gz
 set -euo pipefail
 
 SAMPLE="${1:?Usage: $0 SAMPLE_ID QUERY_VCF [GIAB_TRUTH_DIR]}"
 QUERY_VCF="${2:?QUERY_VCF required}"
-TRUTH_DIR="${3:-/data/alvin/ref/GIAB}"
-OUT_DIR="/data/alvin/tmp/truvari_${SAMPLE}"
+TRUTH_DIR="${3:-${REF_ROOT:-/path/to/ref}/GIAB}"
+OUT_DIR="${TMPDIR:-/tmp}/truvari_${SAMPLE}"
 
 TRUTH_VCF="${TRUTH_DIR}/${SAMPLE}_SV_v0.6.vcf.gz"
 TRUTH_TBI="${TRUTH_DIR}/${SAMPLE}_SV_v0.6.vcf.gz.tbi"

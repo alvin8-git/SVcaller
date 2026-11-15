@@ -8,15 +8,15 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-REF=/data/alvin/ref/GRCh38/hg38.canonical.fa
-PON=/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5
+REF=${REF_ROOT:-/path/to/ref}/GRCh38/hg38.canonical.fa
+PON=${SVCALLER_HOME:-.}/pon/pon/giab_cnv_pon.hdf5
 EH_CATALOG=${REPO_DIR}/assets/eh_catalog.json
-ANNOTSV_DB=/data/alvin/ref/annotsv/Annotations_Human
-SV_PON=/data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed
-INTERVALS=/data/alvin/ref/GRCh38/wgs_autosomal.bed
+ANNOTSV_DB=${REF_ROOT:-/path/to/ref}/annotsv/Annotations_Human
+SV_PON=${SVCALLER_HOME:-.}/pon/sv_pon/giab_sv_pon.bed
+INTERVALS=${REF_ROOT:-/path/to/ref}/GRCh38/wgs_autosomal.bed
 OUTDIR=${REPO_DIR}/results
 WORKDIR_BASE=${REPO_DIR}/work
-LOG_DIR=/data/alvin/tmp
+LOG_DIR=${TMPDIR:-/tmp}
 
 SAMPLES=("${@:-HG001 HG003 HG004 HG005 HG006 HG007}")
 if [ $# -eq 0 ]; then

@@ -20,13 +20,13 @@ set -uo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_LABEL="${1:-run1}"
-REF=/data/alvin/ref/GRCh38/hg38.canonical.fa
-INTERVALS=/data/alvin/ref/GRCh38/wgs_autosomal.bed
-PON=/data/alvin/SVcaller/pon/pon/giab_cnv_pon.hdf5
+REF=${REF_ROOT:-/path/to/ref}/GRCh38/hg38.canonical.fa
+INTERVALS=${REF_ROOT:-/path/to/ref}/GRCh38/wgs_autosomal.bed
+PON=${SVCALLER_HOME:-.}/pon/pon/giab_cnv_pon.hdf5
 EH_CATALOG=${REPO_DIR}/assets/eh_catalog.json
-SV_PON=/data/alvin/SVcaller/pon/sv_pon/giab_sv_pon.bed
+SV_PON=${SVCALLER_HOME:-.}/pon/sv_pon/giab_sv_pon.bed
 OUTDIR=${REPO_DIR}/results
-LOG_DIR=/data/alvin/tmp
+LOG_DIR=${TMPDIR:-/tmp}
 
 mkdir -p "$OUTDIR"
 

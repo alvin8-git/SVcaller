@@ -1,6 +1,6 @@
 # Agent brief — OmniGen thalassemia screen
 
-**Repo:** `/data/alvin/OmniGen` · **Branch from:** `main` (currently `9be43d3`)
+**Repo:** `/path/to/OmniGen` · **Branch from:** `main` (currently `9be43d3`)
 **Companion track:** SVcaller (see `svcaller-alpha-globin.md`). You share a frozen
 interface with it. **You may not change that interface unilaterally.**
 

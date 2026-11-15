@@ -24,9 +24,9 @@ sys.path.insert(0, BIN)
 import hba_sites as hs  # noqa: E402
 
 PANEL = os.path.join(REPO, "assets", "hba_pathogenic_sites.tsv")
-REF_FASTA = "/data/alvin/ref/GRCh38/hg38.fa"
-THAL1_BAM = "/data/alvin/ref/THAL/THAL1_30X.bwa.sortdup.bqsr.bam"
-THAL2_BAM = "/data/alvin/ref/THAL/THAL2_30X.bwa.sortdup.bqsr.bam"
+REF_FASTA = os.environ.get("REF_ROOT", "/path/to/ref") + "/GRCh38/hg38.fa"
+THAL1_BAM = os.environ.get("REF_ROOT", "/path/to/ref") + "/THAL/THAL1_30X.bwa.sortdup.bqsr.bam"
+THAL2_BAM = os.environ.get("REF_ROOT", "/path/to/ref") + "/THAL/THAL2_30X.bwa.sortdup.bqsr.bam"
 
 
 # --------------------------------------------------------------------------- #

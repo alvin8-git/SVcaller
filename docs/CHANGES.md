@@ -1,5 +1,48 @@
 # Changes
 
+## 2026-11-15 - code-review fixes on the uncommitted batch (behaviour otherwise unchanged)
+
+HTML report: (1) the STR confidence interval follows the same cited offset as the count (`str_summary` `ci`; the VCF fallback shifts REPCI with `_offset_repci`). (2) `eh_count_offsets.tsv`, `str_retired_loci.tsv`, `str_count_convention.tsv`, `str_not_tested_legacy.tsv` are staged `BUILD_HTML_REPORT` inputs (`--str-offsets/--str-retired/--str-convention/--str-not-tested`), so `-resume` re-renders when one changes. (4) A legacy-catalogue `str_summary.tsv` with no EH VCF now lists its loci (it was an empty section, which reads as "no expansions"). (5) An empty SMN1 count shows SMA as "NOT TYPED" in the known-disease tier (was skipped silently). (9) `str_grading_scope.load_scope()` reads the three tables and the narrow-gap set once per report; `not_graded_reason(locus, scope)` has no module-level cache. `hba_report.py` (6): a depth-only suspected loss makes the Deletion row read "Suspected (read depth only), not confirmed". `eh_sizing.py` (7): an offset with no EH CI keeps the empty CI text instead of writing `None-None`. `nf-run-headless.sh` (8): the default log directory is `$PWD/.nf-headless`, never `/tmp`. Pipeline (3): MELT's `-c` has its own `--melt_coverage` (default 25, the value it ran with before `min_depth` went to 20; `conf/test.config` 5), so lowering `min_depth` does not change MELT. HG002 report re-rendered from stored server outputs before and after: byte-identical (no HG002 result touches these paths).
+
+## 2026-11-15 - mean-depth floor lowered from 25x to 20x (30x stays recommended)
+
+Owner decision. `min_depth` default 25 -> 20 (`nextflow.config`; MELT's `-c` is separate, `melt_coverage` 25). Evidence: truvari 4.3.1 on HG002 raw merged calls vs GIAB HG002
+T2T-Q100 v1.0 stvar, downsampled 30/25/22.5/20/17/14/12x (one sample, one replicate, raw calls). Deletion recall 1-10 kb .76 at 30x and 25x, .74 at
+20x, .73 at 17x; 10 kb or more .45 -> .41 at 20x; 300 bp-1 kb .62 at 30x, .58 at 20x; no cliff at 25x. Alpha-globin high confidence down to 20x, medium
+at 17x; SMN no-call below 18x by design. The abort message is unchanged in form (`ERROR: mean depth N < 20x (required). Aborting.`). The report's QC
+card adds, for 20-30x mean depth, "mean depth below the recommended 30x: structural-variant sensitivity is reduced (about 2-4 points fewer deletions
+found at 20x than at 30x in GIAB HG002)". README and Documentation.md state 20x (Documentation.md previously said 30 in two places).
+
+## 2026-11-15 - the HTML report follows every owner decision about SVcaller results (never contradicts OmniGen)
+
+**Problem.** `bin/html_report.py` graded PABPN1 from the VCF's raw REPCN (11/11, "INTERMEDIATE") instead of the offset-corrected
+`str_summary.tsv` (10/10, normal); it graded retired loci, loci without a cited counting convention and loci of the old catalogue whose
+coordinates hold no repeat in GRCh38 (NIPA1 showed EXPANDED); it showed ">=N" alleles as numbers/intermediate; the alpha-globin card
+rendered a depth-only suspected loss as "alpha+ deletion, biallelic"; a delly inversion time cap was not mentioned.
+
+**Fix.** (1) STR: `html_report.py` takes `--str-summary` (wired in `subworkflows/report.nf`; without it the VCF count has the cited offset
+applied). `bin/str_grading_scope.py` reads three carried curation tables with provenance headers (`assets/str_retired_loci.tsv`,
+`assets/str_count_convention.tsv`, `assets/str_not_tested_legacy.tsv`; `tests/test_str_curation_scope.py` compares them with OmniGen's
+`panel_sources` when `OMNIGEN_PANEL_SOURCES` is set). A locus set aside shows NOT GRADED with its reason and is never a Finding; an
+allele known only as ">=N" shows UNRESOLVED (at least N repeats), ">=0" shows NOT MEASURABLE. (2) `--sv-not-assessed` (published
+`<id>.sv_not_assessed.tsv`) shows "Partly screened: delly inversions not assessed"; no record reads "not recorded". (3) `hba_report.py`:
+a depth-only suspected -a3.7/-a4.2 reads "suspected, not confirmed; confirm by gap-PCR or MLPA", NA reads "Not determined". (4) The
+Clinical Findings card says SV/CNV rows are caller output, not graded findings (the OmniGen Finding gate needs ClinGen dosage files and a
+cohort recurrence list that are not carried here); CNV-syndrome rows say the same. (5) An empty SMN1 cell is never a carrier.
+Unchanged: SMN no-call below 18x (already honoured by `smn_report.py` and the xlsx), the 25x depth gate (the run aborts, so no report exists).
+
+## 2026-11-15 - tracked files scrubbed of internal paths and private ids
+
+Internal absolute paths (`/data/...`, `/home/...`) replaced: tests derive the repo root from `__file__` and read the reference tree from `REF_ROOT` (default `/path/to/ref`; reference-dependent tests skip when it is absent); validation shell scripts use `${REF_ROOT}`, `${SVCALLER_HOME}`, `${TMPDIR}`; `conf/local.config` reads `SVCALLER_CONDA_ENV`; docs use `/path/to/...` placeholders. A private clinical sample id in this file became "sample A". Git history still contains the old text and is not rewritten.
+
+## 2026-11-15 - PABPN1 repeat count corrected by -1 before grading
+
+**Problem.** STRchive's OPMD_PABPN1 range (normal max 10, intermediate 11, pathogenic min 12) counts GCN codons between ATG and GGG. GRCh38 holds 10 codons there (ATG, (GCG)6(GCA)3(GCG)1, GGG GCT GCG) inside the 31 bp interval chr14:23321472-23321503. ExpansionHunter's degenerate GCN motif absorbs the GGG (one mismatch) as an 11th unit, so the common 10-codon allele is reported as 11 and graded intermediate. In HG002 all 21 spanning reads carry exactly 10 codons while EH calls 11/11; 50 of 64 cohort samples are 11/11.
+
+**Fix (owner decision).** `assets/eh_count_offsets.tsv` (locus, variant_id, offset, evidence) lists PABPN1 as -1; `bin/eh_sizing.py` adds it to genotype, ci, alleleN_est and the displays in `str_summary.tsv`. New trailing columns `eh_raw_genotype` (EH's own value) and `count_offset`. Sizing (spanned/flanked/unresolved) is still decided on EH's raw counts; the spanning/flanking read-count columns stay in EH units. `EH_SIZING` takes the file as an input. No other locus has an offset (NIPA1 checked: reads equal the reference; every other locus has a normal-to-pathogenic gap of 3+ units).
+
+**Not covered.** `bin/html_report.py` grades the STR VCF `REPCN` (EH raw) and does not apply the offset; `str_profile.json` and the VCF stay as EH wrote them. Tests: `tests/test_eh_sizing.py` (reference holds 10 codons, offsets file is PABPN1 -1 only, 11/11 -> 10/10, 13 -> 12 stays pathogenic range). Existing output needs the sizing step re-run (needs `<id>.str_profile.json`, `<id>.sex.json`).
+
 ## 2026-11-15 - population-AF filter reads the column of the SV's own type; provenance.json on failed runs
 
 **Problem 1 (audit items 4 and 5).** `GNOMAD_SV_FILTER` used `row.get('B_gain_AFmax', row.get('B_loss_AFmax','0'))`. AnnotSV fills all four `B_gain/B_loss/B_ins/B_inv` column groups for every SV (`AnnotSV-benignsv.tcl`, `benignSVannotation`: benign records with AF >= `-benignAF` 0.01 that completely contain the SV, `bedtools -f 1.0`), so the gain column was read for every type. On HG002 (3.4.6 output, 44,895 rows): 2,725 of 5,466 full-mode DELs were dropped because a common *gain* region contained them (a PASS Delly DEL inside a large gain region vanished), while common *deletions* were kept whenever no gain contained them. INS, INV and TRA had the same flaw.
@@ -53,7 +96,7 @@ one marginal segment. `assets/hba_segments.bed` is untouched (the depth file sti
 supporting high-confidence junction is emitted as `alpha_genes_called=NA`, confidence `low`, `deletion_alleles=NA`,
 `deletion_evidence=depth`, the allele in the new 12th column `suspected_allele` and the segment ratios in the note
 ("depth pattern suggests -a4.2 (HBA2 x, INTER_A2_A1 y, HBA1 z); no breakpoint junction; confirm by gap-PCR or
-MLPA"). Two-copy calls (C-5839 -a4.2/-a4.2) and --SEA|--MED etc. are unchanged. Replay vs the HBZ-only
+MLPA"). Two-copy calls (sample A -a4.2/-a4.2) and --SEA|--MED etc. are unchanged. Replay vs the HBZ-only
 version: only three clinical samples changed. OmniGen's `report_alpha_globin.load_contract` reads the new
 file unchanged.
 
