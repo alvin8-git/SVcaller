@@ -10,6 +10,9 @@ curation tables, carried as copies with a comparison test (tests/test_str_curati
 
 An allele ExpansionHunter could only bound (str_summary sizing "unresolved", shown ">=N") is "unresolved, at least N repeats",
 never intermediate or pathogenic; ">=0" has no bound at all and reads "not measurable".
+
+A call whose only intermediate or pathogenic-range allele eh_sizing marked `low_support` (a short allele with under 25% of the
+locus's spanning reads, owner decision 2026-11-16) reads "not confirmed (low read support)", never a flag; the supported alleles are graded on their own (html_report.parse_str_loci).
 """
 import os
 import re
@@ -99,3 +102,8 @@ def unresolved_bound(display: str):
     """Lower bound of an allele shown '>=N' (None when the text is not an unresolved bound)."""
     m = re.fullmatch(r"\s*>=\s*(\d+)\s*", display or "")
     return int(m.group(1)) if m else None
+
+
+LOW_SUPPORT_STATUS = "NOT CONFIRMED"
+LOW_SUPPORT_TEXT = "not confirmed (low read support)"
+

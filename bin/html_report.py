@@ -1412,12 +1412,23 @@ def parse_str_loci(str_vcf_path: str, str_ranges: dict = None, graded: dict = No
         why = sgs.not_graded_reason(locus_id, scope)
         tokens = repcn.split("/")
         bounds = [sgs.unresolved_bound(t) for t in tokens]
-        measured = "/".join(t for t, b in zip(tokens, bounds) if b is None and t.strip().isdigit())
+        sizes = [(srow.get(f"allele{i}_sizing") or "").strip() if srow else "" for i in (1, 2)]
+        lowflag = [i < 2 and sizes[i] == "low_support" for i in range(len(tokens))]
+        # an allele with too little read support (stutter) is not graded: grade the supported alleles only
+        measured = "/".join(t for t, b, lf in zip(tokens, bounds, lowflag) if b is None and not lf and t.strip().isdigit())
+        dropped = "/".join(t for t, b, lf in zip(tokens, bounds, lowflag) if b is None and lf and t.strip().isdigit())
+        low_note = ""
         status = "NOT GRADED" if why else _str_status(measured or ".", meta)
         if not why and any(b is not None for b in bounds) and status != "EXPANDED":
             status = "UNRESOLVED"                        # an allele known only as a lower bound is never graded either way
             if all(b is not None and not b for b in bounds):
                 status = "NOT MEASURABLE"                # '>=0': no read gave any size
+        if not why and dropped and status not in ("UNRESOLVED", "NOT MEASURABLE", "EXPANDED", "PREMUTATION", "INTERMEDIATE"):
+            dstatus = _str_status(dropped, meta)
+            if dstatus in ("INTERMEDIATE", "PREMUTATION", "EXPANDED"):
+                status, low_note = sgs.LOW_SUPPORT_STATUS, sgs.LOW_SUPPORT_TEXT   # only the thin allele reached a flag: never shown as one
+            elif not measured:
+                status = dstatus
         shown = "/".join((sgs.NOT_MEASURABLE if not b else f">={b} (unresolved)") if b is not None else t
                          for t, b in zip(tokens, bounds))
         loci.append({
@@ -1437,7 +1448,7 @@ def parse_str_loci(str_vcf_path: str, str_ranges: dict = None, graded: dict = No
             "path_min":    "" if why else meta.get("path_min", ""),
             "notes":       meta.get("notes", ""),
             "status": status,
-            "status_note": why or "",
+            "status_note": why or low_note,
             "sizing": sizing,
         })
     for locus in loci:

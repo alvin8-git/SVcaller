@@ -29,7 +29,7 @@ def test_spanned_needs_two_reads_at_that_size():
     assert [a["sizing"] for a in r["alleles"]] == ["spanned", "spanned"]
     assert r["conf"] == "high" and r["genotype_display"] == "14/14"
     one = es.classify_variant(variant("10/20", "10-10/20-20", span="(10, 5), (20, 1)"), 150)
-    assert [a["sizing"] for a in one["alleles"]] == ["spanned", "flanked"]   # 1 read is not enough
+    assert [a["sizing"] for a in one["alleles"]] == ["spanned", "low_support"]   # 1 read is not enough (flanked), and 1 of 6 spanning reads is a thin allele balance
 
 
 def test_flanked_short_allele_without_spanning_reads():
@@ -242,3 +242,76 @@ def test_offset_without_an_eh_ci_keeps_the_empty_ci_text_not_none_none():
     p = profile(PABPN1=variant("11/11", "", span="(10, 1), (11, 22)", ru="GCN"))
     r = next(es.summarise(p, graded, {("PABPN1", "PABPN1"): -1}))
     assert r["genotype"] == "10/10" and "None" not in r["ci"]
+
+
+# ---- low_support (owner decision 2026-11-16): allele-balance gate for short alleles -------------------------------------
+def test_low_support_gates_a_thin_short_allele_pabpn1_like():
+    r = es.classify_variant(variant("11/13", "11-11/13-13", span="(11, 11), (12, 1), (13, 1)", ru="GCN"), 150)
+    assert [a["sizing"] for a in r["alleles"]] == ["spanned", "low_support"]      # 13: 1 of 13 spanning reads = 0.08
+    assert r["alleles"][1]["display"] == "13" and r["genotype_display"] == "11/13"   # point estimate kept, not a bound
+    assert r["conf"] in ("high", "low")                                              # conf unchanged
+    assert round(r["alleles"][1]["share"], 2) == 0.08
+
+
+def test_low_support_exact_raw_count_keying_and_threshold_boundary():
+    # 13 has 2 of 8 = 0.25: not below the threshold, so not gated (and spanned needs >= 2 reads at that size)
+    r = es.classify_variant(variant("11/13", "11-11/13-13", span="(11, 6), (13, 2)", ru="GCN"), 150)
+    assert [a["sizing"] for a in r["alleles"]] == ["spanned", "spanned"]
+    assert es.LOW_SUPPORT_SHARE == 0.25
+    # reads at a neighbouring count do not count for the allele
+    r = es.classify_variant(variant("11/13", "11-11/13-13", span="(11, 5), (12, 4), (13, 1)", ru="GCN"), 150)
+    assert r["alleles"][1]["sizing"] == "low_support"
+
+
+def test_low_support_not_for_a_long_allele():
+    # 40 CAG = 120 bp > 75 bp (read 150 / 2): spanning reads fall off with length, so no gate
+    r = es.classify_variant(variant("20/40", "20-20/40-40", span="(20, 30), (40, 1)", ru="CAG"), 150)
+    assert r["alleles"][1]["sizing"] in ("spanned", "flanked") and r["alleles"][0]["sizing"] == "spanned"
+    short = es.classify_variant(variant("20/25", "20-20/25-25", span="(20, 30), (25, 1)", ru="CAG"), 150)   # 75 bp = limit
+    assert short["alleles"][1]["sizing"] == "low_support"
+
+
+def test_low_support_not_for_homozygous_or_hemizygous_or_no_spanning():
+    hom = es.classify_variant(variant("13/13", "13-13/13-13", span="(13, 1), (12, 9)", ru="GCN"), 150)
+    assert [a["sizing"] for a in hom["alleles"]] == ["flanked", "flanked"]
+    hemi = es.classify_variant(variant("11/13", "11-11/13-13", span="(11, 11), (13, 1)", ru="GCN"), 150, hemizygous=True)
+    assert [a["sizing"] for a in hemi["alleles"]] == ["flanked"] and len(hemi["alleles"]) == 1   # the larger kept, never gated
+    none = es.classify_variant(variant("11/13", "11-11/13-13", flank="(11, 3), (13, 3)", ru="GCN"), 150)
+    assert [a["sizing"] for a in none["alleles"]] == ["flanked", "flanked"]
+    assert none["alleles"][0]["share"] is None
+
+
+def test_low_support_columns_are_appended_last_and_formatted(tmp_path):
+    assert es.COLUMNS[-2:] == ["allele1_span_share", "allele2_span_share"]
+    assert es.COLUMNS.index("count_offset") == len(es.COLUMNS) - 3
+    prof = profile(PABPN1=variant("11/13", "11-11/13-13", span="(11, 11), (12, 1), (13, 1)", ru="GCN"),
+                   HOM=variant("13/13", "13-13/13-13", ru="GCN"))
+    rows = {r["locus"]: r for r in es.summarise(prof)}
+    p = rows["PABPN1"]
+    assert (p["allele1_sizing"], p["allele2_sizing"]) == ("spanned", "low_support")
+    assert (p["allele1_span_share"], p["allele2_span_share"]) == ("0.85", "0.08")
+    assert rows["HOM"]["allele1_span_share"] == "." and rows["HOM"]["allele2_span_share"] == "."
+    hemi = es.classify_variant(variant("11/13", "11-11/13-13", span="(11, 11)", ru="GCN"), 150, hemizygous=True)
+    assert len(hemi["alleles"]) == 1
+
+
+def test_low_support_stutter_neighbours_count_for_the_allele_positive_control():
+    # true 11/13 with stutter: 13 gets 13+14 = 7 reads (12 is equidistant and excluded): 7/24 = 0.29, not gated
+    r = es.classify_variant(variant("11/13", "11-11/13-13", span="(11, 14), (12, 3), (13, 4), (14, 3)", ru="GCN"), 150)
+    assert [a["sizing"] for a in r["alleles"]] == ["spanned", "spanned"]
+    assert round(r["alleles"][1]["share"], 2) == 0.29 and round(r["alleles"][0]["share"], 2) == 0.58
+    # real PABPN1 stutter pattern is still gated
+    s = es.classify_variant(variant("11/13", "11-11/13-13", span="(10, 2), (11, 27), (13, 3)", ru="GCN"), 150)
+    assert [a["sizing"] for a in s["alleles"]] == ["spanned", "low_support"] and round(s["alleles"][1]["share"], 2) == 0.09
+
+
+def test_one_spanning_read_is_flanked_when_the_gate_does_not_apply():
+    r = es.classify_variant(variant("10/12", "10-10/12-12", span="(10, 3), (12, 1)", ru="GCN"), 150)   # 12: 1 of 4 = 0.25, not below
+    assert [a["sizing"] for a in r["alleles"]] == ["spanned", "flanked"]
+
+
+def test_hemizygous_call_has_no_span_share(tmp_path):
+    prof = {"SampleParameters": {"Sex": "male"}, "LocusResults": {"X1": {"ReadLength": 150, "Variants": {"X1": dict(
+        variant("11/13", "11-11/13-13", span="(11, 11), (13, 1)", ru="GCN"), ReferenceRegion="chrX:1-2")}}}}
+    row = next(es.summarise(prof))
+    assert row["allele1_span_share"] == "." and row["allele2_span_share"] == "."

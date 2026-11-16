@@ -10,6 +10,12 @@ cannot be sized, replaces the point estimate with a lower bound.  The EH json is
            flanked     flanking/in-repeat evidence only, allele fits within the read length
            unresolved  estimate longer than the read length with no spanning-read support,
                        or a CI wider than MAX_CI_WIDTH repeats
+           low_support assigned last, only to an allele that was spanned or flanked: a short allele (repeat length in bp <=
+                       read length / 2) at a diploid locus with two different counts whose share of the locus's spanning reads
+                       (reads within +/-1 raw unit of its count, excluding counts equidistant from or closer to the other
+                       allele) is below LOW_SUPPORT_SHARE.  A real heterozygous allele that short carries about half the spanning
+                       reads, so a thin one is stutter: "not confirmed (low read support)", never a finding.  The point
+                       estimate is kept (it is not a bound); homozygous, hemizygous and long alleles are never gated.
 
 Hemizygous loci: when the sample is male (SampleParameters.Sex in the EH json), a chrX locus has ONE allele.
 EH run with --sex male already reports one; if a diploid call is found (older runs that defaulted to female)
@@ -40,6 +46,9 @@ import sys
 MIN_SPANNING_READS = 2    # spanning reads at exactly the allele's size for "spanned"
 MAX_CI_WIDTH = 30         # CI wider than this many repeats => "unresolved"
 DEFAULT_READ_LEN = 150    # used only if the json carries no ReadLength
+# Owner POLICY threshold 2026-11-16 (a policy choice, not reference data and not derived from a source): for a repeat short enough to fit in a read, an intermediate or pathogenic
+# allele needs at least this share of the locus's spanning reads, else it is "not confirmed (low read support)".
+LOW_SUPPORT_SHARE = 0.25
 # --------------------------------------------------------------------------------------------
 
 COLUMNS = ["locus", "repeat_unit", "genotype", "ci", "read_length",
@@ -47,7 +56,8 @@ COLUMNS = ["locus", "repeat_unit", "genotype", "ci", "read_length",
            "allele2_est", "allele2_ci", "allele2_sizing", "allele2_display",
            "genotype_display", "conf", "spanning_reads", "flanking_reads", "inrepeat_reads",
            "variant_id", "disease_motif",      # these two appended 2026-11: parsers that read by header name are unaffected
-           "eh_raw_genotype", "count_offset"]  # appended 2026-11-15: EH's own genotype and the correction applied to it
+           "eh_raw_genotype", "count_offset",  # appended 2026-11-15: EH's own genotype and the correction applied to it
+           "allele1_span_share", "allele2_span_share"]  # appended 2026-11-16: allele's share of the locus's spanning reads
 DEFAULT_OFFSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "eh_count_offsets.tsv")
 DEFAULT_GRADED = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "eh_graded_variants.tsv")
 
@@ -58,6 +68,8 @@ HEADER_NOTE = [
     "# unresolved alleles are shown as '>=<CI lower bound>' (alleleN_display / genotype_display), never a point estimate;",
     "# conf=unresolved when any allele is unresolved, else high|low (CI width of the larger allele <= max(6, 15%) = high).",
     "# alleles longer than the read length cannot be sized from short reads; they are reported as a lower bound.",
+    "# low_support: a short allele (repeat bp <= read length / 2) at a diploid locus with two different counts whose share of the locus's",
+    f"# spanning reads is < {LOW_SUPPORT_SHARE} (alleleN_span_share: reads within +/-1 raw count, not nearer the other allele; hemizygous '.') is not confirmed (likely stutter); display stays the point estimate.",
     "# count_offset: a cited per-locus correction (assets/eh_count_offsets.tsv) is ADDED to every EH count before grading; genotype, ci,",
     "# alleleN_est and *_display carry the corrected count, eh_raw_genotype keeps EH's own; spanning/flanking/inrepeat read counts stay in EH units.",
     "# one row per locus: the graded variant (variant_id) in repeat units of disease_motif (assets/eh_graded_variants.tsv).",
@@ -115,6 +127,20 @@ def size_allele(est, ci, motif_len, read_len, spanning):
     return "flanked"
 
 
+def span_shares(ests, span):
+    """Per-allele share of the locus's spanning reads; None for every allele when the locus has no spanning read at all, and for
+    a single (hemizygous) allele.  An allele's support is the spanning reads within +/-1 raw unit of its raw count (stutter moves
+    reads by one unit), leaving out any count equidistant from or closer to the other allele; share = support / all spanning reads."""
+    total = sum(span.values())
+    if not total or len(ests) != 2:
+        return [None] * len(ests)
+    out = []
+    for e, o in (ests, ests[::-1]):
+        sup = sum(n for c, n in span.items() if abs(c - e) <= 1 and (e == o or abs(c - o) > abs(c - e)))   # homozygous: no other allele to exclude
+        out.append(sup / total)
+    return out
+
+
 def classify_variant(vv, read_len, hemizygous=False):
     """Rows' worth of fields for one EH Variants entry; None if no genotype."""
     gt = vv.get("Genotype")
@@ -140,6 +166,14 @@ def classify_variant(vv, read_len, hemizygous=False):
         else:
             disp = str(e)
         al.append(dict(est=e, ci=ci, sizing=cls, display=disp))
+    shares = span_shares(ests, span)
+    for a, sh in zip(al, shares):
+        a["share"] = sh
+    if len(ests) == 2 and ests[0] != ests[1]:          # diploid, heterozygous by count: the only case with an allele balance
+        for a, sh in zip(al, shares):
+            if (sh is not None and a["sizing"] in ("spanned", "flanked") and a["est"] * motif_len <= read_len / 2
+                    and sh < LOW_SUPPORT_SHARE):
+                a["sizing"] = "low_support"
     mi = max(range(len(al)), key=lambda i: al[i]["est"])
     if any(a["sizing"] == "unresolved" for a in al):
         conf = "unresolved"
@@ -209,9 +243,10 @@ def summarise(profile, graded=None, offsets=None):
                     lo, hi = a["ci"]
                     row.update({f"allele{i}_est": a["est"],
                                 f"allele{i}_ci": f"{lo}-{hi}" if lo is not None else ".",
-                                f"allele{i}_sizing": a["sizing"], f"allele{i}_display": a["display"]})
+                                f"allele{i}_sizing": a["sizing"], f"allele{i}_display": a["display"],
+                                f"allele{i}_span_share": "." if a["share"] is None else f"{a['share']:.2f}"})
                 else:
-                    row.update({f"allele{i}_{k}": "." for k in ("est", "ci", "sizing", "display")})
+                    row.update({f"allele{i}_{k}": "." for k in ("est", "ci", "sizing", "display", "span_share")})
             yield row
 
 

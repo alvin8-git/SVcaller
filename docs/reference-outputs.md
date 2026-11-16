@@ -31,13 +31,21 @@ tool version. Image tags come from `conf/docker.config`. Test: `tests/test_write
 writes `<sample>.str_summary.tsv`, one row per locus, after a `#` header note. Columns:
 `locus, repeat_unit, genotype, ci, read_length` (existing EH fields), then `allele1_est, allele1_ci,
 allele1_sizing, allele1_display, allele2_est, allele2_ci, allele2_sizing, allele2_display`
-(allele2 is `.` for haploid calls), `genotype_display, conf, spanning_reads, flanking_reads, inrepeat_reads`.
+(allele2 is `.` for haploid calls), `genotype_display, conf, spanning_reads, flanking_reads, inrepeat_reads`, then `variant_id, disease_motif, eh_raw_genotype,
+count_offset` and, appended last, `allele1_span_share, allele2_span_share` (the allele's share of the locus's spanning reads: reads within +/-1 raw count of its EH raw count,
+excluding counts equidistant from or closer to the other allele; 2 decimals; `.` for a missing allele2, a hemizygous call, or when the locus has no spanning read).
 
 | `alleleN_sizing` | Meaning |
 |---|---|
 | `spanned` | at least 2 spanning reads at exactly that repeat count |
 | `flanked` | flanking/in-repeat reads only; the allele (repeats x motif length) fits within the read length |
 | `unresolved` | estimate longer than the read length with no spanning-read support, or CI wider than 30 repeats |
+| `low_support` | assigned last, to a `spanned` or `flanked` allele only: repeat length (EH raw count x motif length) <= read length / 2, diploid locus with two different raw counts, and its spanning-read share < 0.25 (`LOW_SUPPORT_SHARE`, owner policy 2026-11-16, not reference data) |
+
+A `low_support` allele is "not confirmed (low read support)": a real heterozygous allele that short carries about half the spanning reads,
+so a thin one is stutter (for example a 12-22 GCN PABPN1 allele with 0-3 of 10-37 spanning reads). The display and genotype stay the point
+estimate (it is not a bound) and `conf` is unchanged; homozygous and hemizygous calls, and alleles longer than half a read (HTT 40+), are never
+gated. The HTML report grades the supported alleles only and shows NOT CONFIRMED with that wording when just the `low_support` allele would reach intermediate or pathogenic.
 
 An `unresolved` allele is shown as `>=<lower CI bound>` in `alleleN_display` and `genotype_display` (for example
 ATXN2 `22/>=52`), and the row gets `conf=unresolved`. Otherwise `conf` is `high` (CI width of the larger

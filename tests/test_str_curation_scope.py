@@ -168,3 +168,39 @@ def test_scope_tables_are_read_once_per_call_site(monkeypatch):
     for _ in range(50):
         sgs.not_graded_reason("HTT", sc)
     assert len(calls) == 1
+
+
+def _lowsupport_summary(tmp_path, gt, s1, s2):
+    hdr = ["locus", "genotype_display", "allele1_sizing", "allele2_sizing", "variant_id", "allele1_est", "allele2_est"]
+    a1, a2 = gt.split("/")
+    p = tmp_path / "ls.tsv"
+    p.write_text("\t".join(hdr) + "\n" + "\t".join(["PABPN1", gt, s1, s2, "PABPN1", a1.lstrip(">="), a2]) + "\n")
+    g = hr._load_str_graded()
+    return {l["locus"]: l for l in hr.parse_str_loci("", hr._load_str_ranges(), g, hr._load_str_summary(str(p))[0])}
+
+
+def test_low_support_pathogenic_range_reads_not_confirmed_never_a_flag(tmp_path):
+    L = _lowsupport_summary(tmp_path, "10/12", "spanned", "low_support")     # 12 is in PABPN1's pathogenic range
+    assert L["PABPN1"]["status"] == sgs.LOW_SUPPORT_STATUS == "NOT CONFIRMED"
+    assert L["PABPN1"]["status_note"] == "not confirmed (low read support)"
+    assert L["PABPN1"]["status"] not in ("EXPANDED", "INTERMEDIATE", "PREMUTATION")
+    assert L["PABPN1"]["repcn"] == "10/12"                                   # point estimate still shown
+
+
+def test_well_supported_pathogenic_range_allele_is_still_graded(tmp_path):
+    L = _lowsupport_summary(tmp_path, "10/12", "spanned", "spanned")
+    assert L["PABPN1"]["status"] == "EXPANDED" and L["PABPN1"]["status_note"] == ""
+    # a thin NORMAL-range allele is not a flag either way: status stays NORMAL
+    assert _lowsupport_summary(tmp_path, "9/10", "low_support", "spanned")["PABPN1"]["status"] == "NORMAL"
+
+
+def _ls(tmp_path, gt, s1, s2):
+    return _lowsupport_summary(tmp_path, gt, s1, s2)["PABPN1"]
+
+
+def test_report_grades_the_supported_alleles_only(tmp_path):
+    assert _ls(tmp_path, "12/14", "spanned", "low_support")["status"] == "EXPANDED"      # graded from the supported 12
+    assert _ls(tmp_path, "12/12", "spanned", "spanned")["status"] == "EXPANDED"
+    r = _ls(tmp_path, ">=12/15", "unresolved", "low_support")
+    assert r["status"] == "UNRESOLVED" and r["status_note"] == ""                      # unresolved first, not NOT CONFIRMED
+    assert _ls(tmp_path, "10/12", "spanned", "low_support")["status"] == "NOT CONFIRMED"
